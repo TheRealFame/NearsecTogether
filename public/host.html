@@ -161,6 +161,13 @@
   .btn-skip { background:#383a40; color:#b5bac1; }
   .btn-skip:hover { background:#41434a; }
 
+  .form-select {
+    width:100%; padding:6px; background:#1e1f22; color:#dbdee1;
+    border:1px solid #3b3d44; border-radius:4px; font-size:11px;
+    font-family:inherit; outline:none; cursor:pointer;
+  }
+  .form-select:hover { border-color:#5865f2; }
+
   /* ── Modal Loading / Error Overlay ── */
   .modal-loading {
     position:absolute; inset:0; background:rgba(43,45,49,0.95);
@@ -224,6 +231,40 @@
       <div class="stat-row"><span class="dot" id="audDot"></span><span id="audStatus">No audio</span></div>
       <div class="meter"><div class="meter-fill" id="meter"></div></div>
       <div class="info-text" id="trackInfo">—</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-label">Stream Quality</div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <div style="flex:1">
+          <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">CODEC</div>
+          <select id="codecSelect" class="form-select">
+            <option value="H264">H.264 (Hardware)</option>
+            <option value="VP8" selected>VP8 (Fast Software)</option>
+            <option value="VP9">VP9 (Slow Software)</option>
+            <option value="AV1">AV1 (Experimental)</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">BITRATE</div>
+          <select id="bitrateSelect" class="form-select" onchange="applyBitrateToAll()">
+            <option value="0">Auto</option>
+            <option value="1000000">1 Mbps</option>
+            <option value="2000000">2 Mbps</option>
+            <option value="4000000" selected>4 Mbps</option>
+            <option value="8000000">8 Mbps</option>
+            <option value="15000000">15 Mbps</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">PRIORITY</div>
+          <select id="degSelect" class="form-select" onchange="applyBitrateToAll()">
+            <option value="maintain-framerate">Smooth (Drops Res)</option>
+            <option value="maintain-resolution" selected>Crisp (Drops FPS)</option>
+            <option value="balanced">Balanced</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="sec">
@@ -352,15 +393,26 @@ let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCou
 let audioCtx, analyser, animFrame;
 let pinEnabled = true, currentPin = '----';
 
-// Codec priority: AV1 > HEVC > H.264
-const CODEC_PRIORITY = ['video/AV1', 'video/HEVC', 'video/H264'];
+// Load saved settings
+const savedCodec = localStorage.getItem('ns_codec');
+if (savedCodec) document.getElementById('codecSelect').value = savedCodec;
+document.getElementById('codecSelect').addEventListener('change', (e) => localStorage.setItem('ns_codec', e.target.value));
+
+const savedBitrate = localStorage.getItem('ns_bitrate');
+if (savedBitrate) document.getElementById('bitrateSelect').value = savedBitrate;
+document.getElementById('bitrateSelect').addEventListener('change', (e) => localStorage.setItem('ns_bitrate', e.target.value));
+
+const savedDeg = localStorage.getItem('ns_deg');
+if (savedDeg) document.getElementById('degSelect').value = savedDeg;
+document.getElementById('degSelect').addEventListener('change', (e) => localStorage.setItem('ns_deg', e.target.value));
 
 function preferVideoCodec(pc) {
   const caps = RTCRtpSender.getCapabilities?.('video');
   if (!caps) return null;
+  const preferred = 'video/' + document.getElementById('codecSelect').value;
   const sorted = [
-    ...CODEC_PRIORITY.flatMap(mime => caps.codecs.filter(c => c.mimeType === mime)),
-    ...caps.codecs.filter(c => !CODEC_PRIORITY.includes(c.mimeType))
+    ...caps.codecs.filter(c => c.mimeType === preferred),
+    ...caps.codecs.filter(c => c.mimeType !== preferred)
   ];
   let used = null;
   pc.getTransceivers().forEach(t => {
@@ -376,15 +428,28 @@ async function setLowLatencyParams(pc) {
   if (!sender) return;
   try {
     const params = sender.getParameters();
+    const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
+    const degVal = document.getElementById('degSelect').value;
     if (params.encodings?.length) {
-      params.encodings[0].maxBitrate           = 8_000_000;  // 8 Mbps cap
+      if (bitVal > 0) {
+        params.encodings[0].maxBitrate = bitVal;
+      } else {
+        delete params.encodings[0].maxBitrate; // Auto
+      }
       params.encodings[0].networkPriority      = 'high';
       params.encodings[0].priority             = 'high';
-      params.encodings[0].degradationPreference = 'maintain-framerate'; // never drop FPS, drop quality instead
+      params.encodings[0].degradationPreference = degVal; 
     }
     await sender.setParameters(params);
-    log('Encoding: 8Mbps, maintain-framerate', 'ok');
   } catch {}
+}
+
+async function applyBitrateToAll() {
+  for (const pc of Object.values(peerConnections)) {
+    await setLowLatencyParams(pc);
+  }
+  const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
+  log('Stream bitrate changed to ' + (bitVal > 0 ? (bitVal/1000000)+' Mbps' : 'Auto'), 'ok');
 }
 
 function log(msg, cls) {
@@ -478,11 +543,20 @@ function connectWS() {
   ws.onmessage = async (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'viewer-joined') {
+      const isNew = !knownViewers.has(msg.viewerId);
       knownViewers.add(msg.viewerId);
-      viewerCount++;
-      document.getElementById('viewerCount').textContent = viewerCount;
-      log('Viewer ' + (msg.name||msg.viewerId) + ' joined', 'ok');
-      if (currentStream) await sendOfferToViewer(msg.viewerId);
+      if (isNew) {
+        viewerCount++;
+        document.getElementById('viewerCount').textContent = viewerCount;
+        log('Viewer ' + (msg.name||msg.viewerId) + ' joined', 'ok');
+      } else {
+        log('Viewer ' + (msg.name||msg.viewerId) + ' re-offer requested', 'ok');
+      }
+      if (currentStream) {
+        await sendOfferToViewer(msg.viewerId);
+      } else {
+        ws.send(JSON.stringify({ type: 'host-not-streaming', viewerId: msg.viewerId }));
+      }
     }
     if (msg.type === 'viewer-left') {
       knownViewers.delete(msg.viewerId);
@@ -524,14 +598,28 @@ async function sendOfferToViewer(viewerId) {
     delete peerConnections[viewerId];
   }
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    iceCandidatePoolSize: 2,  // pre-gather candidates to cut ICE time
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      // TURN servers — critical for users behind symmetric NAT (most home routers).
+      // Without TURN, ICE silently fails when both sides are behind strict NAT.
+      // OpenRelay is a free, open-source public TURN service.
+      { urls: 'turn:openrelay.metered.ca:80',              username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443',             username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turns:openrelay.metered.ca:443',            username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    ],
+    iceCandidatePoolSize: 4,
   });
   peerConnections[viewerId] = pc;
 
   currentStream.getTracks().forEach(track => {
-    if (track.kind === 'video') track.contentHint = 'detail';
     pc.addTrack(track, currentStream);
+    if (track.kind === 'video') track.contentHint = 'motion';
+    // NOTE: bitrate cap is applied after connection in setLowLatencyParams()
+    // Setting it here (pre-negotiation) is a no-op per WebRTC spec
   });
 
   // Codec preference BEFORE createOffer

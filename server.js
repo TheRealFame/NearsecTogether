@@ -7,6 +7,14 @@ const net = require("net");
 const fs = require("fs");
 const { exec, spawn } = require("child_process");
 
+// Parse optional .env file for secrets
+try {
+  fs.readFileSync(__dirname + '/.env', 'utf8').split('\n').forEach(line => {
+    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+    if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
+  });
+} catch (e) {}
+
 function getLanIP() {
   for (const iface of Object.values(os.networkInterfaces()))
     for (const n of iface)
@@ -43,8 +51,27 @@ function startTunnelCloudflared(port) {
   return new Promise(resolve => {
     exec("which cloudflared", err => {
       if (err) return resolve(null);
+      
+      // If the user provided a token in .env (Remotely Managed)
+      if (process.env.CF_TOKEN) {
+        console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Token)...");
+        const proc = spawn("cloudflared", ["tunnel", "--no-autoupdate", "run", "--token", process.env.CF_TOKEN], { stdio: ["ignore", "pipe", "pipe"] });
+        const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
+        console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
+        return resolve({ url, proc });
+      }
+
+      // If the user provided a tunnel name in .env (Locally Managed - "The old way")
+      if (process.env.CF_TUNNEL_NAME) {
+        console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Locally Managed)...");
+        const proc = spawn("cloudflared", ["tunnel", "run", process.env.CF_TUNNEL_NAME], { stdio: ["ignore", "pipe", "pipe"] });
+        const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
+        console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
+        return resolve({ url, proc });
+      }
+
       console.log("  \x1b[33m~\x1b[0m Starting cloudflared tunnel...");
-      const proc = spawn("cloudflared", ["tunnel", "--url", "http://localhost:" + port], { stdio: ["ignore","pipe","pipe"] });
+      const proc = spawn("cloudflared", ["tunnel", "--url", "http://localhost:" + port], { stdio: ["ignore", "pipe", "pipe"] });
       let done = false;
       const check = data => {
         const m = data.toString().match(/https:\/\/[a-z0-9\-]+\.trycloudflare\.com/);
@@ -62,7 +89,7 @@ function startTunnelPlayit(port) {
     exec("which playit", err => {
       if (err) return resolve(null);
       console.log("  \x1b[33m~\x1b[0m Starting playit tunnel...");
-      const proc = spawn("playit", [], { stdio: ["ignore","pipe","pipe"] });
+      const proc = spawn("playit", [], { stdio: ["ignore", "pipe", "pipe"] });
       let done = false;
       const check = data => {
         const str = data.toString();
@@ -71,7 +98,7 @@ function startTunnelPlayit(port) {
         if (claim) { console.log("  \x1b[33m!\x1b[0m playit first-run — visit: \x1b[1m" + claim[0] + "\x1b[0m"); openBrowser(claim[0]); }
         // Assigned tunnel URL
         const url = str.match(/https?:\/\/[a-z0-9\-]+\.at\.playit\.gg(?::\d+)?/i)
-                 || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
+          || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
         if (url && !done) { done = true; resolve({ url: url[0], proc }); console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url[0] + "\x1b[0m"); }
       };
       proc.stdout.on("data", check); proc.stderr.on("data", check);
@@ -136,10 +163,10 @@ function startTunnelServeo(port) {
 
 async function startTunnel(port) {
   const forced = (process.env.TUNNEL || "").toLowerCase();
-  if (forced === "cloudflared")  return startTunnelCloudflared(port);
-  if (forced === "playit")       return startTunnelPlayit(port);
+  if (forced === "cloudflared") return startTunnelCloudflared(port);
+  if (forced === "playit") return startTunnelPlayit(port);
   if (forced === "localhostrun") return startTunnelLocalhostRun(port);
-  if (forced === "serveo")       return startTunnelServeo(port);
+  if (forced === "serveo") return startTunnelServeo(port);
   // Auto: try each in order (SSH providers run in parallel to save time)
   const cf = await startTunnelCloudflared(port);
   if (cf) return cf;
@@ -251,6 +278,7 @@ async function main() {
   const audioViewers = new Set();
   const inputPerms = new Map();
   const viewerNames = new Map();
+  const viewerGamepads = new Map(); // viewerId -> Set of padIndices
   let vidCount = 0;
 
   function broadcast(data) {
@@ -260,8 +288,20 @@ async function main() {
   function broadcastRoster() {
     const roster = [];
     viewers.forEach((_, id) => {
-      const p = inputPerms.get(id) || {};
-      roster.push({ id, name: viewerNames.get(id) || id, gp: !!p.gp, kb: !!p.kb, slot: p.slot ?? null });
+      const pads = viewerGamepads.get(id) || new Set([0]); // Default 1 row for keyboard/first pad
+      pads.forEach(padIdx => {
+        const isExtra = padIdx > 0;
+        const nameSuffix = isExtra ? ' ' + (padIdx + 1) : '';
+        const rosterId = id + '_' + padIdx;
+        const p = inputPerms.get(rosterId) || { gp: true, kb: false, slot: null };
+        roster.push({
+          id: rosterId,
+          name: (viewerNames.get(id) || id) + nameSuffix,
+          gp: !!p.gp,
+          kb: isExtra ? false : !!p.kb, // Only the first slot gets the keyboard
+          slot: p.slot ?? null
+        });
+      });
     });
     const msg = JSON.stringify({ type: "roster", viewers: roster });
     broadcast(msg);
@@ -269,6 +309,9 @@ async function main() {
   }
 
   wss.on("connection", (ws, req) => {
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+
     const url = new URL(req.url, "http://x");
     const path = url.pathname;
     const pin = url.searchParams.get("pin") || "";
@@ -294,17 +337,27 @@ async function main() {
 
           if (msg.type === "set-pin") { pinEnabled = !!msg.enabled; return; }
           if (msg.type === "set-input") {
-            const cur = inputPerms.get(msg.viewerId) || { gp: false, kb: false, slot: null };
+            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { gp: !!msg.gp, kb: !!msg.kb, slot: cur.slot });
-            const vws = viewers.get(msg.viewerId);
-            if (vws && vws.readyState === 1) vws.send(JSON.stringify({ type: "input-state", gp: !!msg.gp, kb: !!msg.kb }));
+            
+            // If host disabled them, and they are pad 0, notify the client.
+            const realId = msg.viewerId.split('_')[0];
+            const vws = viewers.get(realId);
+            if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
+              vws.send(JSON.stringify({ type: "input-state", gp: !!msg.gp, kb: !!msg.kb }));
+            }
+            broadcastRoster();
             return;
           }
           if (msg.type === "assign-slot") {
-            const cur = inputPerms.get(msg.viewerId) || { gp: false, kb: false, slot: null };
+            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { ...cur, slot: msg.slot });
-            const vws = viewers.get(msg.viewerId);
-            if (vws && vws.readyState === 1) vws.send(JSON.stringify({ type: "slot-assigned", slot: msg.slot }));
+            
+            const realId = msg.viewerId.split('_')[0];
+            const vws = viewers.get(realId);
+            if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
+              vws.send(JSON.stringify({ type: "slot-assigned", slot: msg.slot }));
+            }
             broadcastRoster();
             return;
           }
@@ -332,7 +385,7 @@ async function main() {
       const defaultName = "Guest" + (1000 + Math.floor(Math.random() * 9000));
       viewers.set(id, ws);
       viewerNames.set(id, defaultName);
-      inputPerms.set(id, { gp: true, kb: false, slot: null });
+      inputPerms.set(id + '_0', { gp: true, kb: false, slot: null });
       console.log("[viewer]", id, "(" + defaultName + ") joined (" + viewers.size + " total)");
       ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: defaultName }));
       ws.send(JSON.stringify({ type: "input-state", gp: true, kb: false }));
@@ -350,9 +403,54 @@ async function main() {
             return;
           }
 
+          // ── WebRTC signaling relay: host-not-streaming → viewer ──
+          if (msg.type === "host-not-streaming") {
+            const vws = viewers.get(msg.viewerId);
+            if (vws && vws.readyState === 1) vws.send(JSON.stringify(msg));
+            return;
+          }
+
+          // Viewer reconnected with the same ID — reuse slot, avoid duplicate entry
+          if (msg.type === "viewer-rejoin") {
+            const claimedId = msg.viewerId;
+            if (claimedId && viewers.has(claimedId)) {
+              // Replace the stale WS entry with the new connection
+              viewers.set(claimedId, ws);
+              // Remove the temporary new-id we assigned so there's no dupe
+              viewers.delete(id);
+              viewerNames.set(claimedId, viewerNames.get(id) || viewerNames.get(claimedId) || "Guest");
+              viewerNames.delete(id);
+              
+              // We don't overwrite inputPerms here because they are keyed by viewerId_padIndex and persist naturally
+              
+              console.log("[viewer]", claimedId, "rejoined (slot reused, no duplicate)");
+              // id is now meaningless — point it at the real id for future msgs
+              id = claimedId;
+              ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: viewerNames.get(id) }));
+              broadcastRoster();
+            }
+            return;
+          }
+
+          // Viewer asked host to re-send offer (e.g. after reconnect)
+          if (msg.type === "request-offer") {
+            if (hostWS && hostWS.readyState === 1)
+              hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id }));
+            return;
+          }
+
           if (msg.type === "gpid") {
+            const padIdx = msg.padIndex || 0;
+            const pads = viewerGamepads.get(id) || new Set([0]);
+            pads.add(padIdx);
+            viewerGamepads.set(id, pads);
+            
+            msg.pad_id = id + '_' + padIdx;
+            if (!inputPerms.has(msg.pad_id)) inputPerms.set(msg.pad_id, { gp: true, kb: false, slot: null });
+            
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: id, id: msg.id }));
-            toUinput({ type: 'gpid', id: msg.id }); // let sidecar detect controller type
+            toUinput(msg); // let sidecar detect controller type
+            broadcastRoster();
             return;
           }
           if (msg.type === "set-name") {
@@ -371,9 +469,14 @@ async function main() {
             return;
           }
           if (msg.type === "gamepad" || msg.type === "keyboard") {
-            const perms = inputPerms.get(id) || { gp: false, kb: false };
+            const padIdx = msg.padIndex || 0;
+            const rosterId = msg.type === "gamepad" ? id + '_' + padIdx : id + '_0';
+            const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
+            
             if (msg.type === "gamepad" && !perms.gp) return;
             if (msg.type === "keyboard" && !perms.kb) return;
+            
+            msg.pad_id = rosterId;
             toUinput(msg);
             return;
           }
@@ -381,7 +484,12 @@ async function main() {
       });
 
       ws.on("close", () => {
-        viewers.delete(id); inputPerms.delete(id); viewerNames.delete(id);
+        viewers.delete(id); viewerNames.delete(id); viewerGamepads.delete(id);
+        // We leave inputPerms intact in case they F5 refresh to reclaim their spot!
+        
+        // Ensure all virtual controllers for this viewer are strictly destroyed
+        toUinput({ type: 'disconnect_viewer', viewer_id: id });
+        
         console.log("[viewer]", id, "left (" + viewers.size + " total)");
         if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
         broadcastRoster();
@@ -418,6 +526,17 @@ async function main() {
       });
     }
   });
+
+  // Reap dead WebSockets every 30 seconds
+  const interval = setInterval(() => {
+    wss.clients.forEach(ws => {
+      if (ws.isAlive === false) return ws.terminate();
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000);
+
+  wss.on('close', () => clearInterval(interval));
 
   server.listen(PORT, "0.0.0.0", async () => {
     console.log("Listening on port " + PORT);

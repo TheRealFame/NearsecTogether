@@ -53,15 +53,9 @@ def make_device(profile_key: str):
     p = PROFILES[profile_key]
     return uinput.Device(ALL_EVENTS, name=p['name'], vendor=p['vendor'], product=p['product'])
 
-# ── Start with Xbox 360 as safe default ──────────────────────────────────────
-current_profile = 'xbox'
-try:
-    gp = make_device(current_profile)
-    print(f"[input] Virtual device: {PROFILES[current_profile]['name']}", flush=True)
-except Exception as e:
-    print(f"[input] Failed to create device: {e}", flush=True)
-    sys.exit(1)
-
+# ── Dynamic device manager ───────────────────────────────────────────────────
+devices = {}
+device_profiles = {}
 # ── Main input loop ───────────────────────────────────────────────────────────
 for line in sys.stdin:
     line = line.strip()
@@ -70,22 +64,44 @@ for line in sys.stdin:
     try:
         msg = json.loads(line)
 
+        # Global viewer disconnect — cleanup all gamepads for this viewer
+        if msg.get('type') == 'disconnect_viewer':
+            vid = str(msg.get('viewer_id', ''))
+            keys_to_delete = [k for k in devices.keys() if str(k).startswith(vid + '_') or str(k) == vid]
+            for k in keys_to_delete:
+                print(f"[input] Cleaning up device {k}", flush=True)
+                del devices[k]
+                if k in device_profiles:
+                    del device_profiles[k]
+            continue
+
+        pad_id = str(msg.get('pad_id', 'default'))
+
         # Controller type detection — reinitialize device if needed
         if msg.get('type') == 'gpid':
             profile = detect_profile(str(msg.get('id', '')))
-            if profile != current_profile:
-                print(f"[input] Detected: {msg['id']} → switching to {profile}", flush=True)
+            if pad_id not in device_profiles or device_profiles[pad_id] != profile:
+                print(f"[input] [{pad_id}] Detected: {msg['id']} → switching to {profile}", flush=True)
                 try:
-                    gp = make_device(profile)
-                    current_profile = profile
-                    print(f"[input] Now: {PROFILES[profile]['name']}", flush=True)
+                    devices[pad_id] = make_device(profile)
+                    device_profiles[pad_id] = profile
+                    print(f"[input] [{pad_id}] Now: {PROFILES[profile]['name']}", flush=True)
                 except Exception as e:
-                    print(f"[input] Device switch failed: {e}", flush=True)
-            else:
-                print(f"[input] Detected: {profile} (no change)", flush=True)
+                    print(f"[input] [{pad_id}] Device switch failed: {e}", flush=True)
             continue
 
         if msg.get('type') == 'gamepad':
+            # Create a default device if they start sending inputs before gpid
+            if pad_id not in devices:
+                try:
+                    devices[pad_id] = make_device('xbox')
+                    device_profiles[pad_id] = 'xbox'
+                    print(f"[input] [{pad_id}] Auto-created fallback Xbox device", flush=True)
+                except Exception as e:
+                    print(f"[input] [{pad_id}] Fallback device failed: {e}", flush=True)
+                    continue
+
+            gp = devices[pad_id]
             btns = msg.get('buttons', [])
             axes = msg.get('axes', [])
 

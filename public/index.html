@@ -112,11 +112,19 @@
 <div id="pinScreen">
   <h2>🎮 Nearsec Together</h2>
   <div style="font-size:10px;color:#888;margin-top:4px;letter-spacing:0.05em">Play local co-op games over the internet</div>
-  <div style="margin-top:20px;font-size:12px;color:#ccc">Enter PIN:</div>
-  <input id="pinInput" type="number" placeholder="----" maxlength="4"
-    oninput="if(this.value.length>4)this.value=this.value.slice(0,4)"
+
+  <div style="margin-top:20px;font-size:12px;color:#ccc">Display Name:</div>
+  <input id="nameInput" type="text" placeholder="Guest" maxlength="20"
     onkeydown="if(event.key==='Enter')submitPin()">
-  <button id="pinSubmit" onclick="submitPin()">Connect</button>
+
+  <div id="pinWrap">
+    <div style="margin-top:10px;font-size:12px;color:#ccc">Enter PIN:</div>
+    <input id="pinInput" type="number" placeholder="----" maxlength="4"
+      oninput="if(this.value.length>4)this.value=this.value.slice(0,4)"
+      onkeydown="if(event.key==='Enter')submitPin()">
+  </div>
+
+  <button id="pinSubmit" onclick="submitPin()">Join Stream</button>
   <div id="pinErr"></div>
 </div>
 
@@ -160,11 +168,14 @@
 <script>
 const proto  = location.protocol === 'https:' ? 'wss' : 'ws';
 const host   = location.host;
-let ws, pc, myId, myName = 'Guest' + Math.floor(Math.random()*9000+1000);
+let ws, pc, myId = sessionStorage.getItem('ns_viewer_id');
+let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random()*9000+1000);
+document.getElementById('nameInput').value = myName;
 let enteredPin = '', audioMuted = false;
 
 // ── Codec priority for receiver ────────────────────────────────────────────────
-const CODEC_PRIORITY = ['video/AV1', 'video/HEVC', 'video/H264'];
+// Match host: H.264 (hardware) > VP8 (fast software fallback)
+const CODEC_PRIORITY = ['video/H264', 'video/VP8'];
 
 function preferReceiverCodec(transceiver) {
   const caps = RTCRtpReceiver.getCapabilities?.('video');
@@ -191,7 +202,12 @@ function startFrameProcessor(track) {
     // Fallback: use video element + stats-based flush
     if (!video.srcObject) video.srcObject = new MediaStream();
     video.srcObject.addTrack(track);
-    startStatsFlusher();
+    video.onplaying = () => {
+      showOverlay(false);
+      setStatus('Live', true);
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('gpPrompt').classList.add('gone');
+    };
     return;
   }
 
@@ -246,32 +262,9 @@ function startFrameProcessor(track) {
   });
 }
 
-// Fallback flush: when MediaStreamTrackProcessor isn't available,
-// detach+reattach srcObject when jitter buffer delay exceeds 150ms.
-// This forces the video element to drop its frame queue and resync on the next keyframe.
-function startStatsFlusher() {
-  setInterval(async () => {
-    if (!pc) return;
-    try {
-      const stats = await pc.getStats();
-      for (const r of stats.values()) {
-        if (r.type !== 'inbound-rtp' || r.kind !== 'video') continue;
-        const avgDelay = (r.jitterBufferDelay || 0) / Math.max(r.jitterBufferEmittedCount || 1, 1);
-        if (avgDelay > 0.15 && Date.now() - lastFlush > 1500 && video.srcObject) {
-          lastFlush = Date.now();
-          const saved = video.srcObject;
-          video.srcObject = null;
-          setTimeout(() => { video.srcObject = saved; video.play().catch(()=>{}); }, 16);
-          console.log('[flush] jitter delay', (avgDelay * 1000).toFixed(0) + 'ms — flushed');
-        }
-      }
-    } catch {}
-  }, 250);
-}
-
 // ── Gamepad polling + heartbeat ───────────────────────────────────────────────
 // Sends on change OR every 100ms to keep held analog values flowing
-let gpPolling = false, gpRaf = null, lastGpStr = '', lastGpSend = 0;
+let gpPolling = false, gpRaf = null, lastGpStr = {}, lastGpSend = {};
 
 function activateGamepad() {
   if (gpPolling) return;
@@ -286,18 +279,19 @@ function pollGamepad() {
   gpRaf = requestAnimationFrame(pollGamepad);
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const now = Date.now();
-  const forceHeartbeat = now - lastGpSend > 100; // 10Hz heartbeat for held inputs
   for (const gp of pads) {
     if (!gp) continue;
+    const forceHeartbeat = now - (lastGpSend[gp.index] || 0) > 100;
     const state = {
       type: 'gamepad',
+      padIndex: gp.index,
       axes: Array.from(gp.axes).map(v => Math.round(v * 32767)),
       buttons: gp.buttons.map(b => ({ pressed: b.pressed, value: Math.round(b.value * 255) }))
     };
     const str = JSON.stringify(state);
-    if (str !== lastGpStr || forceHeartbeat) {
-      lastGpStr = str;
-      lastGpSend = now;
+    if (str !== lastGpStr[gp.index] || forceHeartbeat) {
+      lastGpStr[gp.index] = str;
+      lastGpSend[gp.index] = now;
       if (ws && ws.readyState === 1) ws.send(str);
     }
   }
@@ -308,10 +302,10 @@ function pollGamepad() {
   document.addEventListener(ev, () => { if (!gpPolling) activateGamepad(); }, { once:true, passive:true })
 );
 window.addEventListener('gamepadconnected', (e) => {
-  console.log('Gamepad connected:', e.gamepad.id);
+  console.log('Gamepad connected:', e.gamepad.id, 'Index:', e.gamepad.index);
   if (!gpPolling) activateGamepad();
   document.getElementById('gpPrompt').classList.add('gone');
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'gpid', id: e.gamepad.id }));
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'gpid', padIndex: e.gamepad.index, id: e.gamepad.id }));
 });
 
 // ── Overlay / status helpers ──────────────────────────────────────────────────
@@ -331,7 +325,23 @@ async function createPC() {
   if (pc) { pc.close(); pc = null; }
   clearInterval(freezeTimer);
 
-  pc = new RTCPeerConnection({ iceServers: [{ urls:'stun:stun.l.google.com:19302' }] });
+  pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      // TURN — required when both sides are behind symmetric NAT (most home routers).
+      // Without this, WebRTC P2P silently fails ~90% of the time over the internet.
+      { urls: 'turn:openrelay.metered.ca:80',               username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turns:openrelay.metered.ca:443',             username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    ]
+  });
+  // ICE candidate buffer — holds candidates that arrive before setRemoteDescription
+  pc._iceBuf = [];
+  pc._remoteSet = false;
 
   pc.ontrack = (e) => {
     // Jitter buffer minimums — belt-and-suspenders even with frame processor
@@ -402,7 +412,10 @@ function connect() {
   const url = proto + '://' + host + '/ws/viewer' + (enteredPin ? '?pin=' + enteredPin : '');
   ws = new WebSocket(url);
 
-  ws.onopen = () => setStatus('Waiting for host...');
+  ws.onopen = () => {
+    setStatus('Waiting for host...');
+    ws.send(JSON.stringify({ type: 'set-name', name: myName }));
+  };
 
   ws.onmessage = async (e) => {
     const msg = JSON.parse(e.data);
@@ -414,6 +427,7 @@ function connect() {
     }
     if (msg.type === 'your-id') {
       myId = msg.viewerId;
+      sessionStorage.setItem('ns_viewer_id', myId);
     }
     if (msg.type === 'host-stream-ready') {
       setStatus('Host found, connecting...');
@@ -422,15 +436,34 @@ function connect() {
     if (msg.type === 'offer') {
       if (!pc) await createPC();
       await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      pc._remoteSet = true;
+      // Flush any ICE candidates that arrived before the offer
+      for (const c of (pc._iceBuf || [])) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {}
+      }
+      pc._iceBuf = [];
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       ws.send(JSON.stringify({ type:'answer', sdp: pc.localDescription }));
     }
-    if (msg.type === 'ice-host' && pc && msg.candidate) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch {}
+    if (msg.type === 'ice-host' && msg.candidate) {
+      if (!pc) return;
+      if (pc._remoteSet) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch {}
+      } else {
+        // Buffer it — remote description not set yet
+        pc._iceBuf = pc._iceBuf || [];
+        pc._iceBuf.push(msg.candidate);
+      }
     }
     if (msg.type === 'host-disconnected' || msg.type === 'host-stream-stopped') {
       showOverlay(true); setStatus('Host stopped streaming');
+      if (pc) { pc.close(); pc = null; }
+      video.srcObject = null;
+    }
+    if (msg.type === 'host-not-streaming') {
+      showOverlay(true); setStatus('Host is not sharing their screen yet...');
+      document.getElementById('spinner').style.display = 'none';
       if (pc) { pc.close(); pc = null; }
       video.srcObject = null;
     }
@@ -440,26 +473,39 @@ function connect() {
     }
   };
 
+  ws.onopen = () => {
+    setStatus('Waiting for host...');
+    // Send our existing viewerId on reconnect so server reuses the same slot
+    // (prevents roster flooding from reconnect loops creating duplicate IDs)
+    if (myId) ws.send(JSON.stringify({ type: 'viewer-rejoin', viewerId: myId }));
+    // Ask host to re-send offer if they are already streaming
+    if (myId) ws.send(JSON.stringify({ type: 'request-offer', viewerId: myId }));
+  };
+
   ws.onclose = () => { setStatus('Reconnecting...'); setTimeout(connect, 2000); };
 }
 
 // ── PIN flow ──────────────────────────────────────────────────────────────────
+let pinRequired = false;
 fetch('/api/pin-required').then(r => r.json()).then(d => {
-  if (d.required) {
-    // Show PIN screen
-  } else {
-    document.getElementById('pinScreen').classList.add('gone');
-    connect();
-  }
+  pinRequired = d.required;
+  if (!d.required) document.getElementById('pinWrap').style.display = 'none';
 }).catch(() => {
-  document.getElementById('pinScreen').classList.add('gone');
-  connect();
+  document.getElementById('pinWrap').style.display = 'none';
 });
 
 function submitPin() {
-  const val = document.getElementById('pinInput').value.trim();
-  if (val.length !== 4) { document.getElementById('pinErr').textContent = 'Enter 4 digits'; return; }
-  enteredPin = val;
+  const nameVal = document.getElementById('nameInput').value.trim();
+  if (nameVal) {
+    myName = nameVal;
+    localStorage.setItem('ns_name', myName);
+  }
+
+  if (pinRequired) {
+    const val = document.getElementById('pinInput').value.trim();
+    if (val.length !== 4) { document.getElementById('pinErr').textContent = 'Enter 4 digits'; return; }
+    enteredPin = val;
+  }
   document.getElementById('pinErr').textContent = '';
   document.getElementById('pinScreen').classList.add('gone');
   connect();
