@@ -3,8 +3,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  getSettings:      ()  => ipcRenderer.invoke('get-settings'),
-  saveSettings:     (s) => ipcRenderer.invoke('save-settings', s),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (s) => ipcRenderer.invoke('save-settings', s),
   toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top'),
   onSettingsUpdated: (cb) => ipcRenderer.on('settings-updated', (_, s) => cb(s)),
   isElectron: true,

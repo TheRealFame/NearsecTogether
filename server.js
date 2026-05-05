@@ -193,7 +193,7 @@ function sanitize(str) {
 function makePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
 
 // ── Persistent config (tunnel preference) ────────────────────────────────────
-const CONFIG_FILE = __dirname + "/web-stream.config.json";
+const CONFIG_FILE = __dirname + "/nearsectogether.config.json";
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")); } catch { return {}; }
 }
@@ -211,7 +211,7 @@ async function main() {
   let pinEnabled = true;
   let tunnelUrl = null;
 
-  console.log("\n  \x1b[1mNearsec Together\x1b[0m");
+  console.log("\n  \x1b[1mNearsecTogether\x1b[0m");
   console.log("  Host page : http://localhost:" + PORT + "/host");
   console.log("  LAN URL   : http://" + LAN_IP + ":" + PORT + "/");
   if (PUBLIC_IP) console.log("  Public IP : http://" + PUBLIC_IP + ":" + PORT + "/ (needs port forward)");
@@ -228,9 +228,10 @@ async function main() {
     next();
   });
 
+  const APP_VERSION = "1.0.0";
   app.get("/", (req, res) => res.sendFile(__dirname + "/public/index.html"));
   app.get("/host", (req, res) => res.sendFile(__dirname + "/public/host.html"));
-  app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null }));
+  app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
   app.get("/api/pin-required", (req, res) => res.json({ required: pinEnabled }));
   app.get("/api/config", (req, res) => res.json(loadConfig()));
   app.post("/api/config", express.json(), (req, res) => { res.json(saveConfig(req.body || {})); });
@@ -243,7 +244,7 @@ async function main() {
     if (req.body && req.body.remember === false) saveConfig({ neverAsk: false }); // clear preference
     res.json({ ok: true, starting: true });
     // Start asynchronously so the response returns immediately
-    const fn = { cloudflared: startTunnelCloudflared, playit: startTunnelPlayit, localhostrun: startTunnelLocalhostRun }[provider] || startTunnel;
+    const fn = { cloudflared: startTunnelCloudflared, playit: startTunnelPlayit, localhostrun: startTunnelLocalhostRun, portforward: async () => null }[provider] || startTunnel;
     const tun = await fn(PORT);
     if (tun) {
       tunnelUrl = tun.url;
@@ -274,21 +275,44 @@ async function main() {
   }
 
   let hostWS = null;
+  let hostStreaming = false;
   const viewers = new Map();
   const audioViewers = new Set();
   const inputPerms = new Map();
   const viewerNames = new Map();
   const viewerGamepads = new Map(); // viewerId -> Set of padIndices
+  const viewerHasController = new Set(); // viewerIds that have sent at least one gpid
+  const pinAttempts = new Map(); // ip -> { count, lockedUntil }
   let vidCount = 0;
+
+  // ── Join & Leave Sounds ────────────────────────────────────────────────────
+  const JOIN_SOUND = __dirname + '/assets/joinsound.wav';
+  const LEAVE_SOUND = __dirname + '/assets/leavesound.wav';
+
+  function playSound(file) {
+    if (!fs.existsSync(file)) return;
+    // aplay is standard on any ALSA Linux system; -q = quiet (no banner)
+    const ap = spawn('aplay', ['-q', file], { stdio: 'ignore', detached: true });
+    ap.unref();
+    ap.on('error', () => {}); // ignore if aplay not present
+  }
+  function playJoinSound() { playSound(JOIN_SOUND); }
+  function playLeaveSound() { playSound(LEAVE_SOUND); }
 
   function broadcast(data) {
     viewers.forEach(vws => { if (vws.readyState === 1) vws.send(data); });
   }
 
+  function controllerViewerCount() {
+    return viewerHasController.size;
+  }
+
   function broadcastRoster() {
     const roster = [];
-    viewers.forEach((_, id) => {
-      const pads = viewerGamepads.get(id) || new Set([0]); // Default 1 row for keyboard/first pad
+    // Only include viewers who have an active controller
+    viewerHasController.forEach(id => {
+      if (!viewers.has(id)) return; // skip disconnected
+      const pads = viewerGamepads.get(id) || new Set([0]);
       pads.forEach(padIdx => {
         const isExtra = padIdx > 0;
         const nameSuffix = isExtra ? ' ' + (padIdx + 1) : '';
@@ -298,12 +322,13 @@ async function main() {
           id: rosterId,
           name: (viewerNames.get(id) || id) + nameSuffix,
           gp: !!p.gp,
-          kb: isExtra ? false : !!p.kb, // Only the first slot gets the keyboard
+          kb: isExtra ? false : !!p.kb,
           slot: p.slot ?? null
         });
       });
     });
-    const msg = JSON.stringify({ type: "roster", viewers: roster });
+    const count = controllerViewerCount();
+    const msg = JSON.stringify({ type: "roster", viewers: roster, controllerCount: count });
     broadcast(msg);
     if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
   }
@@ -362,7 +387,11 @@ async function main() {
             return;
           }
           if (msg.type === "chat") { broadcast(JSON.stringify(msg)); return; }
-          // Fallback broadcast (host-stream-stopped etc.)
+          
+          if (msg.type === "host-stream-ready") hostStreaming = true;
+          if (msg.type === "host-stream-stopped") hostStreaming = false;
+          
+          // Fallback broadcast (host-stream-stopped, host-stream-ready, etc.)
           broadcast(JSON.stringify(msg));
         } catch { }
       });
@@ -370,26 +399,52 @@ async function main() {
       ws.on("close", () => {
         console.log("[host] disconnected");
         hostWS = null;
+        hostStreaming = false;
         broadcast(JSON.stringify({ type: "host-disconnected" }));
       });
 
       // ── VIEWER ───────────────────────────────────────────────────────────────
     } else if (path === "/ws/viewer") {
-      if (pinEnabled && pin !== PIN) {
-        try { ws.send(JSON.stringify({ type: "pin-rejected" })); } catch { }
-        ws.close();
-        console.log("[viewer] rejected — wrong PIN");
-        return;
+      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+      if (pinEnabled) {
+        const attempt = pinAttempts.get(clientIp) || { count: 0, lockedUntil: 0 };
+        if (Date.now() < attempt.lockedUntil) {
+          try { ws.send(JSON.stringify({ type: "pin-rejected", reason: "rate-limited" })); } catch { }
+          ws.close();
+          console.log(`[viewer] rejected — IP ${clientIp} is rate-limited`);
+          return;
+        }
+        if (pin !== PIN) {
+          attempt.count++;
+          if (attempt.count >= 6) {
+            attempt.lockedUntil = Date.now() + 5 * 60 * 1000; // 5 mins
+            console.log(`[viewer] IP ${clientIp} locked out for 5 minutes (PIN brute-force)`);
+          }
+          pinAttempts.set(clientIp, attempt);
+          try { ws.send(JSON.stringify({ type: "pin-rejected" })); } catch { }
+          ws.close();
+          console.log("[viewer] rejected — wrong PIN");
+          return;
+        }
+        pinAttempts.delete(clientIp);
       }
-      const id = "v" + (++vidCount);
+      let id = "v" + (++vidCount);
       const defaultName = "Guest" + (1000 + Math.floor(Math.random() * 9000));
       viewers.set(id, ws);
       viewerNames.set(id, defaultName);
       inputPerms.set(id + '_0', { gp: true, kb: false, slot: null });
-      console.log("[viewer]", id, "(" + defaultName + ") joined (" + viewers.size + " total)");
+      console.log("[viewer]", id, "(" + defaultName + ") joined (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
       ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: defaultName }));
       ws.send(JSON.stringify({ type: "input-state", gp: true, kb: false }));
-      if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: defaultName }));
+      
+      // Send viewer-joined so they immediately get a stream offer
+      if (hostWS && hostWS.readyState === 1) {
+        hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: defaultName }));
+        if (hostStreaming) {
+          ws.send(JSON.stringify({ type: "host-stream-ready" }));
+        }
+      }
+      
       broadcastRoster();
 
       ws.on("message", raw => {
@@ -414,18 +469,28 @@ async function main() {
           if (msg.type === "viewer-rejoin") {
             const claimedId = msg.viewerId;
             if (claimedId && viewers.has(claimedId)) {
+              const tempId = id;
               // Replace the stale WS entry with the new connection
               viewers.set(claimedId, ws);
               // Remove the temporary new-id we assigned so there's no dupe
-              viewers.delete(id);
-              viewerNames.set(claimedId, viewerNames.get(id) || viewerNames.get(claimedId) || "Guest");
-              viewerNames.delete(id);
+              viewers.delete(tempId);
+              viewerNames.set(claimedId, viewerNames.get(tempId) || viewerNames.get(claimedId) || "Guest");
+              viewerNames.delete(tempId);
               
-              // We don't overwrite inputPerms here because they are keyed by viewerId_padIndex and persist naturally
+              if (viewerHasController.has(tempId)) {
+                viewerHasController.delete(tempId);
+                viewerHasController.add(claimedId);
+              }
               
               console.log("[viewer]", claimedId, "rejoined (slot reused, no duplicate)");
-              // id is now meaningless — point it at the real id for future msgs
               id = claimedId;
+
+              // Tell host to immediately discard the temp connection and offer the real one
+              if (hostWS && hostWS.readyState === 1) {
+                hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: tempId }));
+                hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) }));
+              }
+
               ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: viewerNames.get(id) }));
               broadcastRoster();
             }
@@ -441,13 +506,21 @@ async function main() {
 
           if (msg.type === "gpid") {
             const padIdx = msg.padIndex || 0;
-            const pads = viewerGamepads.get(id) || new Set([0]);
+            const pads = viewerGamepads.get(id) || new Set();
             pads.add(padIdx);
             viewerGamepads.set(id, pads);
             
             msg.pad_id = id + '_' + padIdx;
             if (!inputPerms.has(msg.pad_id)) inputPerms.set(msg.pad_id, { gp: true, kb: false, slot: null });
-            
+
+            const isNewController = !viewerHasController.has(id);
+            viewerHasController.add(id);
+
+            if (isNewController) {
+              playJoinSound();
+              console.log("[viewer]", id, "controller detected — now counted (" + controllerViewerCount() + " with controllers)");
+            }
+
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: id, id: msg.id }));
             toUinput(msg); // let sidecar detect controller type
             broadcastRoster();
@@ -472,6 +545,9 @@ async function main() {
             const padIdx = msg.padIndex || 0;
             const rosterId = msg.type === "gamepad" ? id + '_' + padIdx : id + '_0';
             const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
+
+            // Only forward input if this viewer is actually counted (has a controller)
+            if (!viewerHasController.has(id)) return;
             
             if (msg.type === "gamepad" && !perms.gp) return;
             if (msg.type === "keyboard" && !perms.kb) return;
@@ -484,14 +560,23 @@ async function main() {
       });
 
       ws.on("close", () => {
-        viewers.delete(id); viewerNames.delete(id); viewerGamepads.delete(id);
+        const hadController = viewerHasController.has(id);
+        viewers.delete(id);
+        viewerNames.delete(id);
+        viewerGamepads.delete(id);
+        viewerHasController.delete(id);
         // We leave inputPerms intact in case they F5 refresh to reclaim their spot!
         
-        // Ensure all virtual controllers for this viewer are strictly destroyed
-        toUinput({ type: 'disconnect_viewer', viewer_id: id });
+        if (hadController) {
+          playLeaveSound();
+          // Send a zero/neutral flush before destroying — prevents stuck D-pad / joystick
+          toUinput({ type: 'flush_neutral', viewer_id: id });
+          // Then destroy all virtual controllers for this viewer
+          toUinput({ type: 'disconnect_viewer', viewer_id: id });
+          if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
+        }
         
-        console.log("[viewer]", id, "left (" + viewers.size + " total)");
-        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
+        console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
         broadcastRoster();
       });
 
@@ -544,7 +629,7 @@ async function main() {
     const cfg = loadConfig();
     if (cfg.neverAsk && cfg.tunnelProvider) {
       // Use saved preference without asking
-      console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "' (edit web-stream.config.json to change)");
+      console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "' (edit nearsectogether.config.json to change)");
       const fn = { cloudflared: startTunnelCloudflared, playit: startTunnelPlayit, localhostrun: startTunnelLocalhostRun }[cfg.tunnelProvider] || startTunnel;
       const tun = await fn(PORT);
       if (tun) {

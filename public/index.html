@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="description" content="Nearsec Together">
-<title>Nearsec Together</title>
+<meta name="description" content="NearsecTogether">
+<title>NearsecTogether</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -110,7 +110,7 @@
 <body>
 
 <div id="pinScreen">
-  <h2>🎮 Nearsec Together</h2>
+  <h2>🎮 NearsecTogether</h2>
   <div style="font-size:10px;color:#888;margin-top:4px;letter-spacing:0.05em">Play local co-op games over the internet</div>
 
   <div style="margin-top:20px;font-size:12px;color:#ccc">Display Name:</div>
@@ -171,6 +171,7 @@ const host   = location.host;
 let ws, pc, myId = sessionStorage.getItem('ns_viewer_id');
 let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random()*9000+1000);
 document.getElementById('nameInput').value = myName;
+const CLIENT_VERSION = "1.0.0";
 let enteredPin = '', audioMuted = false;
 
 // ── Codec priority for receiver ────────────────────────────────────────────────
@@ -478,8 +479,6 @@ function connect() {
     // Send our existing viewerId on reconnect so server reuses the same slot
     // (prevents roster flooding from reconnect loops creating duplicate IDs)
     if (myId) ws.send(JSON.stringify({ type: 'viewer-rejoin', viewerId: myId }));
-    // Ask host to re-send offer if they are already streaming
-    if (myId) ws.send(JSON.stringify({ type: 'request-offer', viewerId: myId }));
   };
 
   ws.onclose = () => { setStatus('Reconnecting...'); setTimeout(connect, 2000); };
@@ -508,9 +507,20 @@ function submitPin() {
   }
   document.getElementById('pinErr').textContent = '';
   document.getElementById('pinScreen').classList.add('gone');
-  connect();
-  // Gamepad may need user gesture — the submit click counts
-  if (!gpPolling) activateGamepad();
+  
+  fetch('/api/info')
+    .then(r => r.json())
+    .then(d => {
+      if (d.version && d.version !== CLIENT_VERSION) {
+        alert(`Version mismatch: Host is using v${d.version}, but you are using v${CLIENT_VERSION}. Things might not work perfectly!`);
+      }
+      connect();
+      if (!gpPolling) activateGamepad();
+    })
+    .catch(() => {
+      connect();
+      if (!gpPolling) activateGamepad();
+    });
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -555,7 +565,7 @@ acquireWakeLock();
 
 // ── Live stats HUD — RTT / jitter / FPS / bitrate from getStats() ─────────
 const statsHud = document.getElementById('statsHud');
-let   prevBytesReceived = 0, prevStatsTime = 0;
+let prevBytesReceived = 0, prevStatsTime = 0, prevJitterDelay = 0, prevEmitted = 0;
 
 async function updateStats() {
   if (!pc) return;
@@ -567,14 +577,20 @@ async function updateStats() {
         rtt = (r.currentRoundTripTime * 1000).toFixed(0);
       if (r.type === 'inbound-rtp' && r.kind === 'video') {
         const emitted = r.jitterBufferEmittedCount || 1;
-        jitter = ((r.jitterBufferDelay || 0) / emitted * 1000).toFixed(0);
-        fps    = (r.framesPerSecond || r.framesDecoded)?.toFixed?.(0) ?? null;
+        const delay = r.jitterBufferDelay || 0;
+        
         if (prevStatsTime) {
+          const emittedDelta = emitted - prevEmitted;
+          const delayDelta = delay - prevJitterDelay;
+          if (emittedDelta > 0) jitter = ((delayDelta / emittedDelta) * 1000).toFixed(0);
+          
           const dt  = (r.timestamp - prevStatsTime) / 1000;
           kbps = (((r.bytesReceived - prevBytesReceived) * 8) / dt / 1000).toFixed(0);
         }
         prevBytesReceived = r.bytesReceived;
         prevStatsTime     = r.timestamp;
+        prevJitterDelay   = delay;
+        prevEmitted       = emitted;
       }
     }
     if (rtt !== null) {

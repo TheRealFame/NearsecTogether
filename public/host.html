@@ -1,817 +1,1676 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8">
-<title>Nearsec Together</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #0d0d0d; --surface: #141414; --border: #252525;
-    --accent: #00ff88; --accent-dim: #00ff8818;
-    --text: #e0e0e0; --muted: #555;
-    --danger: #ff4444; --warn: #ffaa00;
-  }
-  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
-  header { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
-  .logo { font-size:12px; font-weight:600; letter-spacing:.15em; text-transform:uppercase; color:var(--accent); }
-  .hdr-right { display:flex; align-items:center; gap:16px; font-size:11px; color:var(--muted); }
-  .hdr-right span { color:var(--accent); font-weight:600; }
-  .main { display:flex; flex:1; min-height:0; }
+  <meta charset="utf-8">
+  <title>NearsecTogether</title>
+  <style>
 
-  /* Preview */
-  .preview-panel { flex:1; display:flex; align-items:center; justify-content:center; background:#000; position:relative; overflow:hidden; }
-  #preview { display:block; max-width:100%; max-height:100%; object-fit:contain; }
-  .preview-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px; background:#000; color:var(--muted); font-size:12px; pointer-events:none; transition:opacity .3s; }
-  .preview-overlay.hidden { opacity:0; }
-  .preview-overlay svg { opacity:.2; width:40px; height:40px; }
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
 
-  /* Sidebar */
-  .sidebar { width:250px; border-left:1px solid var(--border); background:var(--surface); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0; }
-  .sec { padding:12px 14px; border-bottom:1px solid var(--border); flex-shrink:0; }
-  .sec-label { font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  /* Buttons */
-  .btn { display:flex; align-items:center; gap:7px; width:100%; padding:8px 12px; border:1px solid var(--border); background:transparent; color:var(--text); font-family:inherit; font-size:11px; cursor:pointer; transition:all .15s; margin-bottom:6px; }
-  .btn:last-child { margin-bottom:0; }
-  .btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
-  .btn.primary { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
-  .btn.primary:hover:not(:disabled) { background:var(--accent); color:#000; }
-  .btn.danger { border-color:var(--danger); color:var(--danger); }
-  .btn.danger:hover:not(:disabled) { background:#ff444418; }
-  .btn:disabled { opacity:.35; pointer-events:none; }
-  .btn svg { width:13px; height:13px; flex-shrink:0; }
+    :root {
+      --bg: #0d0d0d;
+      --surface: #141414;
+      --border: #252525;
+      --accent: #00ff88;
+      --accent-dim: #00ff8818;
+      --text: #e0e0e0;
+      --muted: #555;
+      --danger: #ff4444;
+      --warn: #ffaa00;
+    }
 
-  /* Status */
-  .stat-row { display:flex; align-items:center; gap:7px; font-size:11px; margin-bottom:6px; }
-  .stat-row:last-child { margin-bottom:0; }
-  .dot { width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
-  .dot.live { background:var(--accent); box-shadow:0 0 6px var(--accent); animation:pulse 2s infinite; }
-  .dot.warn { background:var(--warn); }
-  .dot.err  { background:var(--danger); }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-  .meter { height:3px; background:#1a1a1a; margin-top:6px; }
-  .meter-fill { height:100%; background:var(--accent); width:0%; transition:width .05s; }
-  .info-text { font-size:10px; color:var(--muted); line-height:1.7; margin-top:6px; }
-  .info-text strong { color:var(--text); }
+    body {
+      background: #000;
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
-  /* URL / PIN box */
-  .urlbox { background:#0a0a0a; border:1px solid #1e1e1e; padding:8px 10px; margin-top:0; }
-  .url-row { font-size:10px; word-break:break-all; cursor:pointer; line-height:1.6; transition:opacity .15s; margin-bottom:2px; }
-  .url-row:hover { opacity:.7; }
-  .url-label { font-size:9px; color:#333; margin-bottom:4px; }
-  .pin-row { display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid #1e1e1e; }
-  .pin-val { font-size:22px; letter-spacing:.35em; color:var(--accent); font-weight:600; }
-  .tog-wrap { display:flex; flex-direction:column; align-items:flex-end; gap:4px; font-size:9px; color:var(--muted); }
-  .tog-btn { background:none; border:1px solid #333; color:var(--muted); font-size:9px; padding:3px 8px; cursor:pointer; font-family:inherit; transition:all .15s; }
-  .tog-btn.on { border-color:var(--accent); color:var(--accent); }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
 
-  /* Roster */
-  .roster { display:flex; flex-direction:column; gap:4px; }
-  .rcard { background:#0a0a0a; border:1px solid #1e1e1e; padding:6px 8px; display:flex; align-items:center; gap:7px; }
-  .rcard.no-gp { opacity:.4; border-style:dashed; }
-  .slot-badge { width:18px; height:18px; line-height:18px; text-align:center; border-radius:2px; font-size:9px; font-weight:600; flex-shrink:0; background:#1a1a1a; color:var(--muted); }
-  .slot-badge.p1{background:#00ff8820;color:var(--accent)} .slot-badge.p2{background:#ffaa0020;color:var(--warn)} .slot-badge.p3{background:#4488ff20;color:#4488ff} .slot-badge.p4{background:#ff448820;color:#ff4488}
-  .rname { flex:1; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .rcard-kill { background:none; border:none; color:#333; cursor:pointer; font-size:13px; padding:0 2px; line-height:1; }
-  .rcard-kill:hover { color:var(--danger); }
-  .empty-note { font-size:10px; color:#333; }
-  .codec-badge { font-size:9px; color:#333; padding:1px 5px; border:1px solid #1e1e1e; border-radius:2px; }
+    .logo {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
 
-  /* Log */
-  .log { flex:1; overflow-y:auto; padding:10px 14px; display:flex; flex-direction:column; gap:2px; min-height:0; }
-  .ll { font-size:10px; color:var(--muted); line-height:1.5; }
-  .ll.ok { color:var(--accent); } .ll.warn { color:var(--warn); } .ll.err { color:var(--danger); }
+    .hdr-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 11px;
+      color: var(--muted);
+    }
 
-  /* Chat */
-  .chat { height:180px; border-top:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
-  .chat-log { flex:1; overflow-y:auto; padding:6px 10px; font-size:10px; display:flex; flex-direction:column; gap:2px; }
-  .cmsg { line-height:1.5; color:#888; }
-  .cname { color:var(--accent); margin-right:4px; }
-  .cname.me { color:var(--warn); }
-  .chat-input { display:flex; border-top:1px solid var(--border); flex-shrink:0; }
-  .chat-input input { flex:1; background:#111; border:none; color:var(--text); font-family:inherit; font-size:10px; padding:6px 8px; outline:none; }
-  .chat-input button { background:none; border:none; border-left:1px solid var(--border); color:var(--muted); font-size:10px; padding:0 10px; cursor:pointer; }
-  .chat-input button:hover { color:var(--accent); }
+    .hdr-right span {
+      color: var(--accent);
+      font-weight: 600;
+    }
 
-  /* ── Gear button ────────────────────────────────────────────────── */
-  .gear-btn { background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:2px 4px; line-height:1; transition:color .15s; }
-  .gear-btn:hover { color:var(--accent); }
+    .app-layout {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
 
-  /* ── Discord-style tunnel picker modal ───────────────────────────── */
-  .modal-bg {
-    position:fixed; inset:0;
-    background:rgba(0,0,0,.45);
-    backdrop-filter:blur(4px);
-    z-index:900; display:flex; align-items:center; justify-content:center;
-  }
-  .modal-bg.gone { display:none; }
-  .modal {
-    background:#2b2d31;
-    border-radius:12px;
-    width:460px; max-width:95vw;
-    box-shadow:0 12px 40px rgba(0,0,0,.7);
-    overflow:hidden;
-    font-family:'IBM Plex Mono',monospace;
-  }
-  .modal-head { padding:24px 24px 0; }
-  .modal-head h3 { font-size:16px; font-weight:700; color:#f2f3f5; letter-spacing:.02em; margin-bottom:4px; }
-  .modal-head p  { font-size:11px; color:#949ba4; margin-bottom:18px; line-height:1.6; }
-  .modal-body { padding:0 16px 20px; }
-  .provider-card {
-    background:#1e1f22;
-    border:2px solid transparent;
-    border-radius:8px;
-    padding:12px 14px;
-    margin-bottom:8px;
-    cursor:pointer;
-    transition:border-color .15s, background .15s;
-    display:flex; gap:14px; align-items:flex-start;
-  }
-  .provider-card:hover { border-color:#5865f2; background:#232428; }
-  .provider-card.selected { border-color:#5865f2; background:#232428; }
-  .provider-card input[type=radio] { position:absolute; opacity:0; pointer-events:none; }
-  .prov-emoji { font-size:24px; flex-shrink:0; margin-top:1px; }
-  .prov-info { flex:1; min-width:0; }
-  .prov-name { font-size:12px; font-weight:700; color:#f2f3f5; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-  .prov-desc { font-size:10px; color:#949ba4; margin-top:3px; line-height:1.55; }
-  .prov-pills { display:flex; gap:5px; margin-top:7px; flex-wrap:wrap; }
-  .pill { font-size:9px; padding:2px 8px; border-radius:10px; font-weight:600; letter-spacing:.03em; }
-  .pill-easy   { background:#1a6640; color:#57f287; }
-  .pill-medium { background:#5a4300; color:#fee75c; }
-  .pill-hard   { background:#5c1a1a; color:#f38ba8; }
-  .pill-lat    { background:#2b2d31; color:#949ba4; border:1px solid #3b3d44; }
-  .pill-star   { background:#2b3557; color:#7289da; }
-  .prov-install {
-    margin-top:8px; padding:7px 10px;
-    background:#111214; border-radius:5px;
-    font-size:9px; color:#a3b3c2;
-    font-family:monospace; line-height:1.7;
-    border-left:2px solid #5865f2;
-    white-space:pre-wrap; word-break:break-all;
-  }
-  .prov-install .cmd { color:#57f287; }
-  .prov-install .comment { color:#555; }
-  .remember-row { display:flex; align-items:center; gap:8px; margin:14px 16px 0; font-size:10px; color:#949ba4; }
-  .remember-row input { accent-color:#5865f2; width:14px; height:14px; }
-  .modal-footer { display:flex; gap:8px; padding:14px 16px 20px; }
-  .modal-footer button { flex:1; padding:10px; border-radius:4px; font-family:inherit; font-size:11px; font-weight:600; cursor:pointer; border:none; transition:filter .15s; }
-  .btn-confirm { background:#5865f2; color:#fff; }
-  .btn-confirm:hover { filter:brightness(1.15); }
-  .btn-skip { background:#383a40; color:#b5bac1; }
-  .btn-skip:hover { background:#41434a; }
+    /* Preview */
+    .preview-panel {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
 
-  .form-select {
-    width:100%; padding:6px; background:#1e1f22; color:#dbdee1;
-    border:1px solid #3b3d44; border-radius:4px; font-size:11px;
-    font-family:inherit; outline:none; cursor:pointer;
-  }
-  .form-select:hover { border-color:#5865f2; }
+    #preview {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
 
-  /* ── Modal Loading / Error Overlay ── */
-  .modal-loading {
-    position:absolute; inset:0; background:rgba(43,45,49,0.95);
-    backdrop-filter:blur(2px); z-index:10; border-radius:12px;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-  }
-  .modal-loading.gone { display:none; }
-  .spinner {
-    width:36px; height:36px; border:4px solid #383a40; border-top-color:#5865f2;
-    border-radius:50%; animation:spin 1s linear infinite; margin-bottom:16px;
-  }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  .loading-text { font-size:14px; font-weight:700; color:#f2f3f5; margin-bottom:8px; }
-  .error-text { font-size:12px; color:#f38ba8; text-align:center; padding:0 30px; line-height:1.5; margin-bottom:20px; }
-  .btn-retry { background:#da373c; color:#fff; padding:10px 24px; border:none; border-radius:4px; font-weight:600; font-size:12px; cursor:pointer; }
-  .btn-retry:hover { background:#c9262b; }
+    .preview-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      background: #000;
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+      transition: opacity .3s;
+    }
+
+    .preview-overlay.hidden {
+      opacity: 0;
+    }
+
+    .preview-overlay svg {
+      opacity: .2;
+      width: 40px;
+      height: 40px;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 360px;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+      box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+      z-index: 5;
+    }
+
+    .sidebar-scrollable {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sec {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .sec-label {
+      font-size: 9px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #111111;
+      color: #bbbbbb;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s cubic-bezier(0.16, 1, 0.3, 1);
+      margin-bottom: 8px;
+    }
+
+    .btn.primary {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .btn.primary:hover:not(:disabled) {
+      background: var(--accent);
+      color: #000;
+    }
+
+    .btn.danger {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: rgba(255, 68, 68, 0.1);
+    }
+
+    .btn.danger:hover:not(:disabled) {
+      background: rgba(255, 68, 68, 0.2);
+    }
+
+    .btn:last-child {
+      margin-bottom: 0;
+    }
+
+    .btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .btn.primary {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .btn.primary:hover:not(:disabled) {
+      background: var(--accent);
+      color: #000;
+    }
+
+    .btn.danger {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .btn.danger:hover:not(:disabled) {
+      background: #ff444418;
+    }
+
+    .btn:disabled {
+      opacity: .35;
+      pointer-events: none;
+    }
+
+    .btn svg {
+      width: 13px;
+      height: 13px;
+      flex-shrink: 0;
+    }
+
+    /* Status */
+    .stat-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    .stat-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .dot.live {
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    .dot.warn {
+      background: var(--warn);
+    }
+
+    .dot.err {
+      background: var(--danger);
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .4
+      }
+    }
+
+    .meter {
+      height: 3px;
+      background: #1a1a1a;
+      margin-top: 6px;
+    }
+
+    .meter-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width .05s;
+    }
+
+    .info-text {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-top: 6px;
+    }
+
+    .info-text strong {
+      color: var(--text);
+    }
+
+    /* URL / PIN box */
+    .urlbox {
+      background: #0a0a0a;
+      border: 1px solid #1e1e1e;
+      padding: 8px 10px;
+      margin-top: 0;
+    }
+
+    .url-row {
+      font-size: 10px;
+      word-break: break-all;
+      cursor: pointer;
+      line-height: 1.6;
+      transition: opacity .15s;
+      margin-bottom: 2px;
+    }
+
+    .url-row:hover {
+      opacity: .7;
+    }
+
+    .url-label {
+      font-size: 9px;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    .pin-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #1e1e1e;
+    }
+
+    .pin-val {
+      font-size: 22px;
+      letter-spacing: .35em;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .tog-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      font-size: 9px;
+      color: var(--muted);
+    }
+
+    .tog-btn {
+      background: none;
+      border: 1px solid #333;
+      color: var(--muted);
+      font-size: 9px;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all .15s;
+    }
+
+    .tog-btn.on {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Roster */
+    .roster-overlay {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      background: rgba(15, 15, 15, 0.65);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 280px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    
+    .roster-title {
+      font-size: 9px;
+      letter-spacing: .15em;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .roster {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .rcard {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      cursor: grab;
+      transition: background .15s, border-color .15s;
+    }
+    
+    .rcard:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .rcard.drag-over {
+      border-top: 2px solid var(--accent);
+    }
+
+    .rcard.no-gp {
+      opacity: .4;
+      border-style: dashed;
+    }
+
+    .slot-badge {
+      width: 18px;
+      height: 18px;
+      line-height: 18px;
+      text-align: center;
+      border-radius: 2px;
+      font-size: 9px;
+      font-weight: 600;
+      flex-shrink: 0;
+      background: #1a1a1a;
+      color: var(--muted);
+    }
+
+    .slot-badge.p1 {
+      background: #00ff8820;
+      color: var(--accent)
+    }
+
+    .slot-badge.p2 {
+      background: #ffaa0020;
+      color: var(--warn)
+    }
+
+    .slot-badge.p3 {
+      background: #4488ff20;
+      color: #4488ff
+    }
+
+    .slot-badge.p4 {
+      background: #ff448820;
+      color: #ff4488
+    }
+
+    .rname {
+      flex: 1;
+      font-size: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .rcard-kill {
+      background: none;
+      border: none;
+      color: #333;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0 2px;
+      line-height: 1;
+    }
+
+    .rcard-kill:hover {
+      color: var(--danger);
+    }
+
+    .empty-note {
+      font-size: 10px;
+      color: #aaa;
+      text-align: center;
+      padding: 4px 0;
+    }
+
+    .codec-badge {
+      font-size: 9px;
+      color: #333;
+      padding: 1px 5px;
+      border: 1px solid #1e1e1e;
+      border-radius: 2px;
+    }
+
+    /* Log */
+    .log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-height: 0;
+    }
+
+    .ll {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .ll.ok {
+      color: var(--accent);
+    }
+
+    .ll.warn {
+      color: var(--warn);
+    }
+
+    .ll.err {
+      color: var(--danger);
+    }
+
+    /* Chat */
+    .chat {
+      height: 180px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .chat-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 10px;
+      font-size: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .cmsg {
+      line-height: 1.5;
+      color: #888;
+    }
+
+    .cname {
+      color: var(--accent);
+      margin-right: 4px;
+    }
+
+    .cname.me {
+      color: var(--warn);
+    }
+
+    .chat-input {
+      display: flex;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .chat-input input {
+      flex: 1;
+      background: #111;
+      border: none;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 10px;
+      padding: 6px 8px;
+      outline: none;
+    }
+
+    .chat-input button {
+      background: none;
+      border: none;
+      border-left: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 10px;
+      padding: 0 10px;
+      cursor: pointer;
+    }
+
+    .chat-input button:hover {
+      color: var(--accent);
+    }
+
+    /* ── Gear button ────────────────────────────────────────────────── */
+    .gear-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 2px 4px;
+      line-height: 1;
+      transition: color .15s;
+    }
+
+    .gear-btn:hover {
+      color: var(--accent);
+    }
+
+    /* ── Discord-style tunnel picker modal ───────────────────────────── */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .45);
+      backdrop-filter: blur(4px);
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-bg.gone {
+      display: none;
+    }
+
+    .modal {
+      background: #2b2d31;
+      border-radius: 12px;
+      width: 460px;
+      max-width: 95vw;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .7);
+      overflow: hidden;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .modal-head {
+      padding: 24px 24px 0;
+    }
+
+    .modal-head h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f2f3f5;
+      letter-spacing: .02em;
+      margin-bottom: 4px;
+    }
+
+    .modal-head p {
+      font-size: 11px;
+      color: #949ba4;
+      margin-bottom: 18px;
+      line-height: 1.6;
+    }
+
+    .modal-body {
+      padding: 0 16px 20px;
+    }
+
+    .provider-card {
+      background: #1e1f22;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .provider-card:hover {
+      border-color: #5865f2;
+      background: #232428;
+    }
+
+    .provider-card.selected {
+      border-color: #5865f2;
+      background: #232428;
+    }
+
+    .provider-card input[type=radio] {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .prov-emoji {
+      font-size: 24px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .prov-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .prov-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #f2f3f5;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .prov-desc {
+      font-size: 10px;
+      color: #949ba4;
+      margin-top: 3px;
+      line-height: 1.55;
+    }
+
+    .prov-pills {
+      display: flex;
+      gap: 5px;
+      margin-top: 7px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      font-size: 9px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: .03em;
+    }
+
+    .pill-easy {
+      background: #1a6640;
+      color: #57f287;
+    }
+
+    .pill-medium {
+      background: #5a4300;
+      color: #fee75c;
+    }
+
+    .pill-hard {
+      background: #5c1a1a;
+      color: #f38ba8;
+    }
+
+    .pill-lat {
+      background: #2b2d31;
+      color: #949ba4;
+      border: 1px solid #3b3d44;
+    }
+
+    .pill-star {
+      background: #2b3557;
+      color: #7289da;
+    }
+
+    .prov-install {
+      margin-top: 8px;
+      padding: 7px 10px;
+      background: #111214;
+      border-radius: 5px;
+      font-size: 9px;
+      color: #a3b3c2;
+      font-family: monospace;
+      line-height: 1.7;
+      border-left: 2px solid #5865f2;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .prov-install .cmd {
+      color: #57f287;
+    }
+
+    .prov-install .comment {
+      color: #555;
+    }
+
+    .remember-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 14px 16px 0;
+      font-size: 10px;
+      color: #949ba4;
+    }
+
+    .remember-row input {
+      accent-color: #5865f2;
+      width: 14px;
+      height: 14px;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 8px;
+      padding: 14px 16px 20px;
+    }
+
+    .modal-footer button {
+      flex: 1;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: filter .15s;
+    }
+
+    .btn-confirm {
+      background: #5865f2;
+      color: #fff;
+    }
+
+    .btn-confirm:hover {
+      filter: brightness(1.15);
+    }
+
+    .btn-skip {
+      background: #383a40;
+      color: #b5bac1;
+    }
+
+    .btn-skip:hover {
+      background: #41434a;
+    }
+
+    .form-select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #000000;
+      color: #eeeeee;
+      border: 1px solid #333333;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: inherit;
+      outline: none;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+
+    .form-select:hover {
+      background: #111111;
+      border-color: #555555;
+    }
+
+    .form-select option {
+      background: #111111;
+      color: #eeeeee;
+    }
+
+    /* ── Modal Loading / Error Overlay ── */
+    .modal-loading {
+      position: absolute;
+      inset: 0;
+      background: rgba(43, 45, 49, 0.95);
+      backdrop-filter: blur(2px);
+      z-index: 10;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-loading.gone {
+      display: none;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 4px solid #383a40;
+      border-top-color: #5865f2;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-text {
+      font-size: 14px;
+      font-weight: 700;
+      color: #f2f3f5;
+      margin-bottom: 8px;
+    }
+
+    .error-text {
+      font-size: 12px;
+      color: #f38ba8;
+      text-align: center;
+      padding: 0 30px;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+
+    .btn-retry {
+      background: #da373c;
+      color: #fff;
+      padding: 10px 24px;
+      border: none;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .btn-retry:hover {
+      background: #c9262b;
+    }
+  
 </style>
 </head>
+
 <body>
-
-<header>
-  <div class="logo-wrap">
-    <div class="logo">📡 Nearsec Together</div>
-    <div style="font-size:8px;color:var(--muted);margin-top:2px;letter-spacing:0.05em">Play local co-op games over the internet</div>
-  </div>
-  <div class="hdr-right">
-    <span id="codecBadge" class="codec-badge">—</span>
-    Viewers: <span id="viewerCount">0</span>
-    <button class="gear-btn" onclick="showTunnelModal()" title="Tunnel settings">⚙️</button>
-  </div>
-</header>
-
-<div class="main">
-  <div class="preview-panel">
-    <video id="preview" autoplay playsinline muted></video>
-    <div class="preview-overlay" id="prevOverlay">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-      </svg>
-      <span>Click "Start Sharing" to begin</span>
-    </div>
-  </div>
-
-  <div class="sidebar">
-    <div class="sec">
-      <div class="sec-label">Capture</div>
-      <button class="btn primary" id="btnStart" onclick="startCapture()">
-        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg> Start Sharing
-      </button>
-      <button class="btn" id="btnSwitch" onclick="startCapture()" disabled>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg> Switch Source
-      </button>
-      <button class="btn danger" id="btnStop" onclick="stopCapture()" disabled>
-        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> Stop
-      </button>
-    </div>
-
-    <div class="sec">
-      <div class="sec-label">Status</div>
-      <div class="stat-row"><span class="dot" id="capDot"></span><span id="capStatus">Idle</span></div>
-      <div class="stat-row"><span class="dot" id="audDot"></span><span id="audStatus">No audio</span></div>
-      <div class="meter"><div class="meter-fill" id="meter"></div></div>
-      <div class="info-text" id="trackInfo">—</div>
-    </div>
-
-    <div class="sec">
-      <div class="sec-label">Stream Quality</div>
-      <div style="display:flex; gap:8px; margin-top:8px;">
-        <div style="flex:1">
-          <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">CODEC</div>
-          <select id="codecSelect" class="form-select">
-            <option value="H264">H.264 (Hardware)</option>
-            <option value="VP8" selected>VP8 (Fast Software)</option>
-            <option value="VP9">VP9 (Slow Software)</option>
-            <option value="AV1">AV1 (Experimental)</option>
-          </select>
-        </div>
-        <div style="flex:1">
-          <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">BITRATE</div>
-          <select id="bitrateSelect" class="form-select" onchange="applyBitrateToAll()">
-            <option value="0">Auto</option>
-            <option value="1000000">1 Mbps</option>
-            <option value="2000000">2 Mbps</option>
-            <option value="4000000" selected>4 Mbps</option>
-            <option value="8000000">8 Mbps</option>
-            <option value="15000000">15 Mbps</option>
-          </select>
-        </div>
-        <div style="flex:1">
-          <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">PRIORITY</div>
-          <select id="degSelect" class="form-select" onchange="applyBitrateToAll()">
-            <option value="maintain-framerate">Smooth (Drops Res)</option>
-            <option value="maintain-resolution" selected>Crisp (Drops FPS)</option>
-            <option value="balanced">Balanced</option>
-          </select>
-        </div>
+  <div class="app-layout">
+    <!-- LEFT SIDE: Video -->
+    <div class="preview-panel">
+      <video id="preview" autoplay playsinline muted></video>
+      <div class="preview-overlay" id="prevOverlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <path d="M8 21h8M12 17v4" />
+        </svg>
+        <span>Click "Start Sharing" to begin</span>
+      </div>
+      <div class="roster-overlay" id="rosterOverlay">
+        <div class="roster-title">CONNECTED CONTROLLERS</div>
+        <div class="roster" id="roster"></div>
+        <div class="empty-note" id="rosterEmpty">Waiting for viewers...</div>
       </div>
     </div>
 
-    <div class="sec">
-      <div class="sec-label">Viewer URL</div>
-      <div class="urlbox">
-      <div class="url-label">Click a URL to copy <span class="change-link" onclick="showTunnelModal()" title="Change tunnel provider">⚙ Change tunnel</span></div>
-        <div id="urlList"></div>
-        <div class="pin-row">
-          <div>
-            <div style="font-size:9px;color:#333;margin-bottom:2px">PIN</div>
-            <div class="pin-val" id="pinVal">----</div>
+    <!-- RIGHT SIDE: Sidebar -->
+    <div class="sidebar">
+      <header>
+        <div class="logo-wrap">
+          <div class="logo">📡 NearsecTogether</div>
+          <div style="font-size:8px;color:var(--muted);margin-top:2px;letter-spacing:0.05em">Co-op streaming host</div>
+        </div>
+        <div class="hdr-right">
+          <span id="codecBadge" class="codec-badge">—</span>
+          <button class="gear-btn" onclick="showTunnelModal()" title="Tunnel settings">⚙️</button>
+        </div>
+      </header>
+
+      <div class="sidebar-scrollable">
+        <div class="sec">
+          <div class="sec-label">Capture</div>
+          <button class="btn primary" id="btnStart" onclick="startCapture()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8" /></svg> Start Sharing
+          </button>
+          <button class="btn" id="btnSwitch" onclick="startCapture()" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+              <path d="M8 16H3v5" />
+            </svg> Switch Source
+          </button>
+          <button class="btn danger" id="btnStop" onclick="stopCapture()" disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1" /></svg> Stop
+          </button>
+        </div>
+
+        <div class="sec">
+          <div class="sec-label">Status</div>
+          <div class="stat-row"><span class="dot" id="capDot"></span><span id="capStatus">Idle</span></div>
+          <div class="stat-row"><span class="dot" id="audDot"></span><span id="audStatus">No audio</span></div>
+          <div class="meter"><div class="meter-fill" id="meter"></div></div>
+          <div class="info-text" id="trackInfo">—</div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-label">Stream Quality</div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <div style="flex:1">
+              <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">CODEC</div>
+              <select id="codecSelect" class="form-select">
+                <option value="H264">H.264 (HW)</option>
+                <option value="VP8" selected>VP8 (SW)</option>
+                <option value="VP9">VP9 (SW)</option>
+                <option value="AV1">AV1 (Experimental)</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">BITRATE</div>
+              <select id="bitrateSelect" class="form-select" onchange="applyBitrateToAll()">
+                <option value="0">Auto</option>
+                <option value="2000000">2 Mbps</option>
+                <option value="4000000" selected>4 Mbps</option>
+                <option value="8000000">8 Mbps</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">PRIORITY</div>
+              <select id="degSelect" class="form-select" onchange="applyBitrateToAll()">
+                <option value="maintain-framerate">Smooth</option>
+                <option value="maintain-resolution" selected>Crisp</option>
+              </select>
+            </div>
           </div>
-          <div class="tog-wrap">
-            Required
-            <button class="tog-btn on" id="pinToggle" onclick="togglePin()">ON</button>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <div style="flex:1">
+              <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">MAX RES</div>
+              <select id="resSelect" class="form-select" onchange="applyBitrateToAll()">
+                <option value="0" selected>Native</option>
+                <option value="1080">1080p</option>
+                <option value="720">720p</option>
+                <option value="480">480p</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px; color:#949ba4; margin-bottom:4px;">MAX FPS</div>
+              <select id="fpsSelect" class="form-select" onchange="applyBitrateToAll()">
+                <option value="60" selected>60 FPS</option>
+                <option value="30">30 FPS</option>
+                <option value="15">15 FPS</option>
+              </select>
+            </div>
           </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-label">Viewer URL</div>
+          <div class="urlbox">
+            <div class="url-label">Click a URL to copy <span class="change-link" onclick="showTunnelModal()" title="Change tunnel provider">⚙ Change tunnel</span></div>
+            <div id="urlList"></div>
+            <div class="pin-row">
+              <div>
+                <div style="font-size:9px;color:#333;margin-bottom:2px">PIN</div>
+                <div class="pin-val" id="pinVal">----</div>
+              </div>
+              <div class="tog-wrap">
+                Required
+                <button class="tog-btn on" id="pinToggle" onclick="togglePin()">ON</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="log" id="log"></div>
+      </div>
+
+      <div class="chat">
+        <div class="chat-log" id="chatLog"></div>
+        <div class="chat-input">
+          <input id="chatMsg" placeholder="Message..." maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
+          <button onclick="sendChat()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
         </div>
       </div>
     </div>
-
-    <div class="sec" style="max-height:140px;overflow-y:auto">
-      <div class="sec-label">Controllers</div>
-      <div class="roster" id="roster"></div>
-      <div class="empty-note" id="rosterEmpty">No viewers connected</div>
-    </div>
-
-    <div class="log" id="log"></div>
-
-    <div class="chat">
-      <div class="chat-log" id="chatLog"></div>
-      <div class="chat-input">
-        <input id="chatMsg" placeholder="Message..." maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
-        <button onclick="sendChat()">Send</button>
-      </div>
-    </div>
   </div>
-</div>
 
+  <!-- Tunnel Modal unchanged, keep original HTML -->
 <div class="modal-bg gone" id="tunnelModal">
-  <div class="modal" style="position:relative;">
-    <div class="modal-loading gone" id="tunnelLoading">
-      <div class="spinner" id="tunnelSpinner"></div>
-      <div class="loading-text" id="tunnelLoadText">Starting tunnel...</div>
-      <div class="error-text gone" id="tunnelErrorText"></div>
-      <button class="btn-retry gone" id="tunnelRetryBtn" onclick="resetTunnelModal()">Try Again</button>
-    </div>
-    
-    <div class="modal-head">
-      <h3>🌐 Choose a Tunnel Provider</h3>
-      <p>The tunnel carries the <strong style="color:#f2f3f5">webpage + WebSocket signaling only</strong> — WebRTC video goes UDP peer-to-peer and never touches the tunnel.<br>Pick a provider — all listed options are <strong style="color:#57f287">free</strong>.</p>
-    </div>
-    <div class="modal-body">
+    <div class="modal" style="position:relative;">
+      <div class="modal-loading gone" id="tunnelLoading">
+        <div class="spinner" id="tunnelSpinner"></div>
+        <div class="loading-text" id="tunnelLoadText">Starting tunnel...</div>
+        <div class="error-text gone" id="tunnelErrorText"></div>
+        <button class="btn-retry gone" id="tunnelRetryBtn" onclick="resetTunnelModal()">Try Again</button>
+      </div>
 
-      <label class="provider-card selected">
-        <input type="radio" name="provider" value="cloudflared" checked>
-        <div class="prov-emoji">☁️</div>
-        <div class="prov-info">
-          <div class="prov-name">cloudflared
-            <span class="pill pill-easy">Easy</span>
-          </div>
-          <div class="prov-desc">Random URL every restart · No account, no sign-up · Powered by Cloudflare's global network</div>
-          <div class="prov-pills">
-            <span class="pill pill-lat">~20–80ms added</span>
-            <span class="pill pill-lat">HTTPS</span>
-          </div>
-          <div class="prov-install"><span class="comment"># Debian/Ubuntu:</span>
-<span class="cmd">curl -L -o cf.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb</span>
-<span class="cmd">sudo dpkg -i cf.deb</span></div>
-        </div>
-      </label>
+      <div class="modal-head">
+        <h3>🌐 Choose a Tunnel Provider</h3>
+        <p>The tunnel carries the <strong style="color:#f2f3f5">webpage + WebSocket signaling only</strong> — WebRTC
+          video goes UDP peer-to-peer and never touches the tunnel.<br>Pick a provider — all listed options are <strong
+            style="color:#57f287">free</strong>.</p>
+      </div>
+      <div class="modal-body">
 
-      <label class="provider-card">
-        <input type="radio" name="provider" value="playit">
-        <div class="prov-emoji">🎮</div>
-        <div class="prov-info">
-          <div class="prov-name">playit.gg
-            <span class="pill pill-hard">⚠ Paid for HTTP</span>
+        <label class="provider-card selected">
+          <input type="radio" name="provider" value="cloudflared" checked>
+          <div class="prov-emoji">☁️</div>
+          <div class="prov-info">
+            <div class="prov-name">cloudflared
+              <span class="pill pill-easy">Easy</span>
+            </div>
+            <div class="prov-desc">Random URL every restart · No account, no sign-up · Powered by Cloudflare's global
+              network</div>
+            <div class="prov-pills">
+              <span class="pill pill-lat">~20–80ms added</span>
+              <span class="pill pill-lat">HTTPS</span>
+            </div>
+            <div class="prov-install"><span class="comment"># Debian/Ubuntu:</span>
+              <span class="cmd">curl -L -o cf.deb
+                https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb</span>
+              <span class="cmd">sudo dpkg -i cf.deb</span>
+            </div>
           </div>
-          <div class="prov-desc">Free tier is <strong style="color:#f38ba8">UDP only</strong> — our signaling server needs HTTP/TCP, which requires their paid plan. Not recommended unless you upgrade.</div>
-          <div class="prov-pills">
-            <span class="pill pill-lat">~10–40ms added</span>
-            <span class="pill pill-hard">Premium required</span>
-          </div>
-          <div class="prov-install"><span class="comment"># Only useful if you have playit premium (TCP/HTTP tunnel):
-curl -SsL https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64 -o playit
-chmod +x playit && sudo mv playit /usr/local/bin/playit</span></div>
-        </div>
-      </label>
+        </label>
 
-      <label class="provider-card">
-        <input type="radio" name="provider" value="localhostrun">
-        <div class="prov-emoji">🔒</div>
-        <div class="prov-info">
-          <div class="prov-name">localhost.run
-            <span class="pill pill-easy">Zero install</span>
+        <label class="provider-card">
+          <input type="radio" name="provider" value="playit">
+          <div class="prov-emoji">🎮</div>
+          <div class="prov-info">
+            <div class="prov-name">playit.gg
+              <span class="pill pill-hard">⚠ Paid for HTTP</span>
+            </div>
+            <div class="prov-desc">Free tier is <strong style="color:#f38ba8">UDP only</strong> — our signaling server
+              needs HTTP/TCP, which requires their paid plan. Not recommended unless you upgrade.</div>
+            <div class="prov-pills">
+              <span class="pill pill-lat">~10–40ms added</span>
+              <span class="pill pill-hard">Premium required</span>
+            </div>
+            <div class="prov-install"><span class="comment"># Only useful if you have playit premium (TCP/HTTP tunnel):
+                curl -SsL https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64 -o
+                playit
+                chmod +x playit && sudo mv playit /usr/local/bin/playit</span></div>
           </div>
-          <div class="prov-desc">Random URL every restart · Uses SSH already on your system · Nothing to install or configure</div>
-          <div class="prov-pills">
-            <span class="pill pill-lat">~15–50ms added</span>
-            <span class="pill pill-lat">HTTPS</span>
-          </div>
-          <div class="prov-install"><span class="comment"># Already works — SSH is pre-installed on Linux/Mac:</span>
-<span class="cmd">ssh -R 80:localhost:3000 nokey@localhost.run</span>
-<span class="comment"># This app runs that command for you automatically.</span></div>
-        </div>
-      </label>
+        </label>
 
-    </div>
-    <div class="remember-row">
-      <input type="checkbox" id="rememberCheck">
-      <label for="rememberCheck">Remember this choice &amp; don't ask again on startup</label>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-confirm" onclick="confirmTunnel()">🚀 Connect</button>
-      <button class="btn-skip" onclick="closeTunnelModal()">Skip for now</button>
+        <label class="provider-card">
+          <input type="radio" name="provider" value="portforward">
+          <div class="prov-emoji">🌍</div>
+          <div class="prov-info">
+            <div class="prov-name">Port Forwarding
+              <span class="pill pill-easy">Fastest / Direct</span>
+            </div>
+            <div class="prov-desc">Direct peer-to-peer connection over your own network. Requires router configuration (port 3000).</div>
+            <div class="prov-pills">
+              <span class="pill pill-easy">+0ms latency</span>
+              <span class="pill pill-lat">Direct</span>
+            </div>
+            <div class="prov-install"><span class="comment"># Forward TCP port 3000 to this device's LAN IP.</span>
+              <span class="comment"># Then share the Public IP link displayed on the host page.</span>
+            </div>
+          </div>
+        </label>
+
+        <!-- Hidden local tunnel code and documentation kept as requested -->
+        <label class="provider-card" style="display: none;">
+          <input type="radio" name="provider" value="localhostrun">
+          <div class="prov-emoji">🔒</div>
+          <div class="prov-info">
+            <div class="prov-name">localhost.run
+              <span class="pill pill-easy">Zero install</span>
+            </div>
+            <div class="prov-desc">Random URL every restart · Uses SSH already on your system · Nothing to install or configure</div>
+            <div class="prov-install"><span class="cmd">ssh -R 80:localhost:3000 nokey@localhost.run</span></div>
+          </div>
+        </label>
+
+      </div>
+      <div class="remember-row">
+        <input type="checkbox" id="rememberCheck">
+        <label for="rememberCheck">Remember this choice &amp; don't ask again on startup</label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-confirm" onclick="confirmTunnel()">🚀 Connect</button>
+        <button class="btn-skip" onclick="closeTunnelModal()">Skip for now</button>
+      </div>
     </div>
   </div>
-</div>
 
-</div>
-</div>
+  </div>
+  </div>
 
-<script>
-const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCount = 0;
-let audioCtx, analyser, animFrame;
-let pinEnabled = true, currentPin = '----';
+  <script>
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCount = 0;
+    let audioCtx, analyser, animFrame;
+    let pinEnabled = true, currentPin = '----';
 
-// Load saved settings
-const savedCodec = localStorage.getItem('ns_codec');
-if (savedCodec) document.getElementById('codecSelect').value = savedCodec;
-document.getElementById('codecSelect').addEventListener('change', (e) => localStorage.setItem('ns_codec', e.target.value));
+    // Load saved settings
+    const savedCodec = localStorage.getItem('ns_codec');
+    if (savedCodec) document.getElementById('codecSelect').value = savedCodec;
+    document.getElementById('codecSelect').addEventListener('change', (e) => localStorage.setItem('ns_codec', e.target.value));
 
-const savedBitrate = localStorage.getItem('ns_bitrate');
-if (savedBitrate) document.getElementById('bitrateSelect').value = savedBitrate;
-document.getElementById('bitrateSelect').addEventListener('change', (e) => localStorage.setItem('ns_bitrate', e.target.value));
+    const savedBitrate = localStorage.getItem('ns_bitrate');
+    if (savedBitrate) document.getElementById('bitrateSelect').value = savedBitrate;
+    document.getElementById('bitrateSelect').addEventListener('change', (e) => localStorage.setItem('ns_bitrate', e.target.value));
 
-const savedDeg = localStorage.getItem('ns_deg');
-if (savedDeg) document.getElementById('degSelect').value = savedDeg;
-document.getElementById('degSelect').addEventListener('change', (e) => localStorage.setItem('ns_deg', e.target.value));
+    const savedDeg = localStorage.getItem('ns_deg');
+    if (savedDeg) document.getElementById('degSelect').value = savedDeg;
+    document.getElementById('degSelect').addEventListener('change', (e) => localStorage.setItem('ns_deg', e.target.value));
 
-function preferVideoCodec(pc) {
-  const caps = RTCRtpSender.getCapabilities?.('video');
-  if (!caps) return null;
-  const preferred = 'video/' + document.getElementById('codecSelect').value;
-  const sorted = [
-    ...caps.codecs.filter(c => c.mimeType === preferred),
-    ...caps.codecs.filter(c => c.mimeType !== preferred)
-  ];
-  let used = null;
-  pc.getTransceivers().forEach(t => {
-    if (t.sender?.track?.kind === 'video') {
-      try { t.setCodecPreferences(sorted); used = sorted[0]?.mimeType || null; } catch {}
-    }
-  });
-  return used;
-}
-
-async function setLowLatencyParams(pc) {
-  const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-  if (!sender) return;
-  try {
-    const params = sender.getParameters();
-    const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
-    const degVal = document.getElementById('degSelect').value;
-    if (params.encodings?.length) {
-      if (bitVal > 0) {
-        params.encodings[0].maxBitrate = bitVal;
-      } else {
-        delete params.encodings[0].maxBitrate; // Auto
-      }
-      params.encodings[0].networkPriority      = 'high';
-      params.encodings[0].priority             = 'high';
-      params.encodings[0].degradationPreference = degVal; 
-    }
-    await sender.setParameters(params);
-  } catch {}
-}
-
-async function applyBitrateToAll() {
-  for (const pc of Object.values(peerConnections)) {
-    await setLowLatencyParams(pc);
-  }
-  const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
-  log('Stream bitrate changed to ' + (bitVal > 0 ? (bitVal/1000000)+' Mbps' : 'Auto'), 'ok');
-}
-
-function log(msg, cls) {
-  const el = document.getElementById('log');
-  const d  = document.createElement('div');
-  d.className = 'll' + (cls ? ' ' + cls : '');
-  d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-  el.appendChild(d); el.scrollTop = el.scrollHeight;
-}
-
-function appendChat(name, text, isMe) {
-  const el = document.getElementById('chatLog');
-  const d  = document.createElement('div');
-  d.className = 'cmsg';
-  d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
-  el.appendChild(d); el.scrollTop = el.scrollHeight;
-}
-function sendChat() {
-  const inp = document.getElementById('chatMsg');
-  const msg = inp.value.trim(); if (!msg || !ws || ws.readyState !== 1) return;
-  ws.send(JSON.stringify({ type:'chat', from:'Host', msg }));
-  appendChat('Host', msg, true);
-  inp.value = '';
-}
-
-function setCapDot(state) {
-  document.getElementById('capDot').className = 'dot' + (state==='live'?' live':state==='err'?' err':'');
-  document.getElementById('capStatus').textContent = state==='live'?'Live':state==='err'?'Error':'Idle';
-}
-function setAudDot(state, label) {
-  document.getElementById('audDot').className = 'dot' + (state==='live'?' live':state==='warn'?' warn':'');
-  document.getElementById('audStatus').textContent = label;
-}
-
-function renderUrls(d) {
-  const el = document.getElementById('urlList');
-  el.innerHTML = '';
-  // Tunnel always first — it's the primary shareable URL over Cloudflare
-  const tunnelUrl = d.tunnelUrl || null;
-  const rows = [
-    tunnelUrl
-      ? { url: tunnelUrl, label: 'HTTPS tunnel ← share this', color: 'var(--accent)' }
-      : { url: 'Waiting for tunnel...', label: 'cloudflared starting up', color: '#444', noclick: true },
-    { url: `http://${d.lanIP}:${d.port}/`, label: 'LAN — same network only', color: '#555' },
-  ];
-  // Only show public IP if no tunnel (tunnel is strictly better)
-  if (!tunnelUrl && d.publicIP)
-    rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/`, label: 'Public IP (needs port forward)', color: '#666' });
-  rows.forEach(r => {
-    const div = document.createElement('div');
-    div.className = 'url-row';
-    div.style.color = r.color;
-    div.textContent = r.url;
-    if (!r.noclick) div.onclick = () => {
-      navigator.clipboard.writeText(r.url).catch(()=>{});
-      const tmp = div.textContent; div.textContent = '✓ copied!';
-      setTimeout(() => div.textContent = tmp, 1500);
-    };
-    const sub = document.createElement('div');
-    sub.className = 'url-label'; sub.textContent = '↑ ' + r.label;
-    el.appendChild(div); el.appendChild(sub);
-  });
-}
-
-function renderRoster(viewers) {
-  const el    = document.getElementById('roster');
-  const empty = document.getElementById('rosterEmpty');
-  if (!viewers.length) { el.innerHTML = ''; empty.style.display = ''; return; }
-  empty.style.display = 'none';
-  const sc = ['p1','p2','p3','p4'];
-  el.innerHTML = viewers.map((v, i) => {
-    const slot  = v.slot ?? i;
-    const badge = `<span class="slot-badge ${sc[Math.min(slot,3)]}">P${slot+1}</span>`;
-    return `<div class="rcard${v.gp?'':' no-gp'}">${badge}<span class="rname">${v.name}</span><button class="rcard-kill" onclick="killGp('${v.id}')" title="Disable">●</button></div>`;
-  }).join('');
-}
-function killGp(id) {
-  if (ws && ws.readyState===1) ws.send(JSON.stringify({type:'set-input',viewerId:id,gp:false,kb:false}));
-}
-function togglePin() {
-  pinEnabled = !pinEnabled;
-  const btn = document.getElementById('pinToggle');
-  btn.textContent = pinEnabled ? 'ON' : 'OFF';
-  btn.className   = 'tog-btn' + (pinEnabled ? ' on' : '');
-  if (ws && ws.readyState===1) ws.send(JSON.stringify({type:'set-pin',enabled:pinEnabled}));
-}
-
-function connectWS() {
-  ws = new WebSocket(proto + '://' + location.host + '/ws/host');
-  ws.onopen = () => { log('Connected to server', 'ok'); fetch('/api/info').then(r=>r.json()).then(d => { currentPin = d.pin; document.getElementById('pinVal').textContent = d.pin; renderUrls(d); }); checkTunnelOnConnect(); };
-  ws.onmessage = async (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'viewer-joined') {
-      const isNew = !knownViewers.has(msg.viewerId);
-      knownViewers.add(msg.viewerId);
-      if (isNew) {
-        viewerCount++;
-        document.getElementById('viewerCount').textContent = viewerCount;
-        log('Viewer ' + (msg.name||msg.viewerId) + ' joined', 'ok');
-      } else {
-        log('Viewer ' + (msg.name||msg.viewerId) + ' re-offer requested', 'ok');
-      }
-      if (currentStream) {
-        await sendOfferToViewer(msg.viewerId);
-      } else {
-        ws.send(JSON.stringify({ type: 'host-not-streaming', viewerId: msg.viewerId }));
-      }
-    }
-    if (msg.type === 'viewer-left') {
-      knownViewers.delete(msg.viewerId);
-      viewerCount = Math.max(0, viewerCount - 1);
-      document.getElementById('viewerCount').textContent = viewerCount;
-      if (peerConnections[msg.viewerId]) { peerConnections[msg.viewerId].close(); delete peerConnections[msg.viewerId]; }
-      log('Viewer ' + msg.viewerId + ' left');
-    }
-    if (msg.type === 'roster') renderRoster(msg.viewers);
-    if (msg.type === 'answer') {
-      const pc = peerConnections[msg._viewerId];
-      if (pc) { try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); } catch(e) { log('answer err: '+e.message,'err'); } }
-    }
-    if (msg.type === 'ice-viewer') {
-      const pc = peerConnections[msg._viewerId];
-      if (pc && msg.candidate) { try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch {} }
-    }
-    if (msg.type === 'tunnel-url') {
-      log('Tunnel ready: ' + msg.url, 'ok');
-      fetch('/api/info').then(r=>r.json()).then(d => { d.tunnelUrl = msg.url; renderUrls(d); });
-      closeTunnelModal(); // Success!
-    }
-    if (msg.type === 'tunnel-error') {
-      log('Tunnel failed: ' + msg.provider, 'err');
-      showTunnelError('Failed to start ' + msg.provider + '.\n\nIf using a SSH tunnel (localhost.run / serveo), outbound port 22 is likely blocked by your router/ISP.\n\nTry using cloudflared instead.');
-    }
-    if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
-    if (msg.type === 'viewer-gpid') log('Controller: ' + msg.id, 'ok');
-  };
-  ws.onclose = () => { log('Disconnected — retrying', 'warn'); setTimeout(connectWS, 2000); };
-  ws.onerror = () => log('WS error', 'err');
-}
-
-async function sendOfferToViewer(viewerId) {
-  if (!currentStream) return;
-  // Guard: close any stale PC to prevent 'wrong state: stable' race
-  if (peerConnections[viewerId]) {
-    try { peerConnections[viewerId].close(); } catch {}
-    delete peerConnections[viewerId];
-  }
-  const pc = new RTCPeerConnection({
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      // TURN servers — critical for users behind symmetric NAT (most home routers).
-      // Without TURN, ICE silently fails when both sides are behind strict NAT.
-      // OpenRelay is a free, open-source public TURN service.
-      { urls: 'turn:openrelay.metered.ca:80',              username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443',             username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turns:openrelay.metered.ca:443',            username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-    ],
-    iceCandidatePoolSize: 4,
-  });
-  peerConnections[viewerId] = pc;
-
-  currentStream.getTracks().forEach(track => {
-    pc.addTrack(track, currentStream);
-    if (track.kind === 'video') track.contentHint = 'motion';
-    // NOTE: bitrate cap is applied after connection in setLowLatencyParams()
-    // Setting it here (pre-negotiation) is a no-op per WebRTC spec
-  });
-
-  // Codec preference BEFORE createOffer
-  const codec = preferVideoCodec(pc);
-  if (codec) document.getElementById('codecBadge').textContent = codec.split('/')[1];
-
-  pc.onicecandidate = (e) => {
-    // Filter empty candidates — they cause 'Failed to parse' errors on receiver
-    if (e.candidate && e.candidate.candidate) {
-      ws.send(JSON.stringify({ type:'ice-host', candidate:e.candidate, _viewerId:viewerId }));
-    }
-  };
-  pc.onconnectionstatechange = () => {
-    const s = pc.connectionState;
-    log('Viewer ' + viewerId + ': ' + s, s==='connected'?'ok':s==='failed'?'err':'');
-    if (s === 'connected') setLowLatencyParams(pc);
-    if (s === 'failed') {
-      // Auto-retry once on failure
-      log('Retrying offer to ' + viewerId, 'warn');
-      delete peerConnections[viewerId];
-      setTimeout(() => sendOfferToViewer(viewerId), 1000);
-    }
-  };
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  ws.send(JSON.stringify({ type:'offer', sdp: pc.localDescription, _viewerId: viewerId }));
-  log('Offer → viewer ' + viewerId, 'ok');
-}
-
-async function startCapture() {
-  document.getElementById('btnStart').disabled  = true;
-  document.getElementById('btnSwitch').disabled = true;
-
-  if (currentStream) { currentStream.getTracks().forEach(t=>t.stop()); stopAudioMeter(); currentStream=null; }
-  Object.values(peerConnections).forEach(pc => pc.close());
-  peerConnections = {}; // knownViewers kept — viewers still connected
-
-  try {
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal:60, max:60 } }, audio: false
-    });
-    const vTrack = screenStream.getVideoTracks()[0];
-    if (!vTrack || vTrack.readyState === 'ended') {
-      log('Screen capture cancelled', 'warn'); setCapDot('');
-      document.getElementById('btnStart').disabled = false; return;
-    }
-    const settings = vTrack.getSettings();
-
-    let aTrack = null;
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false, sampleRate:48000 }, video:false
+    function preferVideoCodec(pc) {
+      const caps = RTCRtpSender.getCapabilities?.('video');
+      if (!caps) return null;
+      const preferred = 'video/' + document.getElementById('codecSelect').value;
+      const sorted = [
+        ...caps.codecs.filter(c => c.mimeType === preferred),
+        ...caps.codecs.filter(c => c.mimeType !== preferred)
+      ];
+      let used = null;
+      pc.getTransceivers().forEach(t => {
+        if (t.sender?.track?.kind === 'video') {
+          try { t.setCodecPreferences(sorted); used = sorted[0]?.mimeType || null; } catch { }
+        }
       });
-      aTrack = audioStream.getAudioTracks()[0];
-      log('Audio: ' + (aTrack.label || 'default'), 'ok');
-    } catch(audioErr) { log('Audio: ' + audioErr.message, 'warn'); }
+      return used;
+    }
 
-    const combined = new MediaStream();
-    combined.addTrack(vTrack);
-    if (aTrack) combined.addTrack(aTrack);
-    currentStream = combined;
+    async function setLowLatencyParams(pc) {
+      const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+      if (!sender) return;
+      try {
+        const params = sender.getParameters();
+        const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
+        const degVal = document.getElementById('degSelect').value;
+        if (params.encodings?.length) {
+          if (bitVal > 0) {
+            params.encodings[0].maxBitrate = bitVal;
+          } else {
+            delete params.encodings[0].maxBitrate; // Auto
+          }
+          params.encodings[0].networkPriority = 'high';
+          params.encodings[0].priority = 'high';
+          params.encodings[0].degradationPreference = degVal;
+        }
+        await sender.setParameters(params);
+      } catch { }
+    }
 
-    const prev = document.getElementById('preview');
-    prev.srcObject = screenStream;
-    if (settings.width && settings.height) prev.style.aspectRatio = settings.width + '/' + settings.height;
-    document.getElementById('prevOverlay').classList.add('hidden');
-    document.getElementById('trackInfo').innerHTML =
-      '<strong>' + (vTrack.label||'Screen') + '</strong><br>' +
-      settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate||0) + 'fps<br>' +
-      (aTrack ? 'Audio: ' + (aTrack.label||'default') : 'No audio');
+    async function applyBitrateToAll() {
+      for (const pc of Object.values(peerConnections)) {
+        await setLowLatencyParams(pc);
+      }
+      const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
+      log('Stream bitrate changed to ' + (bitVal > 0 ? (bitVal / 1000000) + ' Mbps' : 'Auto'), 'ok');
+    }
 
-    setCapDot('live');
-    if (aTrack) { setAudDot('live','Audio active'); startAudioMeter(combined); }
-    else setAudDot('warn', 'No audio — check PipeWire default sink');
+    function log(msg, cls) {
+      const el = document.getElementById('log');
+      const d = document.createElement('div');
+      d.className = 'll' + (cls ? ' ' + cls : '');
+      d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+      el.appendChild(d); el.scrollTop = el.scrollHeight;
+    }
 
-    ws.send(JSON.stringify({ type:'host-stream-ready' }));
-    // Offer ALL known viewers (knownViewers covers pre-connected viewers too)
-    [...knownViewers].forEach(id => sendOfferToViewer(id));
+    function appendChat(name, text, isMe) {
+      const el = document.getElementById('chatLog');
+      const d = document.createElement('div');
+      d.className = 'cmsg';
+      d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
+      el.appendChild(d); el.scrollTop = el.scrollHeight;
+    }
+    function sendChat() {
+      const inp = document.getElementById('chatMsg');
+      const msg = inp.value.trim(); if (!msg || !ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'chat', from: 'Host', msg }));
+      appendChat('Host', msg, true);
+      inp.value = '';
+    }
 
-    vTrack.onended = () => { log('Capture ended by OS', 'warn'); stopCapture(); };
-    document.getElementById('btnSwitch').disabled = false;
-    document.getElementById('btnStop').disabled   = false;
-  } catch(err) {
-    if (err.name === 'NotAllowedError' || err.name === 'AbortError') log('Capture cancelled', 'warn');
-    else { log('Capture failed: ' + err.message, 'err'); setCapDot('err'); }
-    document.getElementById('btnStart').disabled = false;
-  }
-}
+    function setCapDot(state) {
+      document.getElementById('capDot').className = 'dot' + (state === 'live' ? ' live' : state === 'err' ? ' err' : '');
+      document.getElementById('capStatus').textContent = state === 'live' ? 'Live' : state === 'err' ? 'Error' : 'Idle';
+    }
+    function setAudDot(state, label) {
+      document.getElementById('audDot').className = 'dot' + (state === 'live' ? ' live' : state === 'warn' ? ' warn' : '');
+      document.getElementById('audStatus').textContent = label;
+    }
 
-function stopCapture() {
-  if (currentStream) { currentStream.getTracks().forEach(t=>t.stop()); currentStream=null; }
-  stopAudioMeter();
-  document.getElementById('preview').srcObject = null;
-  document.getElementById('prevOverlay').classList.remove('hidden');
-  setCapDot(''); setAudDot('','No audio');
-  document.getElementById('trackInfo').textContent = '—';
-  document.getElementById('btnStart').disabled  = false;
-  document.getElementById('btnSwitch').disabled = true;
-  document.getElementById('btnStop').disabled   = true;
-  Object.values(peerConnections).forEach(pc => pc.close());
-  peerConnections = {};
-  ws.send(JSON.stringify({ type:'host-stream-stopped' }));
-  log('Capture stopped');
-}
+    function renderUrls(d) {
+      const el = document.getElementById('urlList');
+      el.innerHTML = '';
+      // Tunnel always first — it's the primary shareable URL over Cloudflare
+      const tunnelUrl = d.tunnelUrl || null;
+      const rows = [
+        tunnelUrl
+          ? { url: tunnelUrl, label: 'HTTPS tunnel ← share this', color: 'var(--accent)' }
+          : { url: 'Waiting for tunnel...', label: 'cloudflared starting up', color: '#444', noclick: true },
+        { url: `http://${d.lanIP}:${d.port}/`, label: 'LAN — same network only', color: '#555' },
+      ];
+      // Only show public IP if no tunnel (tunnel is strictly better)
+      if (!tunnelUrl && d.publicIP)
+        rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/`, label: 'Public IP (needs port forward)', color: '#666' });
+      rows.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'url-row';
+        div.style.color = r.color;
+        div.textContent = r.url;
+        if (!r.noclick) div.onclick = () => {
+          navigator.clipboard.writeText(r.url).catch(() => { });
+          const tmp = div.textContent; div.textContent = '✓ copied!';
+          setTimeout(() => div.textContent = tmp, 1500);
+        };
+        const sub = document.createElement('div');
+        sub.className = 'url-label'; sub.textContent = '↑ ' + r.label;
+        el.appendChild(div); el.appendChild(sub);
+      });
+    }
+    function renderRoster(list) {
+      const c = document.getElementById('roster');
+      const o = document.getElementById('rosterEmpty');
+      
+      const controllers = list.filter(v => v.gp);
+      
+      if (controllers.length === 0) {
+        c.innerHTML = '';
+        o.style.display = 'block';
+        return;
+      }
+      o.style.display = 'none';
 
-function startAudioMeter(stream) {
-  audioCtx = new AudioContext();
-  analyser = audioCtx.createAnalyser(); analyser.fftSize = 256;
-  audioCtx.createMediaStreamSource(stream).connect(analyser);
-  const data = new Uint8Array(analyser.frequencyBinCount);
-  const fill = document.getElementById('meter');
-  (function draw() { animFrame=requestAnimationFrame(draw); analyser.getByteFrequencyData(data); fill.style.width=Math.min(100,data.reduce((a,b)=>a+b,0)/data.length*2)+'%'; })();
-}
-function stopAudioMeter() {
-  if (animFrame) cancelAnimationFrame(animFrame);
-  if (audioCtx) { audioCtx.close(); audioCtx=null; }
-  document.getElementById('meter').style.width = '0%';
-}
+      c.innerHTML = '';
+      controllers.forEach((v, index) => {
+        const r = document.createElement('div');
+        r.className = 'rcard';
+        r.draggable = true;
+        r.dataset.id = v.id;
+
+        r.innerHTML = `<div class="rnum">\${index + 1}</div>
+          <div style="flex:1; overflow:hidden;">
+            <div class="rname">\${v.name}</div>
+            <div class="rtitle">Controller \${index + 1}</div>
+          </div>
+          <div class="rstat">\${v.slot !== null ? '(Assigned)' : ''}</div>
+          <button class="rkick" onclick="killGp('\${v.id}')" title="Revoke controller">×</button>
+        `;
+        c.appendChild(r);
+      });
+
+      attachDragDrop(c);
+    }
+
+    let draggedItem = null;
+    function attachDragDrop(container) {
+      const items = container.querySelectorAll('.rcard');
+      items.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+          draggedItem = item;
+          setTimeout(() => item.classList.add('dragging'), 0);
+        });
+        item.addEventListener('dragend', () => {
+          if (draggedItem) draggedItem.classList.remove('dragging');
+          draggedItem = null;
+          items.forEach(i => i.classList.remove('drag-over'));
+        });
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (item !== draggedItem) item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-over');
+          if (item !== draggedItem && draggedItem) {
+            const all = Array.from(container.querySelectorAll('.rcard'));
+            if (all.indexOf(draggedItem) < all.indexOf(item)) item.after(draggedItem);
+            else item.before(draggedItem);
+            updateSlotsAfterDrop(container);
+          }
+        });
+      });
+    }
+
+    function updateSlotsAfterDrop(container) {
+      Array.from(container.querySelectorAll('.rcard')).forEach((item, index) => {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'assign-slot', viewerId: item.dataset.id, slot: index }));
+      });
+    }
+
+    function killGp(id) {
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-input', viewerId: id, gp: false, kb: false }));
+    }
+    function togglePin() {
+      pinEnabled = !pinEnabled;
+      const btn = document.getElementById('pinToggle');
+      btn.textContent = pinEnabled ? 'ON' : 'OFF';
+      btn.className = 'tog-btn' + (pinEnabled ? ' on' : '');
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: pinEnabled }));
+    }
+
+    function connectWS() {
+      ws = new WebSocket(proto + '://' + location.host + '/ws/host');
+      ws.onopen = () => { log('Connected to server', 'ok'); fetch('/api/info').then(r => r.json()).then(d => { currentPin = d.pin; document.getElementById('pinVal').textContent = d.pin; renderUrls(d); }); checkTunnelOnConnect(); };
+      ws.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'viewer-joined') {
+          const isNew = !knownViewers.has(msg.viewerId);
+          knownViewers.add(msg.viewerId);
+          if (isNew) {
+            log('Controller viewer ' + (msg.name || msg.viewerId) + ' joined', 'ok');
+          } else {
+            log('Viewer ' + (msg.name || msg.viewerId) + ' re-offer requested', 'ok');
+          }
+          if (currentStream) {
+            await sendOfferToViewer(msg.viewerId);
+          } else {
+            ws.send(JSON.stringify({ type: 'host-not-streaming', viewerId: msg.viewerId }));
+          }
+        }
+        if (msg.type === 'viewer-left') {
+          knownViewers.delete(msg.viewerId);
+          if (peerConnections[msg.viewerId]) { peerConnections[msg.viewerId].close(); delete peerConnections[msg.viewerId]; }
+          log('Controller viewer ' + msg.viewerId + ' left');
+        }
+        if (msg.type === 'roster') {
+          renderRoster(msg.viewers);
+          // Update the header counter to reflect only controller-equipped viewers
+          document.getElementById('viewerCount').textContent = msg.controllerCount ?? msg.viewers.length;
+        }
+        if (msg.type === 'answer') {
+          const pc = peerConnections[msg._viewerId];
+          if (pc) { try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); } catch (e) { log('answer err: ' + e.message, 'err'); } }
+        }
+        if (msg.type === 'ice-viewer') {
+          const pc = peerConnections[msg._viewerId];
+          if (pc && msg.candidate) { try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { } }
+        }
+        if (msg.type === 'tunnel-url') {
+          log('Tunnel ready: ' + msg.url, 'ok');
+          fetch('/api/info').then(r => r.json()).then(d => { d.tunnelUrl = msg.url; renderUrls(d); });
+          closeTunnelModal(); // Success!
+        }
+        if (msg.type === 'tunnel-error') {
+          log('Tunnel failed: ' + msg.provider, 'err');
+          showTunnelError('Failed to start ' + msg.provider + '.\n\nIf using a SSH tunnel (localhost.run / serveo), outbound port 22 is likely blocked by your router/ISP.\n\nTry using cloudflared instead.');
+        }
+        if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
+        if (msg.type === 'viewer-gpid') log('Controller: ' + msg.id, 'ok');
+      };
+      ws.onclose = () => { log('Disconnected — retrying', 'warn'); setTimeout(connectWS, 2000); };
+      ws.onerror = () => log('WS error', 'err');
+    }
+
+    async function sendOfferToViewer(viewerId) {
+      if (!currentStream) return;
+      // Guard: close any stale PC to prevent 'wrong state: stable' race
+      if (peerConnections[viewerId]) {
+        try { peerConnections[viewerId].close(); } catch { }
+        delete peerConnections[viewerId];
+      }
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' },
+          // TURN servers — critical for users behind symmetric NAT (most home routers).
+          // Without TURN, ICE silently fails when both sides are behind strict NAT.
+          // OpenRelay is a free, open-source public TURN service.
+          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+          { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+        ],
+        iceCandidatePoolSize: 4,
+      });
+      peerConnections[viewerId] = pc;
+
+      currentStream.getTracks().forEach(track => {
+        pc.addTrack(track, currentStream);
+        // NOTE: removed contentHint = 'motion' here to stop text/UI flickering.
+        // WebRTC will balance framerate/resolution naturally.
+      });
+
+      // Codec preference BEFORE createOffer
+      const codec = preferVideoCodec(pc);
+      if (codec) document.getElementById('codecBadge').textContent = codec.split('/')[1];
+
+      pc.onicecandidate = (e) => {
+        // Filter empty candidates — they cause 'Failed to parse' errors on receiver
+        if (e.candidate && e.candidate.candidate) {
+          ws.send(JSON.stringify({ type: 'ice-host', candidate: e.candidate, _viewerId: viewerId }));
+        }
+      };
+      pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        log('Viewer ' + viewerId + ': ' + s, s === 'connected' ? 'ok' : s === 'failed' ? 'err' : '');
+        if (s === 'connected') setLowLatencyParams(pc);
+        if (s === 'failed') {
+          // Auto-retry once on failure
+          log('Retrying offer to ' + viewerId, 'warn');
+          delete peerConnections[viewerId];
+          setTimeout(() => sendOfferToViewer(viewerId), 1000);
+        }
+      };
+
+      const offer = await pc.createOffer();
+      
+      // Force higher starting bitrate (3000kbps) so quality doesn't start at 144p
+      const modifiedSdp = offer.sdp.replace(/(m=video.*\r\n)/g, '$1b=AS:3000\r\n');
+      
+      await pc.setLocalDescription({ type: offer.type, sdp: modifiedSdp });
+      ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));
+      log('Offer → viewer ' + viewerId, 'ok');
+    }
+
+    async function startCapture() {
+      document.getElementById('btnStart').disabled = true;
+      document.getElementById('btnSwitch').disabled = true;
+
+      if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); stopAudioMeter(); currentStream = null; }
+      Object.values(peerConnections).forEach(pc => pc.close());
+      peerConnections = {}; // knownViewers kept — viewers still connected
+
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: { ideal: 60, max: 60 } }, audio: false
+        });
+        const vTrack = screenStream.getVideoTracks()[0];
+        if (!vTrack || vTrack.readyState === 'ended') {
+          log('Screen capture cancelled', 'warn'); setCapDot('');
+          document.getElementById('btnStart').disabled = false; return;
+        }
+        const settings = vTrack.getSettings();
+
+        let aTrack = null;
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 48000 }, video: false
+          });
+          aTrack = audioStream.getAudioTracks()[0];
+          log('Audio: ' + (aTrack.label || 'default'), 'ok');
+        } catch (audioErr) { log('Audio: ' + audioErr.message, 'warn'); }
+
+        const combined = new MediaStream();
+        combined.addTrack(vTrack);
+        if (aTrack) combined.addTrack(aTrack);
+        currentStream = combined;
+
+        const prev = document.getElementById('preview');
+        prev.srcObject = screenStream;
+        if (settings.width && settings.height) prev.style.aspectRatio = settings.width + '/' + settings.height;
+        document.getElementById('prevOverlay').classList.add('hidden');
+        document.getElementById('trackInfo').innerHTML =
+          '<strong>' + (vTrack.label || 'Screen') + '</strong><br>' +
+          settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
+          (aTrack ? 'Audio: ' + (aTrack.label || 'default') : 'No audio');
+
+        setCapDot('live');
+        if (aTrack) { setAudDot('live', 'Audio active'); startAudioMeter(combined); }
+        else setAudDot('warn', 'No audio — check PipeWire default sink');
+
+        ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+        // Offer ALL known viewers (knownViewers covers pre-connected viewers too)
+        [...knownViewers].forEach(id => sendOfferToViewer(id));
+
+        vTrack.onended = () => { log('Capture ended by OS', 'warn'); stopCapture(); };
+        document.getElementById('btnSwitch').disabled = false;
+        document.getElementById('btnStop').disabled = false;
+      } catch (err) {
+        if (err.name === 'NotAllowedError' || err.name === 'AbortError') log('Capture cancelled', 'warn');
+        else { log('Capture failed: ' + err.message, 'err'); setCapDot('err'); }
+        document.getElementById('btnStart').disabled = false;
+      }
+    }
+
+    function stopCapture() {
+      if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+      stopAudioMeter();
+      document.getElementById('preview').srcObject = null;
+      document.getElementById('prevOverlay').classList.remove('hidden');
+      setCapDot(''); setAudDot('', 'No audio');
+      document.getElementById('trackInfo').textContent = '—';
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('btnSwitch').disabled = true;
+      document.getElementById('btnStop').disabled = true;
+      Object.values(peerConnections).forEach(pc => pc.close());
+      peerConnections = {};
+      ws.send(JSON.stringify({ type: 'host-stream-stopped' }));
+      log('Capture stopped');
+    }
+
+    function startAudioMeter(stream) {
+      audioCtx = new AudioContext();
+      analyser = audioCtx.createAnalyser(); analyser.fftSize = 256;
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const fill = document.getElementById('meter');
+      (function draw() { animFrame = requestAnimationFrame(draw); analyser.getByteFrequencyData(data); fill.style.width = Math.min(100, data.reduce((a, b) => a + b, 0) / data.length * 2) + '%'; })();
+    }
+    function stopAudioMeter() {
+      if (animFrame) cancelAnimationFrame(animFrame);
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
+      document.getElementById('meter').style.width = '0%';
+    }
 
 
-// ── Tunnel picker modal ───────────────────────────────────────────────────────
-function showTunnelModal() {
-  resetTunnelModal();
-  document.getElementById('tunnelModal').classList.remove('gone');
-  // Sync card highlights to current radio selection
-  document.querySelectorAll('.provider-card').forEach(c => {
-    c.classList.toggle('selected', c.querySelector('input').checked);
-  });
-}
-function resetTunnelModal() {
-  document.getElementById('tunnelLoading').classList.add('gone');
-  document.getElementById('tunnelSpinner').classList.remove('gone');
-  document.getElementById('tunnelErrorText').classList.add('gone');
-  document.getElementById('tunnelRetryBtn').classList.add('gone');
-}
-function closeTunnelModal() {
-  document.getElementById('tunnelModal').classList.add('gone');
-  resetTunnelModal();
-}
-function showTunnelError(msg) {
-  document.getElementById('tunnelSpinner').classList.add('gone');
-  document.getElementById('tunnelLoadText').textContent = 'Connection Failed';
-  document.getElementById('tunnelErrorText').textContent = msg;
-  document.getElementById('tunnelErrorText').classList.remove('gone');
-  document.getElementById('tunnelRetryBtn').classList.remove('gone');
-}
-function confirmTunnel() {
-  const radio = document.querySelector('input[name="provider"]:checked');
-  if (!radio) return;
-  const provider = radio.value;
-  const remember = document.getElementById('rememberCheck').checked;
-  
-  // Show loading overlay
-  document.getElementById('tunnelLoading').classList.remove('gone');
-  document.getElementById('tunnelLoadText').textContent = 'Starting ' + provider + '...';
+    // ── Tunnel picker modal ───────────────────────────────────────────────────────
+    function showTunnelModal() {
+      resetTunnelModal();
+      document.getElementById('tunnelModal').classList.remove('gone');
+      // Sync card highlights to current radio selection
+      document.querySelectorAll('.provider-card').forEach(c => {
+        c.classList.toggle('selected', c.querySelector('input').checked);
+      });
+    }
+    function resetTunnelModal() {
+      document.getElementById('tunnelLoading').classList.add('gone');
+      document.getElementById('tunnelSpinner').classList.remove('gone');
+      document.getElementById('tunnelErrorText').classList.add('gone');
+      document.getElementById('tunnelRetryBtn').classList.add('gone');
+    }
+    function closeTunnelModal() {
+      document.getElementById('tunnelModal').classList.add('gone');
+      resetTunnelModal();
+    }
+    function showTunnelError(msg) {
+      document.getElementById('tunnelSpinner').classList.add('gone');
+      document.getElementById('tunnelLoadText').textContent = 'Connection Failed';
+      document.getElementById('tunnelErrorText').textContent = msg;
+      document.getElementById('tunnelErrorText').classList.remove('gone');
+      document.getElementById('tunnelRetryBtn').classList.remove('gone');
+    }
+    function confirmTunnel() {
+      const radio = document.querySelector('input[name="provider"]:checked');
+      if (!radio) return;
+      const provider = radio.value;
+      const remember = document.getElementById('rememberCheck').checked;
 
-  log('Starting ' + provider + ' tunnel' + (remember ? ' (saved)' : '') + '…', 'ok');
-  fetch('/api/start-tunnel', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, remember })
-  }).catch(() => showTunnelError('Network request failed'));
-}
-// Highlight selected card on click
-document.querySelectorAll('input[name="provider"]').forEach(radio => {
-  radio.addEventListener('change', () => {
-    document.querySelectorAll('.provider-card').forEach(c => {
-      c.classList.toggle('selected', c.querySelector('input').checked);
+      if (provider === 'portforward') {
+        if (remember) {
+          fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tunnelProvider: 'portforward', neverAsk: true }) });
+        }
+        closeTunnelModal();
+        log('Using direct Port Forwarding. Share your Public IP URL.', 'ok');
+        return;
+      }
+
+      // Show loading overlay
+      document.getElementById('tunnelLoading').classList.remove('gone');
+      document.getElementById('tunnelLoadText').textContent = 'Starting ' + provider + '...';
+
+      log('Starting ' + provider + ' tunnel' + (remember ? ' (saved)' : '') + '…', 'ok');
+      fetch('/api/start-tunnel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, remember })
+      }).catch(() => showTunnelError('Network request failed'));
+    }
+    // Highlight selected card on click
+    document.querySelectorAll('input[name="provider"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.provider-card').forEach(c => {
+          c.classList.toggle('selected', c.querySelector('input').checked);
+        });
+      });
     });
-  });
-});
-// Also allow clicking the whole card
-document.querySelectorAll('.provider-card').forEach(card => {
-  card.addEventListener('click', () => {
-    card.querySelector('input').checked = true;
-    document.querySelectorAll('.provider-card').forEach(c =>
-      c.classList.toggle('selected', c.querySelector('input').checked));
-  });
-});
+    // Also allow clicking the whole card
+    document.querySelectorAll('.provider-card').forEach(card => {
+      card.addEventListener('click', () => {
+        card.querySelector('input').checked = true;
+        document.querySelectorAll('.provider-card').forEach(c =>
+          c.classList.toggle('selected', c.querySelector('input').checked));
+      });
+    });
 
-async function checkTunnelOnConnect() {
-  try {
-    const cfg = await fetch('/api/config').then(r => r.json());
-    if (cfg.neverAsk) return; // auto-started, modal not needed
-    const info = await fetch('/api/info').then(r => r.json());
-    if (!info.tunnelUrl) showTunnelModal(); // no tunnel yet → ask
-  } catch {}
-}
+    async function checkTunnelOnConnect() {
+      try {
+        const cfg = await fetch('/api/config').then(r => r.json());
+        if (cfg.neverAsk) return; // auto-started, modal not needed
+        const info = await fetch('/api/info').then(r => r.json());
+        if (!info.tunnelUrl) showTunnelModal(); // no tunnel yet → ask
+      } catch { }
+    }
 
-connectWS();
+    connectWS();
 
-</script>
+  </script>
 </body>
+
 </html>

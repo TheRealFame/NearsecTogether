@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
-const fs   = require('fs');
+const fs = require('fs');
 
 // ── Wayland / GPU flags ───────────────────────────────────────────────────────
 // Must be set before app is ready
@@ -11,23 +11,23 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-const CONFIG_DIR  = path.join(app.getPath('userData'), 'web-stream');
+const CONFIG_DIR = path.join(app.getPath('userData'), 'NearsecTogether');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
-const DEFAULTS    = { encoder:'gpu', codec:'h264', preset:'fast', alwaysOnTop:false, w:1280, h:800 };
+const DEFAULTS = { encoder: 'gpu', codec: 'h264', preset: 'fast', alwaysOnTop: false, w: 1280, h: 800 };
 
 function loadSettings() {
   try {
-    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive:true });
+    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
     if (fs.existsSync(CONFIG_FILE))
-      return Object.assign({}, DEFAULTS, JSON.parse(fs.readFileSync(CONFIG_FILE,'utf8')));
-  } catch {}
+      return Object.assign({}, DEFAULTS, JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')));
+  } catch { }
   return Object.assign({}, DEFAULTS);
 }
 function saveSettings(s) {
   try {
-    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR,{recursive:true});
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(s,null,2));
-  } catch(e) { console.error('saveSettings:',e.message); }
+    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(s, null, 2));
+  } catch (e) { console.error('saveSettings:', e.message); }
 }
 let settings = loadSettings();
 
@@ -45,7 +45,7 @@ function startServer() {
     // server.js calls console.log("Listening on port N")
     // We hook it briefly to grab the port
     const _log = console.log.bind(console);
-    console.log = function(...args) {
+    console.log = function (...args) {
       _log(...args);
       const s = args.join(' ');
       const m = s.match(/Listening on port (\d+)/);
@@ -70,16 +70,16 @@ async function createWindow() {
   console.log('[electron] server ready on port', port);
 
   win = new BrowserWindow({
-    width:  settings.w,
-    height: settings.h,
-    minWidth:  500,
-    minHeight: 400,
+    width: Math.max(settings.w, 600),
+    height: Math.max(settings.h, 500),
+    minWidth: 600,
+    minHeight: 500,
     title: 'Stream Host',
     backgroundColor: '#111111',
     alwaysOnTop: settings.alwaysOnTop,
     show: false, // don't show until content loads
     webPreferences: {
-      nodeIntegration:  false,
+      nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'electron-preload.js'),
     },
@@ -119,7 +119,7 @@ async function createWindow() {
   win.on('closed', () => { win = null; });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url); return { action:'deny' };
+    shell.openExternal(url); return { action: 'deny' };
   });
 
   // Devtools shortcut — Ctrl+Shift+I or F12
@@ -139,8 +139,8 @@ async function createWindow() {
   });
 
   // IPC handlers
-  ipcMain.handle('get-settings',         ()  => settings);
-  ipcMain.handle('save-settings',        (_, s) => {
+  ipcMain.handle('get-settings', () => settings);
+  ipcMain.handle('save-settings', (_, s) => {
     settings = Object.assign(settings, s); saveSettings(settings);
     if (win) win.webContents.send('settings-updated', settings);
     return settings;
