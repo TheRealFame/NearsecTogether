@@ -105,7 +105,32 @@
       transform:rotate(90deg) translateX(0) translateY(-100%);
     }
   }
-</style>
+    #topFsBtn {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.4);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(8px);
+      z-index: 200;
+      transition: all 0.2s;
+    }
+    #topFsBtn:hover {
+      background: rgba(255,255,255,0.2);
+      transform: translateX(-50%) scale(1.1);
+    }
+    #topFsBtn:active { transform: translateX(-50%) scale(0.9); }
+  </style>
 </head>
 <body>
 
@@ -141,6 +166,8 @@
     🎮 Tap here to activate controller<br>
     <span style="font-size:9px;color:#333">(Required by browser — once only)</span>
   </div>
+  <!-- Floating Fullscreen Button (Top Middle) -->
+  <button id="topFsBtn" onclick="toggleFS()" title="Toggle Fullscreen">⛶</button>
 </div>
 
 <div id="topbar">
@@ -194,7 +221,7 @@ function preferReceiverCodec(transceiver) {
 // This bypasses the video element's internal buffer entirely.
 const video       = document.getElementById('video');
 const frameCanvas = document.getElementById('frameCanvas');
-const frameCtx    = frameCanvas.getContext('2d', { alpha: false });
+const frameCtx    = frameCanvas.getContext('2d', { alpha: false, desynchronized: true });
 let   processorRunning = false;
 let   lastFlush = 0;
 
@@ -229,32 +256,26 @@ function startFrameProcessor(track) {
       let result;
       try { result = await reader.read(); } catch { break; }
       if (result.done) break;
-      if (pending) pending.close(); // throw away the old frame
-      pending = result.value;
+      const f = result.value;
+      if (frameCanvas.width  !== f.displayWidth ||
+          frameCanvas.height !== f.displayHeight) {
+        frameCanvas.width  = f.displayWidth;
+        frameCanvas.height = f.displayHeight;
+      }
+      frameCtx.drawImage(f, 0, 0);
+      f.close();
+
+      if (firstFrame) {
+        firstFrame = false;
+        showOverlay(false);
+        setStatus('Live', true);
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('gpPrompt').classList.add('gone');
+      }
     }
   })();
 
-  // Render loop: draw whatever the latest frame is at 60fps
-  (function renderLoop() {
-    if (!processorRunning) return;
-    requestAnimationFrame(renderLoop);
-    if (!pending) return;
-    if (frameCanvas.width  !== pending.displayWidth ||
-        frameCanvas.height !== pending.displayHeight) {
-      frameCanvas.width  = pending.displayWidth;
-      frameCanvas.height = pending.displayHeight;
-    }
-    frameCtx.drawImage(pending, 0, 0);
-    pending.close();
-    pending = null;
-    if (firstFrame) {
-      firstFrame = false;
-      showOverlay(false);
-      setStatus('Live', true);
-      document.getElementById('spinner').style.display = 'none';
-      document.getElementById('gpPrompt').classList.add('gone');
-    }
-  })();
+
 
   track.addEventListener('ended', () => {
     processorRunning = false;
@@ -280,7 +301,9 @@ function pollGamepad() {
   gpRaf = requestAnimationFrame(pollGamepad);
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const now = Date.now();
-  for (const gp of pads) {
+  // Support up to 16 controllers for massive local co-op (e.g. Smash Bros)
+  for (let i = 0; i < Math.min(pads.length, 16); i++) {
+    const gp = pads[i];
     if (!gp) continue;
     const forceHeartbeat = now - (lastGpSend[gp.index] || 0) > 100;
     const state = {
@@ -300,13 +323,25 @@ function pollGamepad() {
 
 // Activate on ANY user gesture — tapping overlay, video, anything
 ['click','touchstart','keydown'].forEach(ev =>
-  document.addEventListener(ev, () => { if (!gpPolling) activateGamepad(); }, { once:true, passive:true })
+  document.addEventListener(ev, (e) => {
+    if (!gpPolling) activateGamepad();
+    if (ev === 'keydown' && e.key.toLowerCase() === 'f') {
+      toggleFS();
+    }
+  }, { once: ev !== 'keydown', passive: ev !== 'keydown' })
 );
+let knownPads = new Set();
 window.addEventListener('gamepadconnected', (e) => {
   console.log('Gamepad connected:', e.gamepad.id, 'Index:', e.gamepad.index);
   if (!gpPolling) activateGamepad();
   document.getElementById('gpPrompt').classList.add('gone');
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'gpid', padIndex: e.gamepad.index, id: e.gamepad.id }));
+  
+  // Dedup: only send gpid to server if it's a new unique device in a valid slot
+  const padKey = e.gamepad.index + '_' + e.gamepad.id;
+  if (!knownPads.has(padKey) && e.gamepad.index < 16) {
+    knownPads.add(padKey);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'gpid', padIndex: e.gamepad.index, id: e.gamepad.id }));
+  }
 });
 
 // ── Overlay / status helpers ──────────────────────────────────────────────────
@@ -328,15 +363,8 @@ async function createPC() {
 
   pc = new RTCPeerConnection({
     iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
-      // TURN — required when both sides are behind symmetric NAT (most home routers).
-      // Without this, WebRTC P2P silently fails ~90% of the time over the internet.
-      { urls: 'turn:openrelay.metered.ca:80',               username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turns:openrelay.metered.ca:443',             username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
       { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
     ]
   });

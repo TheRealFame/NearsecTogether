@@ -34,6 +34,13 @@ PROFILES = {
         'version': 0x0114,  # required for correct SDL/Steam mapping
         'bustype': 0x0003,  # USB
     },
+    'xboxone': {
+        'name':    'Microsoft Xbox One S Pad',
+        'vendor':  0x045e,
+        'product': 0x02ea,
+        'version': 0x0301,
+        'bustype': 0x0003,
+    },
     'ps4': {
         'name':    'Sony Interactive Entertainment Wireless Controller',
         'vendor':  0x054c,
@@ -57,7 +64,8 @@ def detect_profile(gpid: str) -> str:
     if is_sony:
         is_ps5 = any(k in g for k in ['0ce6', 'dualsense', 'ps5'])
         return 'ps5' if is_ps5 else 'ps4'
-    return 'xbox'
+    is_xbox_one = any(k in g for k in ['xbox one', '02ea', '02d1', '02fd'])
+    return 'xboxone' if is_xbox_one else 'xbox'
 
 def make_device(profile_key: str):
     p = PROFILES[profile_key]
@@ -164,10 +172,10 @@ for line in sys.stdin:
                 gp.emit(uinput.ABS_RX, apply_deadzone(axes[2], AXIS_DEADZONE), syn=False)
                 gp.emit(uinput.ABS_RY, apply_deadzone(axes[3], AXIS_DEADZONE), syn=False)
 
-            # Analog triggers (from button value 0-255)
+            # Analog triggers (already scaled to 0-255 in index.html)
             if len(btns) >= 8:
-                gp.emit(uinput.ABS_Z,  btns[6]['value'], syn=False)
-                gp.emit(uinput.ABS_RZ, btns[7]['value'], syn=False)
+                gp.emit(uinput.ABS_Z,  btns[6].get('value', 0), syn=False)
+                gp.emit(uinput.ABS_RZ, btns[7].get('value', 0), syn=False)
 
             # D-Pad (browser buttons 12=up 13=down 14=left 15=right)
             # The browser Gamepad API can report the hat as floating-point axes (on some

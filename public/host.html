@@ -1492,7 +1492,9 @@
       const offer = await pc.createOffer();
       
       // Force higher starting bitrate (3000kbps) so quality doesn't start at 144p
-      const modifiedSdp = offer.sdp.replace(/(m=video.*\r\n)/g, '$1b=AS:3000\r\n');
+      // Note: Removed manual b=AS hard-cap to allow bitrate to scale to 8Mbps+ if selected.
+      let modifiedSdp = offer.sdp;
+      modifiedSdp = modifiedSdp.replace(/(a=fmtp:96 .*)\r\n/g, '$1;x-google-start-bitrate=3000\r\n');
       
       await pc.setLocalDescription({ type: offer.type, sdp: modifiedSdp });
       ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));

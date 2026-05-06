@@ -9,6 +9,7 @@ app.commandLine.appendSwitch('enable-features',
   'VaapiVideoEncoder,VaapiVideoDecoder,PlatformHEVCDecoderSupport');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 const CONFIG_DIR = path.join(app.getPath('userData'), 'NearsecTogether');
@@ -101,7 +102,7 @@ async function createWindow() {
   // We pass the desktopCapturer source directly — no system picker string.
   const { desktopCapturer } = require('electron');
   win.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen'] }).then(sources => {
+    desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
       // Pass the first screen source — getDisplayMedia's own picker still runs in page
       callback({ video: sources[0], audio: 'loopback' });
     }).catch(err => {
