@@ -1,662 +1,1003 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="description" content="NearsecTogether">
-<title>NearsecTogether</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root { --bg:#080808; --accent:#00ff88; --muted:#555; --danger:#ff4444; --warn:#ffaa00; }
-  html, body { width:100%; height:100%; background:var(--bg); overflow:hidden; font-family:'IBM Plex Mono',monospace; touch-action:manipulation; }
+  <meta charset="utf-8">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="description" content="NearsecTogether">
+  <title>NearsecTogether</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
 
-  /* ── Video ─────────────────────────────────────── */
-  #video { position:fixed; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:block; }
-
-  /* ── PIN screen ────────────────────────────────── */
-  #pinScreen {
-    position:fixed; inset:0; background:#0a0a0a;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
-    z-index:500;
-  }
-  #pinScreen.gone { display:none; }
-  #pinScreen h2 { font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--accent); }
-  #pinInput {
-    background:#141414; border:1px solid #333; color:#eee; font-family:inherit;
-    font-size:32px; letter-spacing:.4em; padding:10px 18px; width:180px; text-align:center; outline:none;
-    -moz-appearance:textfield;
-  }
-  #pinInput::-webkit-outer-spin-button, #pinInput::-webkit-inner-spin-button { -webkit-appearance:none; }
-  #pinInput:focus { border-color:var(--accent); }
-  #pinSubmit { background:none; border:1px solid var(--accent); color:var(--accent); font-family:inherit; font-size:11px; padding:9px 28px; cursor:pointer; letter-spacing:.1em; }
-  #pinSubmit:hover { background:var(--accent); color:#000; }
-  #pinErr { color:var(--danger); font-size:11px; min-height:16px; }
-
-  /* ── Waiting / connecting overlay ──────────────── */
-  #overlay {
-    position:fixed; inset:0;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
-    background:var(--bg); z-index:100; transition:opacity .4s;
-  }
-  #overlay.gone { opacity:0; pointer-events:none; }
-  .spin { width:30px; height:30px; border:2px solid #1a1a1a; border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  #overlayStatus { font-size:12px; color:var(--muted); }
-
-  /* Kishi / gamepad activation prompt */
-  #gpPrompt {
-    margin-top:8px; padding:10px 20px;
-    border:1px solid #252525; background:#0f0f0f;
-    font-size:11px; color:#444; text-align:center; line-height:1.8; cursor:pointer;
-    transition:border-color .2s;
-  }
-  #gpPrompt:hover { border-color:var(--accent); color:var(--accent); }
-  #gpPrompt.active { border-color:var(--accent); color:var(--accent); }
-  #gpPrompt.gone { display:none; }
-
-  /* ── Top bar ───────────────────────────────────── */
-  #topbar {
-    position:fixed; top:0; left:0; right:0; padding:8px 14px;
-    display:flex; align-items:center; gap:8px;
-    font-size:11px; color:var(--muted);
-    background:linear-gradient(to bottom,rgba(0,0,0,.75),transparent);
-    opacity:0; transition:opacity .3s; z-index:50; pointer-events:none;
-  }
-  body:hover #topbar { opacity:1; }
-  .dot-live { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 6px var(--accent); animation:pulse 2s infinite; display:none; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-  #codecLabel { font-size:9px; color:#333; padding:1px 5px; border:1px solid #1e1e1e; border-radius:2px; margin-left:4px; }
-
-  /* ── Side tab ──────────────────────────────────── */
-  #bar {
-    position:fixed; right:0; top:50%; transform:translateY(-50%);
-    width:clamp(8px,.7vw,14px); overflow:hidden; background:rgba(0,0,0,.9);
-    border-radius:5px 0 0 5px; border:1px solid #1a1a1a; border-right:none;
-    transition:width .2s; z-index:200;
-  }
-  #bar:hover, #bar.open { width:clamp(90px,9vw,130px); }
-  #bar-inner { padding:clamp(5px,.6vw,10px); display:flex; flex-direction:column; gap:clamp(3px,.4vw,6px); min-width:82px; }
-  #bar button {
-    background:none; border:1px solid #222; color:#555; font-family:inherit;
-    font-size:clamp(9px,.9vw,12px); padding:clamp(3px,.4vw,6px) clamp(4px,.5vw,8px);
-    cursor:pointer; white-space:nowrap; width:100%;
-  }
-  #bar button:hover { border-color:var(--accent); color:var(--accent); }
-  #bartap { position:fixed; right:0; top:50%; transform:translateY(-50%); width:clamp(8px,.7vw,14px); height:clamp(40px,6vh,80px); z-index:199; background:transparent; border:none; cursor:pointer; }
-
-  /* ── Chat ──────────────────────────────────────── */
-  #chatPanel { position:fixed; bottom:0; left:0; right:0; height:260px; background:rgba(8,8,8,.95); border-top:1px solid #1a1a1a; display:flex; flex-direction:column; transform:translateY(100%); transition:transform .2s; z-index:150; }
-  #chatPanel.open { transform:translateY(0); }
-  #chatLog { flex:1; overflow-y:auto; padding:5px 10px; font-size:clamp(9px,1vmin,13px); display:flex; flex-direction:column; gap:2px; }
-  .cmsg { line-height:1.5; color:#888; }
-  .cname { color:var(--accent); margin-right:4px; }
-  .cname.me { color:var(--warn); }
-  #chatInput { display:flex; border-top:1px solid #1a1a1a; flex-shrink:0; }
-  #chatMsg { flex:1; background:#111; border:none; color:#eee; font-family:inherit; font-size:clamp(9px,1vmin,13px); padding:6px 10px; outline:none; }
-  #chatSend { background:none; border:none; border-left:1px solid #1a1a1a; color:var(--muted); font-size:11px; padding:0 12px; cursor:pointer; }
-  #chatSend:hover { color:var(--accent); }
-
-  /* Landscape rotation — applies to both video and canvas */
-  @media (orientation:portrait) {
-    #video, #frameCanvas {
-      width:100vh; height:100vw;
-      transform-origin:top left;
-      transform:rotate(90deg) translateX(0) translateY(-100%);
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-  }
-    #topFsBtn {
-      position: absolute;
+
+    :root {
+      --bg: #080808;
+      --accent: #c084fc;
+      --accent-green: #00ff88;
+      --accent-orange: #ffaa88;
+      --muted: #555;
+      --danger: #ff4444;
+      --warn: #ffaa00;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      overflow: hidden;
+      font-family: 'IBM Plex Mono', monospace;
+      touch-action: manipulation;
+    }
+
+    /* ── Video ─────────────────────────────────────── */
+    #video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      display: block;
+    }
+
+    /* ── PIN screen ────────────────────────────────── */
+    #pinScreen {
+      position: fixed;
+      inset: 0;
+      background: #0a0a0a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 500;
+    }
+
+    #pinScreen.gone {
+      display: none;
+    }
+
+    #pinScreen h2 {
+      font-size: 12px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    #pinInput {
+      background: #141414;
+      border: 1px solid #333;
+      color: #eee;
+      font-family: inherit;
+      font-size: 32px;
+      letter-spacing: .4em;
+      padding: 10px 18px;
+      width: 180px;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+
+    #pinInput::-webkit-outer-spin-button,
+    #pinInput::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+    }
+
+    #pinInput:focus {
+      border-color: var(--accent);
+    }
+
+    #nameInput {
+      background: #141414;
+      border: 1px solid #333;
+      color: #eee;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px;
+      width: 180px;
+      text-align: center;
+      outline: none;
+      margin-bottom: 4px;
+    }
+
+    #pinSubmit {
+      background: none;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 11px;
+      padding: 9px 28px;
+      cursor: pointer;
+      letter-spacing: .1em;
+    }
+
+    #pinSubmit:hover {
+      background: var(--accent);
+      color: #000;
+    }
+
+    #pinErr {
+      color: var(--danger);
+      font-size: 11px;
+      min-height: 16px;
+    }
+
+    /* ── Waiting / connecting overlay ──────────────── */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: var(--bg);
+      z-index: 100;
+      transition: opacity .4s;
+    }
+
+    #overlay.gone {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spin {
+      width: 30px;
+      height: 30px;
+      border: 2px solid #1a1a1a;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    #overlayStatus {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Kishi / gamepad activation prompt */
+    #gpPrompt {
+      margin-top: 8px;
+      padding: 10px 20px;
+      border: 1px solid #252525;
+      background: #0f0f0f;
+      font-size: 11px;
+      color: #444;
+      text-align: center;
+      line-height: 1.8;
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+
+    #gpPrompt:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    #gpPrompt.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    #gpPrompt.gone {
+      display: none;
+    }
+
+    /* ── Top bar ───────────────────────────────────── */
+    #topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      background: linear-gradient(to bottom, rgba(0, 0, 0, .75), transparent);
+      opacity: 0;
+      transition: opacity .3s;
+      z-index: 50;
+      pointer-events: none;
+    }
+
+    body:hover #topbar {
+      opacity: 1;
+    }
+
+    .dot-live {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse 2s infinite;
+      display: none;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .3
+      }
+    }
+
+    #codecLabel {
+      font-size: 9px;
+      color: #333;
+      padding: 1px 5px;
+      border: 1px solid #1e1e1e;
+      border-radius: 2px;
+      margin-left: 4px;
+    }
+
+    /* ── Side tab ──────────────────────────────────── */
+    #bar {
+      position: fixed;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: clamp(8px, .7vw, 14px);
+      overflow: hidden;
+      background: rgba(0, 0, 0, .9);
+      border-radius: 5px 0 0 5px;
+      border: 1px solid #1a1a1a;
+      border-right: none;
+      transition: width .2s;
+      z-index: 200;
+    }
+
+    #bar:hover,
+    #bar.open {
+      width: clamp(90px, 9vw, 130px);
+    }
+
+    #bar-inner {
+      padding: clamp(5px, .6vw, 10px);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(3px, .4vw, 6px);
+      min-width: 82px;
+    }
+
+    #bar button {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid #222;
+      border-radius: 20px;
+      color: #777;
+      font-family: inherit;
+      font-size: clamp(9px, .9vw, 12px);
+      padding: clamp(5px, .5vw, 8px) clamp(8px, .8vw, 12px);
+      cursor: pointer;
+      white-space: nowrap;
+      width: 100%;
+      transition: all 0.2s;
+    }
+
+    #bar button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    #bartap {
+      position: fixed;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: clamp(8px, .7vw, 14px);
+      height: clamp(40px, 6vh, 80px);
+      z-index: 199;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* ── Chat ──────────────────────────────────────── */
+    #chatPanel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 260px;
+      background: rgba(8, 8, 8, .95);
+      border-top: 1px solid #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      transform: translateY(100%);
+      transition: transform .2s;
+      z-index: 150;
+    }
+
+    #chatPanel.open {
+      transform: translateY(0);
+    }
+
+    #chatLog {
+      flex: 1;
+      overflow-y: auto;
+      padding: 5px 10px;
+      font-size: clamp(9px, 1vmin, 13px);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .cmsg {
+      line-height: 1.5;
+      color: #888;
+    }
+
+    .cname {
+      color: var(--accent);
+      margin-right: 4px;
+    }
+
+    .cname.me {
+      color: var(--warn);
+    }
+
+    #chatInput {
+      display: flex;
+      border-top: 1px solid #1a1a1a;
+      flex-shrink: 0;
+    }
+
+    #chatMsg {
+      flex: 1;
+      background: #111;
+      border: none;
+      color: #eee;
+      font-family: inherit;
+      font-size: clamp(9px, 1vmin, 13px);
+      padding: 6px 10px;
+      outline: none;
+    }
+
+    #chatSend {
+      background: none;
+      border: none;
+      border-left: 1px solid #1a1a1a;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 0 12px;
+      cursor: pointer;
+    }
+
+    #chatSend:hover {
+      color: var(--accent);
+    }
+
+    /* Landscape rotation — applies to both video and canvas */
+    @media (orientation:portrait) {
+
+      #video,
+      #frameCanvas {
+        width: 100vh;
+        height: 100vw;
+        transform-origin: top left;
+        transform: rotate(90deg) translateX(0) translateY(-100%);
+      }
+    }
+
+    .fs-btn-overlay {
+      position: fixed;
       top: 20px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.4);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.2);
+      background: var(--accent-dim);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 15px var(--accent-dim);
       border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      font-size: 18px;
-      cursor: pointer;
+      width: 44px;
+      height: 44px;
       display: flex;
       align-items: center;
       justify-content: center;
-      backdrop-filter: blur(8px);
-      z-index: 200;
-      transition: all 0.2s;
+      color: var(--accent);
+      cursor: pointer;
+      z-index: 1000;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      opacity: 0;
     }
-    #topFsBtn:hover {
-      background: rgba(255,255,255,0.2);
-      transform: translateX(-50%) scale(1.1);
+    body:hover .fs-btn-overlay {
+      opacity: 1;
     }
-    #topFsBtn:active { transform: translateX(-50%) scale(0.9); }
+    .fs-btn-overlay:hover {
+      background: var(--accent);
+      color: #000;
+      transform: translateX(-50%) scale(1.15);
+      box-shadow: 0 0 25px var(--accent);
+      border-color: var(--accent);
+    }
+    .fs-btn-overlay svg {
+      width: 20px;
+      height: 20px;
+    }
+    
+    .brand-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .brand-img {
+      height: 64px;
+      filter: drop-shadow(0 0 15px rgba(187, 136, 255, 0.4));
+    }
+    .brand-name {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
   </style>
 </head>
+
 <body>
+  <div id="pinScreen">
+    <div class="brand-wrap">
+      <img src="/assets/NearsecTogether.png" alt="NearsecTogether" class="brand-img">
+      <div class="brand-name">NearsecTogether</div>
+    </div>
+    <div style="font-size:10px;color:#888;letter-spacing:0.05em">Play local co-op games over the internet
+    </div>
 
-<div id="pinScreen">
-  <h2>🎮 NearsecTogether</h2>
-  <div style="font-size:10px;color:#888;margin-top:4px;letter-spacing:0.05em">Play local co-op games over the internet</div>
+    <div style="margin-top:20px;font-size:12px;color:#ccc">Display Name:</div>
+    <input id="nameInput" type="text" placeholder="Guest" maxlength="20" onkeydown="if(event.key==='Enter')submitPin()">
 
-  <div style="margin-top:20px;font-size:12px;color:#ccc">Display Name:</div>
-  <input id="nameInput" type="text" placeholder="Guest" maxlength="20"
-    onkeydown="if(event.key==='Enter')submitPin()">
+    <div id="pinWrap">
+      <div style="margin-top:10px;font-size:12px;color:#ccc">Enter PIN:</div>
+      <input id="pinInput" type="number" placeholder="----" maxlength="4"
+        oninput="if(this.value.length>4)this.value=this.value.slice(0,4)"
+        onkeydown="if(event.key==='Enter')submitPin()">
+    </div>
 
-  <div id="pinWrap">
-    <div style="margin-top:10px;font-size:12px;color:#ccc">Enter PIN:</div>
-    <input id="pinInput" type="number" placeholder="----" maxlength="4"
-      oninput="if(this.value.length>4)this.value=this.value.slice(0,4)"
-      onkeydown="if(event.key==='Enter')submitPin()">
+    <button id="pinSubmit" onclick="submitPin()">Join Stream</button>
+    <div id="pinErr"></div>
   </div>
 
-  <button id="pinSubmit" onclick="submitPin()">Join Stream</button>
-  <div id="pinErr"></div>
-</div>
+  <!-- Audio-only: video element kept for audio track, hidden when canvas takes over -->
+  <video id="video" autoplay playsinline disableRemotePlayback style="display:block"></video>
+  <!-- Canvas: used by MediaStreamTrackProcessor for always-latest-frame rendering -->
+  <canvas id="frameCanvas"
+    style="position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none"></canvas>
 
-<!-- Audio-only: video element kept for audio track, hidden when canvas takes over -->
-<video id="video" autoplay playsinline disableRemotePlayback style="display:block"></video>
-<!-- Canvas: used by MediaStreamTrackProcessor for always-latest-frame rendering -->
-<canvas id="frameCanvas" style="position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none"></canvas>
-
-<div id="overlay">
-  <div class="spin" id="spinner"></div>
-  <div id="overlayStatus">Connecting...</div>
-  <!-- Kishi / Gamepad activation prompt — visible until user taps -->
-  <div id="gpPrompt" onclick="activateGamepad()">
-    🎮 Tap here to activate controller<br>
-    <span style="font-size:9px;color:#333">(Required by browser — once only)</span>
+  <div id="overlay">
+    <div class="brand-wrap">
+      <img src="/assets/NearsecTogether.png" alt="NearsecTogether" class="brand-img" style="height:48px;">
+      <div class="brand-name" style="font-size:10px;">NearsecTogether</div>
+    </div>
+    <div class="spin" id="spinner"></div>
+    <div id="overlayStatus" style="color: var(--accent); text-shadow: 0 0 10px var(--accent);">Connecting...</div>
+    <!-- Kishi / Gamepad activation prompt — visible until user taps -->
+    <div id="gpPrompt" onclick="activateGamepad()" style="border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 10px var(--accent-dim);">
+      🎮 Tap here to activate controller<br>
+      <span style="font-size:9px;color:#333">(Required by browser — once only)</span>
+    </div>
   </div>
-  <!-- Floating Fullscreen Button (Top Middle) -->
-  <button id="topFsBtn" onclick="toggleFS()" title="Toggle Fullscreen">⛶</button>
-</div>
+  
+  <button class="fs-btn-overlay" id="fsOverlayBtn" onclick="toggleFS()" title="Toggle Fullscreen" style="border: 2px solid var(--accent) !important; background: rgba(0,0,0,0.6) !important;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+    </svg>
+  </button>
 
-<div id="topbar">
-  <span class="dot-live" id="liveDot"></span>
-  <span id="topStatus">Connecting...</span>
-  <span id="codecLabel">—</span>
-  <span id="statsHud" style="margin-left:auto;display:none;gap:8px;font-size:9px;color:#444;display:none;align-items:center"></span>
-</div>
-
-<div id="bar"><div id="bar-inner">
-  <button id="fsBtn"   onclick="toggleFS()">[ ] Full</button>
-  <button id="audBtn"  onclick="toggleAudio()">♪ Audio</button>
-  <button id="chatBtn" onclick="toggleChat()">✎ Chat</button>
-</div></div>
-<button id="bartap" onclick="document.getElementById('bar').classList.toggle('open')"></button>
-
-<div id="chatPanel">
-  <div id="chatLog"></div>
-  <div id="chatInput">
-    <input id="chatMsg" placeholder="Message..." maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
-    <button id="chatSend" onclick="sendChat()">Send</button>
+  <div id="topbar">
+    <span class="dot-live" id="liveDot"></span>
+    <span id="topStatus">Connecting...</span>
+    <span id="codecLabel">—</span>
+    <span id="statsHud"
+      style="margin-left:auto;display:none;gap:8px;font-size:9px;color:#444;display:none;align-items:center"></span>
   </div>
-</div>
 
-<script>
-const proto  = location.protocol === 'https:' ? 'wss' : 'ws';
-const host   = location.host;
-let ws, pc, myId = sessionStorage.getItem('ns_viewer_id');
-let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random()*9000+1000);
-document.getElementById('nameInput').value = myName;
-const CLIENT_VERSION = "1.0.0";
-let enteredPin = '', audioMuted = false;
+  <div id="bar">
+    <div id="bar-inner">
+      <button id="fsBtn" onclick="toggleFS()">[ ] Full</button>
+      <button id="audBtn" onclick="toggleAudio()">♪ Audio</button>
+      <button id="chatBtn" onclick="toggleChat()">✎ Chat</button>
+    </div>
+  </div>
+  <button id="bartap" onclick="document.getElementById('bar').classList.toggle('open')"></button>
 
-// ── Codec priority for receiver ────────────────────────────────────────────────
-// Match host: H.264 (hardware) > VP8 (fast software fallback)
-const CODEC_PRIORITY = ['video/H264', 'video/VP8'];
+  <div id="chatPanel">
+    <div id="chatLog"></div>
+    <div id="chatInput">
+      <input id="chatMsg" placeholder="Message..." maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
+      <button id="chatSend" onclick="sendChat()">Send</button>
+    </div>
+  </div>
 
-function preferReceiverCodec(transceiver) {
-  const caps = RTCRtpReceiver.getCapabilities?.('video');
-  if (!caps || !transceiver) return null;
-  const sorted = [
-    ...CODEC_PRIORITY.flatMap(mime => caps.codecs.filter(c => c.mimeType === mime)),
-    ...caps.codecs.filter(c => !CODEC_PRIORITY.includes(c.mimeType))
-  ];
-  try { transceiver.setCodecPreferences(sorted); return sorted[0]?.mimeType || null; } catch { return null; }
-}
+  <script>
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const host = location.host;
+    let ws, pc, myId = sessionStorage.getItem('ns_viewer_id');
+    let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random() * 9000 + 1000);
+    document.getElementById('nameInput').value = myName;
+    const CLIENT_VERSION = "1.0.0";
+    let enteredPin = '', audioMuted = false;
 
-// ── Always-latest-frame engine ────────────────────────────────────────────────
-// MediaStreamTrackProcessor pulls decoded VideoFrames off the WebRTC track.
-// We drain the queue as fast as possible and only ever render the newest one.
-// This bypasses the video element's internal buffer entirely.
-const video       = document.getElementById('video');
-const frameCanvas = document.getElementById('frameCanvas');
-const frameCtx    = frameCanvas.getContext('2d', { alpha: false, desynchronized: true });
-let   processorRunning = false;
-let   lastFlush = 0;
+    // ── Codec priority for receiver ────────────────────────────────────────────────
+    // Match host: H.264 (hardware) > VP8 (fast software fallback)
+    const CODEC_PRIORITY = ['video/H264', 'video/VP8'];
 
-function startFrameProcessor(track) {
-  if (!window.MediaStreamTrackProcessor) {
-    // Fallback: use video element + stats-based flush
-    if (!video.srcObject) video.srcObject = new MediaStream();
-    video.srcObject.addTrack(track);
-    video.onplaying = () => {
-      showOverlay(false);
-      setStatus('Live', true);
-      document.getElementById('spinner').style.display = 'none';
+    function preferReceiverCodec(transceiver) {
+      const caps = RTCRtpReceiver.getCapabilities?.('video');
+      if (!caps || !transceiver) return null;
+      const sorted = [
+        ...CODEC_PRIORITY.flatMap(mime => caps.codecs.filter(c => c.mimeType === mime)),
+        ...caps.codecs.filter(c => !CODEC_PRIORITY.includes(c.mimeType))
+      ];
+      try { transceiver.setCodecPreferences(sorted); return sorted[0]?.mimeType || null; } catch { return null; }
+    }
+
+    // ── Always-latest-frame engine ────────────────────────────────────────────────
+    // MediaStreamTrackProcessor pulls decoded VideoFrames off the WebRTC track.
+    // We drain the queue as fast as possible and only ever render the newest one.
+    // This bypasses the video element's internal buffer entirely.
+    const video = document.getElementById('video');
+    const frameCanvas = document.getElementById('frameCanvas');
+    const frameCtx = frameCanvas.getContext('2d', { alpha: false });
+    let processorRunning = false;
+    let lastFlush = 0;
+
+    function startFrameProcessor(track) {
+      if (!window.MediaStreamTrackProcessor) {
+        // Fallback: use video element + stats-based flush
+        if (!video.srcObject) video.srcObject = new MediaStream();
+        video.srcObject.addTrack(track);
+        video.onplaying = () => {
+          showOverlay(false);
+          setStatus('Live', true);
+          document.getElementById('spinner').style.display = 'none';
+          document.getElementById('gpPrompt').classList.add('gone');
+        };
+        return;
+      }
+
+      processorRunning = true;
+      frameCanvas.style.display = 'block';
+      video.style.display = 'none'; // video element kept only for audio
+
+      const processor = new MediaStreamTrackProcessor({ track });
+      const reader = processor.readable.getReader();
+      let pending = null; // the latest decoded frame waiting to be drawn
+      let firstFrame = true;
+
+      // Drain loop: read frames as fast as they arrive, discard all but the newest.
+      // This is the key: by consuming faster than the jitter buffer can fill,
+      // we always get the most recent frame with no stale backlog.
+      (async () => {
+        while (processorRunning) {
+          let result;
+          try { result = await reader.read(); } catch { break; }
+          if (result.done) break;
+          if (pending) pending.close(); // throw away the old frame
+          pending = result.value;
+        }
+      })();
+
+      // Render loop: draw whatever the latest frame is at 60fps
+      (function renderLoop() {
+        if (!processorRunning) return;
+        requestAnimationFrame(renderLoop);
+        if (!pending) return;
+        if (frameCanvas.width !== pending.displayWidth ||
+          frameCanvas.height !== pending.displayHeight) {
+          frameCanvas.width = pending.displayWidth;
+          frameCanvas.height = pending.displayHeight;
+        }
+        frameCtx.drawImage(pending, 0, 0);
+        pending.close();
+        pending = null;
+        if (firstFrame) {
+          firstFrame = false;
+          showOverlay(false);
+          setStatus('Live', true);
+          document.getElementById('spinner').style.display = 'none';
+          document.getElementById('gpPrompt').classList.add('gone');
+        }
+      })();
+
+      track.addEventListener('ended', () => {
+        processorRunning = false;
+        frameCanvas.style.display = 'none';
+        video.style.display = 'block';
+      });
+    }
+
+    // ── Gamepad polling + heartbeat ───────────────────────────────────────────────
+    // Sends on change OR every 100ms to keep held analog values flowing
+    let gpPolling = false, gpRaf = null, lastGpStr = {}, lastGpSend = {};
+
+    function activateGamepad() {
+      if (gpPolling) return;
+      gpPolling = true;
+      document.getElementById('gpPrompt').classList.add('active');
+      document.getElementById('gpPrompt').textContent = '🎮 Controller active';
+      pollGamepad();
+    }
+
+    function pollGamepad() {
+      if (!gpPolling) return;
+      gpRaf = requestAnimationFrame(pollGamepad);
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      const now = Date.now();
+      for (const gp of pads) {
+        if (!gp) continue;
+        const forceHeartbeat = now - (lastGpSend[gp.index] || 0) > 100;
+        const state = {
+          type: 'gamepad',
+          padIndex: gp.index,
+          axes: Array.from(gp.axes).map(v => Math.round(v * 32767)),
+          buttons: gp.buttons.map(b => ({ pressed: b.pressed, value: Math.round(b.value * 255) }))
+        };
+        const str = JSON.stringify(state);
+        if (str !== lastGpStr[gp.index] || forceHeartbeat) {
+          lastGpStr[gp.index] = str;
+          lastGpSend[gp.index] = now;
+          if (ws && ws.readyState === 1) ws.send(str);
+        }
+      }
+    }
+
+    // Activate on ANY user gesture — tapping overlay, video, anything
+    ['click', 'touchstart', 'keydown'].forEach(ev =>
+      document.addEventListener(ev, () => { if (!gpPolling) activateGamepad(); }, { once: true, passive: true })
+    );
+    window.addEventListener('gamepadconnected', (e) => {
+      console.log('Gamepad connected:', e.gamepad.id, 'Index:', e.gamepad.index);
+      if (!gpPolling) activateGamepad();
       document.getElementById('gpPrompt').classList.add('gone');
-    };
-    return;
-  }
-
-  processorRunning = true;
-  frameCanvas.style.display = 'block';
-  video.style.display = 'none'; // video element kept only for audio
-
-  const processor = new MediaStreamTrackProcessor({ track });
-  const reader    = processor.readable.getReader();
-  let   pending   = null; // the latest decoded frame waiting to be drawn
-  let   firstFrame = true;
-
-  // Drain loop: read frames as fast as they arrive, discard all but the newest.
-  // This is the key: by consuming faster than the jitter buffer can fill,
-  // we always get the most recent frame with no stale backlog.
-  (async () => {
-    while (processorRunning) {
-      let result;
-      try { result = await reader.read(); } catch { break; }
-      if (result.done) break;
-      const f = result.value;
-      if (frameCanvas.width  !== f.displayWidth ||
-          frameCanvas.height !== f.displayHeight) {
-        frameCanvas.width  = f.displayWidth;
-        frameCanvas.height = f.displayHeight;
-      }
-      frameCtx.drawImage(f, 0, 0);
-      f.close();
-
-      if (firstFrame) {
-        firstFrame = false;
-        showOverlay(false);
-        setStatus('Live', true);
-        document.getElementById('spinner').style.display = 'none';
-        document.getElementById('gpPrompt').classList.add('gone');
-      }
-    }
-  })();
-
-
-
-  track.addEventListener('ended', () => {
-    processorRunning = false;
-    frameCanvas.style.display = 'none';
-    video.style.display = 'block';
-  });
-}
-
-// ── Gamepad polling + heartbeat ───────────────────────────────────────────────
-// Sends on change OR every 100ms to keep held analog values flowing
-let gpPolling = false, gpRaf = null, lastGpStr = {}, lastGpSend = {};
-
-function activateGamepad() {
-  if (gpPolling) return;
-  gpPolling = true;
-  document.getElementById('gpPrompt').classList.add('active');
-  document.getElementById('gpPrompt').textContent = '🎮 Controller active';
-  pollGamepad();
-}
-
-function pollGamepad() {
-  if (!gpPolling) return;
-  gpRaf = requestAnimationFrame(pollGamepad);
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  const now = Date.now();
-  // Support up to 16 controllers for massive local co-op (e.g. Smash Bros)
-  for (let i = 0; i < Math.min(pads.length, 16); i++) {
-    const gp = pads[i];
-    if (!gp) continue;
-    const forceHeartbeat = now - (lastGpSend[gp.index] || 0) > 100;
-    const state = {
-      type: 'gamepad',
-      padIndex: gp.index,
-      axes: Array.from(gp.axes).map(v => Math.round(v * 32767)),
-      buttons: gp.buttons.map(b => ({ pressed: b.pressed, value: Math.round(b.value * 255) }))
-    };
-    const str = JSON.stringify(state);
-    if (str !== lastGpStr[gp.index] || forceHeartbeat) {
-      lastGpStr[gp.index] = str;
-      lastGpSend[gp.index] = now;
-      if (ws && ws.readyState === 1) ws.send(str);
-    }
-  }
-}
-
-// Activate on ANY user gesture — tapping overlay, video, anything
-['click','touchstart','keydown'].forEach(ev =>
-  document.addEventListener(ev, (e) => {
-    if (!gpPolling) activateGamepad();
-    if (ev === 'keydown' && e.key.toLowerCase() === 'f') {
-      toggleFS();
-    }
-  }, { once: ev !== 'keydown', passive: ev !== 'keydown' })
-);
-let knownPads = new Set();
-window.addEventListener('gamepadconnected', (e) => {
-  console.log('Gamepad connected:', e.gamepad.id, 'Index:', e.gamepad.index);
-  if (!gpPolling) activateGamepad();
-  document.getElementById('gpPrompt').classList.add('gone');
-  
-  // Dedup: only send gpid to server if it's a new unique device in a valid slot
-  const padKey = e.gamepad.index + '_' + e.gamepad.id;
-  if (!knownPads.has(padKey) && e.gamepad.index < 16) {
-    knownPads.add(padKey);
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'gpid', padIndex: e.gamepad.index, id: e.gamepad.id }));
-  }
-});
-
-// ── Overlay / status helpers ──────────────────────────────────────────────────
-function setStatus(msg, live) {
-  document.getElementById('overlayStatus').textContent = msg;
-  document.getElementById('topStatus').textContent = msg;
-  if (live) document.getElementById('liveDot').style.display = 'inline-block';
-}
-function showOverlay(v) {
-  document.getElementById('overlay').classList.toggle('gone', !v);
-}
-
-// ── WebRTC ───────────────────────────────────────────────────────────────────
-let freezeTimer = null;
-
-async function createPC() {
-  if (pc) { pc.close(); pc = null; }
-  clearInterval(freezeTimer);
-
-  pc = new RTCPeerConnection({
-    iceServers: [
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-    ]
-  });
-  // ICE candidate buffer — holds candidates that arrive before setRemoteDescription
-  pc._iceBuf = [];
-  pc._remoteSet = false;
-
-  pc.ontrack = (e) => {
-    // Jitter buffer minimums — belt-and-suspenders even with frame processor
-    try {
-      if ('jitterBufferTarget'    in e.receiver) e.receiver.jitterBufferTarget    = 0;
-      if ('playoutDelayHint'      in e.receiver) e.receiver.playoutDelayHint      = 0;
-      if ('jitterBufferDelayHint' in e.receiver) e.receiver.jitterBufferDelayHint = 0;
-    } catch {}
-
-    if (e.track.kind === 'video') {
-      // Codec badge
-      const codec = preferReceiverCodec(e.transceiver);
-      if (codec) document.getElementById('codecLabel').textContent = codec.split('/')[1];
-      // Route to frame processor — always-latest-frame drain loop
-      processorRunning = false; // stop any previous processor
-      startFrameProcessor(e.track);
-
-      // Freeze detection for canvas path (no requestVideoFrameCallback on canvas)
-      if (window.MediaStreamTrackProcessor) {
-        let lastRender = Date.now();
-        const origRender = frameCtx.drawImage.bind(frameCtx);
-        frameCtx.drawImage = (...args) => { lastRender = Date.now(); origRender(...args); };
-        clearInterval(freezeTimer);
-        freezeTimer = setInterval(() => {
-          if (processorRunning && Date.now() - lastRender > 3000) {
-            console.warn('[freeze] Canvas stalled 3s — reconnecting');
-            clearInterval(freezeTimer);
-            processorRunning = false;
-            if (pc) { pc.close(); pc = null; }
-            showOverlay(true); setStatus('Reconnecting (encoder reset)...');
-            document.getElementById('spinner').style.display = 'block';
-            setTimeout(connect, 500);
-          }
-        }, 1000);
-      }
-    }
-
-    if (e.track.kind === 'audio') {
-      // Audio always stays in the video element regardless of canvas mode
-      if (!video.srcObject) video.srcObject = new MediaStream();
-      video.srcObject.addTrack(e.track);
-      video.play().catch(() => {});
-    }
-  };
-
-  // Filter empty ICE candidates — prevent 'Failed to parse: ""' errors on host
-  pc.onicecandidate = (e) => {
-    if (e.candidate && e.candidate.candidate) {
-      ws.send(JSON.stringify({ type:'ice-viewer', candidate:e.candidate }));
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-      clearInterval(freezeTimer);
-      processorRunning = false;
-      showOverlay(true); setStatus('Reconnecting...');
-      video.srcObject = null;
-      document.getElementById('spinner').style.display = 'block';
-      setTimeout(connect, 2000);
-    }
-  };
-}
-
-
-// ── WebSocket signaling ───────────────────────────────────────────────────────
-function connect() {
-  const url = proto + '://' + host + '/ws/viewer' + (enteredPin ? '?pin=' + enteredPin : '');
-  ws = new WebSocket(url);
-
-  ws.onopen = () => {
-    setStatus('Waiting for host...');
-    ws.send(JSON.stringify({ type: 'set-name', name: myName }));
-  };
-
-  ws.onmessage = async (e) => {
-    const msg = JSON.parse(e.data);
-
-    if (msg.type === 'pin-rejected') {
-      document.getElementById('pinScreen').classList.remove('gone');
-      document.getElementById('pinErr').textContent = 'Wrong PIN — try again';
-      ws.close(); return;
-    }
-    if (msg.type === 'your-id') {
-      myId = msg.viewerId;
-      sessionStorage.setItem('ns_viewer_id', myId);
-    }
-    if (msg.type === 'host-stream-ready') {
-      setStatus('Host found, connecting...');
-      await createPC();
-    }
-    if (msg.type === 'offer') {
-      if (!pc) await createPC();
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-      pc._remoteSet = true;
-      // Flush any ICE candidates that arrived before the offer
-      for (const c of (pc._iceBuf || [])) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {}
-      }
-      pc._iceBuf = [];
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      ws.send(JSON.stringify({ type:'answer', sdp: pc.localDescription }));
-    }
-    if (msg.type === 'ice-host' && msg.candidate) {
-      if (!pc) return;
-      if (pc._remoteSet) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch {}
-      } else {
-        // Buffer it — remote description not set yet
-        pc._iceBuf = pc._iceBuf || [];
-        pc._iceBuf.push(msg.candidate);
-      }
-    }
-    if (msg.type === 'host-disconnected' || msg.type === 'host-stream-stopped') {
-      showOverlay(true); setStatus('Host stopped streaming');
-      if (pc) { pc.close(); pc = null; }
-      video.srcObject = null;
-    }
-    if (msg.type === 'host-not-streaming') {
-      showOverlay(true); setStatus('Host is not sharing their screen yet...');
-      document.getElementById('spinner').style.display = 'none';
-      if (pc) { pc.close(); pc = null; }
-      video.srcObject = null;
-    }
-    if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
-    if (msg.type === 'input-state') {
-      // Could dim the gamepad prompt if gp is disabled by host
-    }
-  };
-
-  ws.onopen = () => {
-    setStatus('Waiting for host...');
-    // Send our existing viewerId on reconnect so server reuses the same slot
-    // (prevents roster flooding from reconnect loops creating duplicate IDs)
-    if (myId) ws.send(JSON.stringify({ type: 'viewer-rejoin', viewerId: myId }));
-  };
-
-  ws.onclose = () => { setStatus('Reconnecting...'); setTimeout(connect, 2000); };
-}
-
-// ── PIN flow ──────────────────────────────────────────────────────────────────
-let pinRequired = false;
-fetch('/api/pin-required').then(r => r.json()).then(d => {
-  pinRequired = d.required;
-  if (!d.required) document.getElementById('pinWrap').style.display = 'none';
-}).catch(() => {
-  document.getElementById('pinWrap').style.display = 'none';
-});
-
-function submitPin() {
-  const nameVal = document.getElementById('nameInput').value.trim();
-  if (nameVal) {
-    myName = nameVal;
-    localStorage.setItem('ns_name', myName);
-  }
-
-  if (pinRequired) {
-    const val = document.getElementById('pinInput').value.trim();
-    if (val.length !== 4) { document.getElementById('pinErr').textContent = 'Enter 4 digits'; return; }
-    enteredPin = val;
-  }
-  document.getElementById('pinErr').textContent = '';
-  document.getElementById('pinScreen').classList.add('gone');
-  
-  fetch('/api/info')
-    .then(r => r.json())
-    .then(d => {
-      if (d.version && d.version !== CLIENT_VERSION) {
-        alert(`Version mismatch: Host is using v${d.version}, but you are using v${CLIENT_VERSION}. Things might not work perfectly!`);
-      }
-      connect();
-      if (!gpPolling) activateGamepad();
-    })
-    .catch(() => {
-      connect();
-      if (!gpPolling) activateGamepad();
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'gpid', padIndex: e.gamepad.index, id: e.gamepad.id }));
     });
-}
 
-// ── Chat ──────────────────────────────────────────────────────────────────────
-function appendChat(name, text, isMe) {
-  const el = document.getElementById('chatLog');
-  const d  = document.createElement('div');
-  d.className = 'cmsg';
-  d.innerHTML = '<span class="cname' + (isMe?' me':'') + '">' + name + '</span>' + text;
-  el.appendChild(d); el.scrollTop = el.scrollHeight;
-}
-function sendChat() {
-  const inp = document.getElementById('chatMsg');
-  const msg = inp.value.trim();
-  if (!msg || !ws || ws.readyState !== 1) return;
-  ws.send(JSON.stringify({ type:'chat', from:myName, msg }));
-  appendChat(myName, msg, true);
-  inp.value = '';
-}
-function toggleChat() { document.getElementById('chatPanel').classList.toggle('open'); }
-function toggleAudio() {
-  audioMuted = !audioMuted;
-  if (video.srcObject) video.srcObject.getAudioTracks().forEach(t => { t.enabled = !audioMuted; });
-  document.getElementById('audBtn').textContent = audioMuted ? '♪ Muted' : '♪ Audio';
-}
+    // ── Overlay / status helpers ──────────────────────────────────────────────────
+    function setStatus(msg, live) {
+      document.getElementById('overlayStatus').textContent = msg;
+      document.getElementById('topStatus').textContent = msg;
+      if (live) document.getElementById('liveDot').style.display = 'inline-block';
+    }
+    function showOverlay(v) {
+      document.getElementById('overlay').classList.toggle('gone', !v);
+    }
 
-// ── Screen wake lock — prevent phone sleeping during stream ──────────────────
-let wakeLock = null;
-async function acquireWakeLock() {
-  if (!('wakeLock' in navigator)) return;
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => {
-      // Re-acquire when tab comes back to foreground
+    // ── WebRTC ───────────────────────────────────────────────────────────────────
+    let freezeTimer = null;
+
+    async function createPC() {
+      if (pc) { pc.close(); pc = null; }
+      clearInterval(freezeTimer);
+
+      const isLocalView = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.') || location.hostname.startsWith('172.16.');
+
+      pc = new RTCPeerConnection({
+        iceServers: isLocalView ? [] : [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' },
+          // TURN — required when both sides are behind symmetric NAT (most home routers).
+          // Without this, WebRTC P2P silently fails ~90% of the time over the internet.
+          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+          { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+        ]
+      });
+      // ICE candidate buffer — holds candidates that arrive before setRemoteDescription
+      pc._iceBuf = [];
+      pc._remoteSet = false;
+
+      pc.ontrack = (e) => {
+        // Jitter buffer minimums — belt-and-suspenders even with frame processor
+        try {
+          if ('jitterBufferTarget' in e.receiver) e.receiver.jitterBufferTarget = 0;
+          if ('playoutDelayHint' in e.receiver) e.receiver.playoutDelayHint = 0;
+          if ('jitterBufferDelayHint' in e.receiver) e.receiver.jitterBufferDelayHint = 0;
+        } catch { }
+
+        if (e.track.kind === 'video') {
+          // Codec badge
+          const codec = preferReceiverCodec(e.transceiver);
+          if (codec) document.getElementById('codecLabel').textContent = codec.split('/')[1];
+          // Route to frame processor — always-latest-frame drain loop
+          processorRunning = false; // stop any previous processor
+          startFrameProcessor(e.track);
+
+            // Freeze detection for canvas path (no requestVideoFrameCallback on canvas)
+            if (window.MediaStreamTrackProcessor) {
+              let lastRender = Date.now();
+              const origRender = frameCtx.drawImage.bind(frameCtx);
+              frameCtx.drawImage = (...args) => { lastRender = Date.now(); origRender(...args); };
+              clearInterval(freezeTimer);
+              freezeTimer = setInterval(() => {
+                // Increased timeout to 10s to prevent false-positives during slow ICE gathering on LAN/VPN
+                if (processorRunning && Date.now() - lastRender > 10000) {
+                  console.warn('[freeze] Canvas stalled 10s — reconnecting');
+                  clearInterval(freezeTimer);
+                  processorRunning = false;
+                  if (pc) { pc.close(); pc = null; }
+                  showOverlay(true); setStatus('Reconnecting (encoder reset)...');
+                  document.getElementById('spinner').style.display = 'block';
+                  setTimeout(connect, 500);
+                }
+              }, 2000);
+            }
+        }
+
+        if (e.track.kind === 'audio') {
+          // Audio always stays in the video element regardless of canvas mode
+          if (!video.srcObject) video.srcObject = new MediaStream();
+          video.srcObject.addTrack(e.track);
+          video.play().catch(() => { });
+        }
+      };
+
+      // Filter empty ICE candidates — prevent 'Failed to parse: ""' errors on host
+      pc.onicecandidate = (e) => {
+        if (e.candidate && e.candidate.candidate) {
+          ws.send(JSON.stringify({ type: 'ice-viewer', candidate: e.candidate }));
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+          clearInterval(freezeTimer);
+          processorRunning = false;
+          showOverlay(true); setStatus('Reconnecting...');
+          video.srcObject = null;
+          document.getElementById('spinner').style.display = 'block';
+          setTimeout(connect, 2000);
+        }
+      };
+    }
+
+
+    // ── WebSocket signaling ───────────────────────────────────────────────────────
+    function connect() {
+      const url = proto + '://' + host + '/ws/viewer' + (enteredPin ? '?pin=' + enteredPin : '');
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        setStatus('Waiting for host...');
+        ws.send(JSON.stringify({ type: 'set-name', name: myName }));
+        // Rejoin session if we have a saved ID
+        if (myId) ws.send(JSON.stringify({ type: 'viewer-rejoin', viewerId: myId }));
+      };
+
+      ws.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === 'pin-rejected') {
+          document.getElementById('pinScreen').classList.remove('gone');
+          document.getElementById('pinErr').textContent = 'Wrong PIN — try again';
+          ws.close(); return;
+        }
+        if (msg.type === 'your-id') {
+          myId = msg.viewerId;
+          sessionStorage.setItem('ns_viewer_id', myId);
+        }
+        if (msg.type === 'host-connected') {
+          setStatus('Host is online, waiting for stream...');
+        }
+        if (msg.type === 'host-stream-ready') {
+          setStatus('Host found, connecting...');
+          await createPC();
+        }
+        if (msg.type === 'offer') {
+          if (!pc) await createPC();
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          pc._remoteSet = true;
+          // Flush any ICE candidates that arrived before the offer
+          for (const c of (pc._iceBuf || [])) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { }
+          }
+          pc._iceBuf = [];
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
+        }
+        if (msg.type === 'ice-host' && msg.candidate) {
+          if (!pc) return;
+          if (pc._remoteSet) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { }
+          } else {
+            // Buffer it — remote description not set yet
+            pc._iceBuf = pc._iceBuf || [];
+            pc._iceBuf.push(msg.candidate);
+          }
+        }
+        if (msg.type === 'host-disconnected' || msg.type === 'host-stream-stopped') {
+          showOverlay(true); setStatus('Host stopped streaming');
+          if (pc) { pc.close(); pc = null; }
+          video.srcObject = null;
+        }
+        if (msg.type === 'host-not-streaming') {
+          showOverlay(true); setStatus('Host is not sharing their screen yet...');
+          document.getElementById('spinner').style.display = 'none';
+          if (pc) { pc.close(); pc = null; }
+          video.srcObject = null;
+        }
+        if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
+        if (msg.type === 'input-state') {
+          // Could dim the gamepad prompt if gp is disabled by host
+        }
+      };
+
+
+      ws.onclose = () => { setStatus('Reconnecting...'); setTimeout(connect, 2000); };
+    }
+
+    // ── PIN flow ──────────────────────────────────────────────────────────────────
+    let pinRequired = false;
+    fetch('/api/pin-required').then(r => r.json()).then(d => {
+      pinRequired = d.required;
+      if (!d.required) document.getElementById('pinWrap').style.display = 'none';
+    }).catch(() => {
+      document.getElementById('pinWrap').style.display = 'none';
+    });
+
+    function submitPin() {
+      const nameVal = document.getElementById('nameInput').value.trim();
+      if (nameVal) {
+        myName = nameVal;
+        localStorage.setItem('ns_name', myName);
+      }
+
+      if (pinRequired) {
+        const val = document.getElementById('pinInput').value.trim();
+        if (val.length !== 4) { document.getElementById('pinErr').textContent = 'Enter 4 digits'; return; }
+        enteredPin = val;
+      }
+      document.getElementById('pinErr').textContent = '';
+      document.getElementById('pinScreen').classList.add('gone');
+
+      fetch('/api/info')
+        .then(r => r.json())
+        .then(d => {
+          if (d.version && d.version !== CLIENT_VERSION) {
+            alert(`Version mismatch: Host is using v${d.version}, but you are using v${CLIENT_VERSION}. Things might not work perfectly!`);
+          }
+          connect();
+          if (!gpPolling) activateGamepad();
+        })
+        .catch(() => {
+          connect();
+          if (!gpPolling) activateGamepad();
+        });
+    }
+
+    // ── Chat ──────────────────────────────────────────────────────────────────────
+    function appendChat(name, text, isMe) {
+      const el = document.getElementById('chatLog');
+      const d = document.createElement('div');
+      d.className = 'cmsg';
+      d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
+      el.appendChild(d); el.scrollTop = el.scrollHeight;
+    }
+    function sendChat() {
+      const inp = document.getElementById('chatMsg');
+      const msg = inp.value.trim();
+      if (!msg || !ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'chat', from: myName, msg }));
+      appendChat(myName, msg, true);
+      inp.value = '';
+    }
+    function toggleChat() { document.getElementById('chatPanel').classList.toggle('open'); }
+    function toggleAudio() {
+      audioMuted = !audioMuted;
+      if (video.srcObject) video.srcObject.getAudioTracks().forEach(t => { t.enabled = !audioMuted; });
+      document.getElementById('audBtn').textContent = audioMuted ? '♪ Muted' : '♪ Audio';
+    }
+
+    // ── Screen wake lock — prevent phone sleeping during stream ──────────────────
+    let wakeLock = null;
+    async function acquireWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => {
+          // Re-acquire when tab comes back to foreground
+          if (document.visibilityState === 'visible') acquireWakeLock();
+        });
+      } catch { }
+    }
+    document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') acquireWakeLock();
     });
-  } catch {}
-}
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') acquireWakeLock();
-});
-acquireWakeLock();
+    acquireWakeLock();
 
-// ── Live stats HUD — RTT / jitter / FPS / bitrate from getStats() ─────────
-const statsHud = document.getElementById('statsHud');
-let prevBytesReceived = 0, prevStatsTime = 0, prevJitterDelay = 0, prevEmitted = 0;
+    // ── Live stats HUD — RTT / jitter / FPS / bitrate from getStats() ─────────
+    const statsHud = document.getElementById('statsHud');
+    let prevBytesReceived = 0, prevStatsTime = 0, prevJitterDelay = 0, prevEmitted = 0;
 
-async function updateStats() {
-  if (!pc) return;
-  try {
-    const stats = await pc.getStats();
-    let rtt = null, jitter = null, fps = null, kbps = null;
-    for (const r of stats.values()) {
-      if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null)
-        rtt = (r.currentRoundTripTime * 1000).toFixed(0);
-      if (r.type === 'inbound-rtp' && r.kind === 'video') {
-        const emitted = r.jitterBufferEmittedCount || 1;
-        const delay = r.jitterBufferDelay || 0;
-        
-        if (prevStatsTime) {
-          const emittedDelta = emitted - prevEmitted;
-          const delayDelta = delay - prevJitterDelay;
-          if (emittedDelta > 0) jitter = ((delayDelta / emittedDelta) * 1000).toFixed(0);
-          
-          const dt  = (r.timestamp - prevStatsTime) / 1000;
-          kbps = (((r.bytesReceived - prevBytesReceived) * 8) / dt / 1000).toFixed(0);
+    async function updateStats() {
+      if (!pc) return;
+      try {
+        const stats = await pc.getStats();
+        let rtt = null, jitter = null, fps = null, kbps = null;
+        for (const r of stats.values()) {
+          if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null)
+            rtt = (r.currentRoundTripTime * 1000).toFixed(0);
+          if (r.type === 'inbound-rtp' && r.kind === 'video') {
+            const emitted = r.jitterBufferEmittedCount || 1;
+            const delay = r.jitterBufferDelay || 0;
+
+            if (prevStatsTime) {
+              const emittedDelta = emitted - prevEmitted;
+              const delayDelta = delay - prevJitterDelay;
+              if (emittedDelta > 0) jitter = ((delayDelta / emittedDelta) * 1000).toFixed(0);
+
+              const dt = (r.timestamp - prevStatsTime) / 1000;
+              kbps = (((r.bytesReceived - prevBytesReceived) * 8) / dt / 1000).toFixed(0);
+            }
+            prevBytesReceived = r.bytesReceived;
+            prevStatsTime = r.timestamp;
+            prevJitterDelay = delay;
+            prevEmitted = emitted;
+          }
         }
-        prevBytesReceived = r.bytesReceived;
-        prevStatsTime     = r.timestamp;
-        prevJitterDelay   = delay;
-        prevEmitted       = emitted;
+        if (rtt !== null) {
+          statsHud.style.display = 'flex';
+          statsHud.textContent = [
+            rtt != null ? rtt + 'ms RTT' : null,
+            jitter != null ? jitter + 'ms buf' : null,
+            fps != null ? fps + 'fps' : null,
+            kbps != null ? kbps + 'kbps' : null,
+          ].filter(Boolean).join('  ·  ');
+        }
+      } catch { }
+    }
+    setInterval(updateStats, 2000);
+
+    // ── Fullscreen + landscape ────────────────────────────────────────────────────
+    function landscape() {
+      if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => { });
+    }
+    function toggleFS() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().then(landscape).catch(() => { });
+        document.getElementById('fsBtn').textContent = '[x] Full';
+      } else {
+        document.exitFullscreen();
+        document.getElementById('fsBtn').textContent = '[ ] Full';
       }
     }
-    if (rtt !== null) {
-      statsHud.style.display = 'flex';
-      statsHud.textContent = [
-        rtt    != null ? rtt + 'ms RTT'    : null,
-        jitter != null ? jitter + 'ms buf' : null,
-        fps    != null ? fps + 'fps'       : null,
-        kbps   != null ? kbps + 'kbps'    : null,
-      ].filter(Boolean).join('  ·  ');
-    }
-  } catch {}
-}
-setInterval(updateStats, 2000);
-
-// ── Fullscreen + landscape ────────────────────────────────────────────────────
-function landscape() {
-  if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
-}
-function toggleFS() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().then(landscape).catch(() => {});
-    document.getElementById('fsBtn').textContent = '[x] Full';
-  } else {
-    document.exitFullscreen();
-    document.getElementById('fsBtn').textContent = '[ ] Full';
-  }
-}
-document.addEventListener('touchstart', () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().then(landscape).catch(() => {});
-    document.getElementById('fsBtn').textContent = '[x] Full';
-  }
-}, { once:true });
-document.addEventListener('fullscreenchange', () => {
-  if (document.fullscreenElement) landscape();
-  document.getElementById('fsBtn').textContent = document.fullscreenElement ? '[x] Full' : '[ ] Full';
-});
-</script>
+    document.addEventListener('touchstart', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().then(landscape).catch(() => { });
+        document.getElementById('fsBtn').textContent = '[x] Full';
+      }
+    }, { once: true });
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement) landscape();
+      document.getElementById('fsBtn').textContent = document.fullscreenElement ? '[x] Full' : '[ ] Full';
+    });
+  </script>
 </body>
+
 </html>

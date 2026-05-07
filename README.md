@@ -18,7 +18,7 @@ Unlike traditional cloud gaming solutions that relied on massive data center pip
 
 ### Getting Started
 1. Clone the repository.
-2. Launch the server script: `./stream.sh`. This will automatically install any missing dependencies like Electron and `python-uinput`.
+2. Launch the server script: `./start`. This will automatically install any missing dependencies like Electron and `python-uinput`.
 3. Open your router and set up port forwarding for TCP 3000, or choose one of the free tunneling options provided directly in the host interface.
 4. Share the provided link and PIN with your friends!
 

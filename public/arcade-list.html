@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse Arcade - Nearsec Together</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0d0f;
+      --surface: #121518;
+      --accent: #ff5d3d;
+      --text: #f0f3f5;
+      --muted: #88929b;
+      --border: #22282d;
+      --green: #4ade80;
+      --yellow: #facc15;
+      --red: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      padding-top: 72px;
+    }
+    .top-bar {
+      height: 72px; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--surface); position: fixed; top: 0; width: 100%;
+      border-bottom: 1px solid var(--border); z-index: 1000;
+    }
+    .search-wrap {
+      flex: 1; max-width: 500px; margin: 0 40px; position: relative;
+    }
+    .search-wrap input {
+      width: 100%; background: #1a1e22; border: 1px solid var(--border);
+      padding: 10px 20px; border-radius: 20px; color: white;
+      outline: none; transition: all 0.2s;
+    }
+    .search-wrap input:focus { border-color: var(--accent); background: #22282d; }
+    
+    .main-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 24px; padding: 40px;
+    }
+    .client-card {
+      background: var(--surface); border-radius: 16px; overflow: hidden;
+      border: 1px solid var(--border); transition: transform 0.2s; cursor: pointer;
+    }
+    .client-card:hover { transform: translateY(-4px); border-color: var(--accent); }
+    .thumb {
+      height: 180px; background-size: cover; background-position: center;
+      position: relative;
+    }
+    .latency-tag {
+      position: absolute; top: 12px; right: 12px;
+      padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 11px;
+      background: rgba(0,0,0,0.7);
+    }
+    .latency-tag.green { color: var(--green); }
+    .latency-tag.yellow { color: var(--yellow); }
+    .latency-tag.red { color: var(--red); }
+    
+    .card-body { padding: 20px; }
+    .card-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .card-info { font-size: 13px; color: var(--muted); display: flex; gap: 8px; }
+    .tag { background: #1a1e22; padding: 2px 8px; border-radius: 4px; }
+    .svg-icon {
+      width: 18px; height: 18px; filter: invert(1); vertical-align: middle;
+    }
+
+    /* Modal */
+    .modal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center;
+      z-index: 2000; padding: 20px;
+    }
+    .modal-content {
+      background: var(--surface); border-radius: 24px; width: 100%; max-width: 440px;
+      padding: 40px; text-align: center; border: 1px solid var(--border);
+    }
+    .modal h2 { margin-bottom: 16px; font-size: 28px; }
+    .modal p { color: var(--muted); margin-bottom: 32px; }
+    .gp-status {
+      padding: 16px; background: #1a1e22; border-radius: 12px;
+      margin-bottom: 24px; color: var(--red); font-weight: 600;
+    }
+    .gp-status.ready { color: var(--green); }
+    
+    .btn {
+      display: block; width: 100%; background: var(--accent); color: white;
+      border: none; padding: 14px; border-radius: 12px; font-weight: 600;
+      cursor: pointer; opacity: 0.5; pointer-events: none; transition: all 0.2s;
+    }
+    .btn.active { opacity: 1; pointer-events: auto; }
+
+    @media (max-width: 768px) {
+      .main-grid { padding: 20px; }
+      .search-wrap { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="top-bar">
+    <div style="font-weight:800; font-size:18px">ARCADE</div>
+    <div class="search-wrap" style="display: flex; align-items: center; background: #1a1e22; border-radius: 20px; padding: 0 15px; border: 1px solid var(--border);">
+      <img src="/assets/icons/search.svg" class="svg-icon" style="width:14px; opacity:0.5;">
+      <input type="text" placeholder="Search games or locations..." style="border:none; background:transparent;">
+    </div>
+    <div style="display:flex; gap:16px; align-items:center">
+      <span title="Gamepad Info" style="cursor:pointer; display: flex; align-items: center;">
+        <img src="/assets/icons/gamepad.svg" class="svg-icon">
+      </span>
+      <div style="width:32px; height:32px; background:var(--accent); border-radius:50%; display: flex; align-items:center; justify-content:center;">
+        <img src="/assets/icons/user.svg" class="svg-icon" style="width:16px; filter:brightness(0)">
+      </div>
+    </div>
+  </nav>
+
+  <div class="main-grid" id="clientGrid">
+    <!-- Mock Clients -->
+    <div class="client-card" onclick="openJoin('Smash Bros. Ultimate', 'US East', '18ms', 'green')">
+      <div class="thumb" style="background-image: url('https://images.igdb.com/igdb/image/upload/t_720p/co1v91.jpg')">
+        <div class="latency-tag green">18ms</div>
+      </div>
+      <div class="card-body">
+        <div class="card-title">Smash Bros. Ultimate</div>
+        <div class="card-info">
+          <span class="tag">US East</span>
+          <span class="tag">PIN Required</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="client-card" onclick="openJoin('Mario Kart 8 Deluxe', 'Europe West', '42ms', 'yellow')">
+      <div class="thumb" style="background-image: url('https://images.igdb.com/igdb/image/upload/t_720p/co27on.jpg')">
+        <div class="latency-tag yellow">42ms</div>
+      </div>
+      <div class="card-body">
+        <div class="card-title">Mario Kart 8 Deluxe</div>
+        <div class="card-info">
+          <span class="tag">EU West</span>
+          <span class="tag">Public</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="client-card" onclick="openJoin('Street Fighter 6', 'Tokyo, JP', '120ms', 'red')">
+      <div class="thumb" style="background-image: url('https://images.igdb.com/igdb/image/upload/t_720p/co4xtl.jpg')">
+        <div class="latency-tag red">120ms</div>
+      </div>
+      <div class="card-body">
+        <div class="card-title">Street Fighter 6</div>
+        <div class="card-info">
+          <span class="tag">Japan</span>
+          <span class="tag">PIN Required</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="joinModal" onclick="if(event.target==this) closeJoin()">
+    <div class="modal-content">
+      <h2 id="mTitle">Join Stream</h2>
+      <p id="mLoc">Region: Unknown</p>
+      
+      <div class="gp-status" id="gpStatus">No Gamepad Detected</div>
+      
+      <!-- Gamepad Tester Visualization -->
+      <div id="gpTester" style="display:none; margin-bottom:24px; background:#1a1e22; padding:15px; border-radius:12px; font-size:10px; color:var(--muted); text-align:left;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+          <div id="gpName" style="color:var(--text); font-weight:600">Gamepad Name</div>
+          <div id="gpIndex">#0</div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <div style="margin-bottom:4px">Sticks</div>
+            <div style="display:flex; gap:10px">
+              <div id="axis0" style="width:30px; height:30px; background:#222; border-radius:50%; position:relative;">
+                <div style="width:6px; height:6px; background:var(--accent); border-radius:50%; position:absolute; top:12px; left:12px;" id="stick0"></div>
+              </div>
+              <div id="axis1" style="width:30px; height:30px; background:#222; border-radius:50%; position:relative;">
+                <div style="width:6px; height:6px; background:var(--accent); border-radius:50%; position:absolute; top:12px; left:12px;" id="stick1"></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div style="margin-bottom:4px">Buttons</div>
+            <div id="btnLabels" style="display:flex; flex-wrap:wrap; gap:4px"></div>
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:12px; margin-top:-10px; margin-bottom:20px;">Press any button on your controller to verify.</p>
+      <button class="btn" id="joinBtn" onclick="goToClient()">Start Session</button>
+    </div>
+  </div>
+
+  <script>
+    let selectedUrl = '';
+
+    function openJoin(title, loc, lat, color) {
+      document.getElementById('mTitle').textContent = title;
+      document.getElementById('mLoc').textContent = 'Region: ' + loc + ' (' + lat + ')';
+      document.getElementById('joinModal').style.display = 'flex';
+      updateGamepadTester();
+    }
+
+    function closeJoin() {
+      document.getElementById('joinModal').style.display = 'none';
+    }
+
+    function updateGamepadTester() {
+      const gpts = navigator.getGamepads();
+      let activeGp = null;
+      for (let gp of gpts) { if(gp) { activeGp = gp; break; } }
+
+      const status = document.getElementById('gpStatus');
+      const tester = document.getElementById('gpTester');
+      const btn = document.getElementById('joinBtn');
+      
+      if (activeGp) {
+        status.textContent = 'Gamepad Ready!';
+        status.className = 'gp-status ready';
+        btn.className = 'btn active';
+        tester.style.display = 'block';
+        
+        document.getElementById('gpName').textContent = activeGp.id.split('(')[0].trim().slice(0,20);
+        document.getElementById('gpIndex').textContent = '#' + activeGp.index;
+        
+        // Axes (Sticks)
+        const s0 = document.getElementById('stick0');
+        const s1 = document.getElementById('stick1');
+        if (activeGp.axes.length >= 2) {
+          s0.style.left = (12 + activeGp.axes[0] * 10) + 'px';
+          s0.style.top = (12 + activeGp.axes[1] * 10) + 'px';
+        }
+        if (activeGp.axes.length >= 4) {
+          s1.style.left = (12 + activeGp.axes[2] * 10) + 'px';
+          s1.style.top = (12 + activeGp.axes[3] * 10) + 'px';
+        }
+
+        // Buttons
+        const labels = document.getElementById('btnLabels');
+        labels.innerHTML = '';
+        activeGp.buttons.forEach((b, i) => {
+          if (b.pressed || b.value > 0.1) {
+            const span = document.createElement('span');
+            span.style.background = 'var(--accent)';
+            span.style.color = 'white';
+            span.style.padding = '2px 4px';
+            span.style.borderRadius = '3px';
+            span.textContent = 'B' + i;
+            labels.appendChild(span);
+          }
+        });
+
+      } else {
+        status.textContent = 'No Gamepad Detected';
+        status.className = 'gp-status';
+        btn.className = 'btn';
+        tester.style.display = 'none';
+      }
+      
+      if (document.getElementById('joinModal').style.display === 'flex') {
+        requestAnimationFrame(updateGamepadTester);
+      }
+    }
+
+    window.addEventListener("gamepadconnected", () => {
+      console.log("Gamepad connected");
+    });
+
+    function goToClient() {
+      alert("Redirecting to Nearsec Client...");
+      // In a real app, this would redirect to the actual stream URL
+      location.href = '/';
+    }
+  </script>
+</body>
+</html>

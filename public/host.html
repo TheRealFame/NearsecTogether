@@ -2,10 +2,10 @@
 <html lang="en">
 
 <head>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <meta charset="utf-8">
   <title>NearsecTogether</title>
   <style>
-
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
 
     *,
@@ -20,8 +20,10 @@
       --bg: #0d0d0d;
       --surface: #141414;
       --border: #252525;
-      --accent: #00ff88;
-      --accent-dim: #00ff8818;
+      --accent: #c084fc;
+      --accent-dim: #c084fc18;
+      --accent-green: #00ff88;
+      --accent-orange: #ffaa88;
       --text: #e0e0e0;
       --muted: #555;
       --danger: #ff4444;
@@ -70,7 +72,8 @@
     }
 
     .app-layout {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr 360px;
       width: 100vw;
       height: 100vh;
       overflow: hidden;
@@ -78,7 +81,6 @@
 
     /* Preview */
     .preview-panel {
-      flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -121,14 +123,12 @@
 
     /* Sidebar */
     .sidebar {
-      width: 360px;
       border-left: 1px solid var(--border);
       background: var(--surface);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      flex-shrink: 0;
-      box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+      box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
       z-index: 5;
     }
 
@@ -258,7 +258,7 @@
 
     .dot.live {
       background: var(--accent);
-      box-shadow: 0 0 6px var(--accent);
+      box-shadow: 0 0 10px var(--accent);
       animation: pulse 2s infinite;
     }
 
@@ -338,15 +338,50 @@
       align-items: center;
       justify-content: space-between;
       margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #1e1e1e;
     }
 
     .pin-val {
-      font-size: 22px;
-      letter-spacing: .35em;
-      color: var(--accent);
+      font-size: 24px;
       font-weight: 600;
+      color: var(--accent);
+      margin-right: 8px;
+    }
+
+    .pin-regen {
+      background: none;
+      border: 1px solid #333;
+      color: #555;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .pin-regen:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .svg-icon {
+      width: 14px;
+      height: 14px;
+      filter: invert(0.6);
+      transition: filter 0.2s;
+    }
+
+    .pin-regen:hover .svg-icon {
+      filter: invert(1) sepia(1) saturate(5) hue-rotate(90deg);
+    }
+
+    /* Glow green on hover */
+    .change-link .svg-icon {
+      width: 10px;
+      height: 10px;
+      margin-right: 4px;
     }
 
     .tog-wrap {
@@ -388,9 +423,9 @@
       flex-direction: column;
       gap: 12px;
       min-width: 280px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     }
-    
+
     .roster-title {
       font-size: 9px;
       letter-spacing: .15em;
@@ -417,7 +452,7 @@
       cursor: grab;
       transition: background .15s, border-color .15s;
     }
-    
+
     .rcard:hover {
       background: rgba(255, 255, 255, 0.08);
       border-color: rgba(255, 255, 255, 0.15);
@@ -631,7 +666,7 @@
     .modal {
       background: #2b2d31;
       border-radius: 12px;
-      width: 460px;
+      width: 720px;
       max-width: 95vw;
       box-shadow: 0 12px 40px rgba(0, 0, 0, .7);
       overflow: hidden;
@@ -657,31 +692,34 @@
       line-height: 1.6;
     }
 
-    .modal-body {
-      padding: 0 16px 20px;
+    .provider-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
     }
 
     .provider-card {
       background: #1e1f22;
       border: 2px solid transparent;
       border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 8px;
+      padding: 14px;
       cursor: pointer;
       transition: border-color .15s, background .15s;
       display: flex;
-      gap: 14px;
-      align-items: flex-start;
+      flex-direction: column;
+      gap: 10px;
+      height: 100%;
     }
 
     .provider-card:hover {
-      border-color: #5865f2;
-      background: #232428;
+      border-color: var(--accent);
+      background: #1a1a1a;
     }
 
     .provider-card.selected {
-      border-color: #5865f2;
-      background: #232428;
+      border-color: var(--accent);
+      background: #1a1a1a;
     }
 
     .provider-card input[type=radio] {
@@ -755,22 +793,28 @@
     }
 
     .pill-star {
-      background: #2b3557;
-      color: #7289da;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent);
     }
 
     .prov-install {
-      margin-top: 8px;
+      margin-top: auto;
       padding: 7px 10px;
       background: #111214;
       border-radius: 5px;
-      font-size: 9px;
+      font-size: 8px;
       color: #a3b3c2;
       font-family: monospace;
-      line-height: 1.7;
-      border-left: 2px solid #5865f2;
+      line-height: 1.4;
+      border-left: 2px solid var(--accent);
       white-space: pre-wrap;
       word-break: break-all;
+      display: none;
+    }
+
+    .provider-card.selected .prov-install {
+      display: block;
     }
 
     .prov-install .cmd {
@@ -791,32 +835,40 @@
     }
 
     .remember-row input {
-      accent-color: #5865f2;
+      accent-color: var(--accent);
       width: 14px;
       height: 14px;
     }
 
     .modal-footer {
       display: flex;
-      gap: 8px;
-      padding: 14px 16px 20px;
+      flex-direction: column;
+      gap: 12px;
+      padding: 18px 20px;
+      background: #1e1f22;
+      border-top: 1px solid #111214;
+    }
+
+    .modal-footer .btn-row {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
     }
 
     .modal-footer button {
-      flex: 1;
-      padding: 10px;
-      border-radius: 4px;
+      padding: 8px 24px;
+      border-radius: 6px;
       font-family: inherit;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       border: none;
-      transition: filter .15s;
+      transition: all 0.2s;
     }
 
     .btn-confirm {
-      background: #5865f2;
-      color: #fff;
+      background: var(--accent);
+      color: #000;
     }
 
     .btn-confirm:hover {
@@ -921,7 +973,23 @@
       background: #c9262b;
     }
   
-</style>
+    .copy-btn {
+      background: #383a40;
+      border: 1px solid #4e5058;
+      color: #dbdee1;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 9px;
+      cursor: pointer;
+      margin-left: 8px;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      background: #4e5058;
+      color: #fff;
+    }
+
+  </style>
 </head>
 
 <body>
@@ -947,12 +1015,24 @@
     <div class="sidebar">
       <header>
         <div class="logo-wrap">
-          <div class="logo">📡 NearsecTogether</div>
+          <div class="logo">
+            <img src="/assets/NearsecTogether.png" alt="NearsecTogether"
+              style="height:24px; display:block; margin: 0 auto 4px; filter: drop-shadow(0 0 10px var(--accent-dim));">
+            NearsecTogether
+          </div>
           <div style="font-size:8px;color:var(--muted);margin-top:2px;letter-spacing:0.05em">Co-op streaming host</div>
         </div>
         <div class="hdr-right">
           <span id="codecBadge" class="codec-badge">—</span>
-          <button class="gear-btn" onclick="showTunnelModal()" title="Tunnel settings">⚙️</button>
+          <button class="gear-btn" onclick="showTunnelModal()" title="Tunnel settings">
+            <svg class="svg-icon" style="width:16px; height:16px; color:var(--muted)" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+              </path>
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -960,7 +1040,9 @@
         <div class="sec">
           <div class="sec-label">Capture</div>
           <button class="btn primary" id="btnStart" onclick="startCapture()">
-            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8" /></svg> Start Sharing
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="8" />
+            </svg> Start Sharing
           </button>
           <button class="btn" id="btnSwitch" onclick="startCapture()" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -971,7 +1053,9 @@
             </svg> Switch Source
           </button>
           <button class="btn danger" id="btnStop" onclick="stopCapture()" disabled>
-            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1" /></svg> Stop
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="1" />
+            </svg> Stop
           </button>
         </div>
 
@@ -979,7 +1063,9 @@
           <div class="sec-label">Status</div>
           <div class="stat-row"><span class="dot" id="capDot"></span><span id="capStatus">Idle</span></div>
           <div class="stat-row"><span class="dot" id="audDot"></span><span id="audStatus">No audio</span></div>
-          <div class="meter"><div class="meter-fill" id="meter"></div></div>
+          <div class="meter">
+            <div class="meter-fill" id="meter"></div>
+          </div>
           <div class="info-text" id="trackInfo">—</div>
         </div>
 
@@ -1036,18 +1122,38 @@
         <div class="sec">
           <div class="sec-label">Viewer URL</div>
           <div class="urlbox">
-            <div class="url-label">Click a URL to copy <span class="change-link" onclick="showTunnelModal()" title="Change tunnel provider">⚙ Change tunnel</span></div>
+            <div class="url-label">Click a URL to copy <span class="change-link" onclick="showTunnelModal()"
+                title="Change tunnel provider"><svg class="svg-icon"
+                  style="width:10px; height:10px; margin-right:4px; vertical-align: middle;" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                  </path>
+                </svg> Change
+                tunnel</span></div>
             <div id="urlList"></div>
             <div class="pin-row">
-              <div>
+              <div style="display: flex; align-items: center;">
                 <div style="font-size:9px;color:#333;margin-bottom:2px">PIN</div>
                 <div class="pin-val" id="pinVal">----</div>
-              </div>
-              <div class="tog-wrap">
-                Required
+                <button class="pin-regen" title="Regenerate PIN" onclick="regeneratePin()">
+                  <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10"></polyline>
+                    <polyline points="23 20 23 14 17 14"></polyline>
+                    <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+                  </svg>
+                </button>
+                <div style="flex:1"></div>
                 <button class="tog-btn on" id="pinToggle" onclick="togglePin()">ON</button>
               </div>
             </div>
+          </div>
+          <div
+            style="margin-top:12px; padding:8px; background:#111; border:1px solid #222; border-radius:4px; font-size:9px; color:#666;">
+            Play retro games with others at <a href="https://arcade.nearsec.net" target="_blank"
+              style="color:var(--accent);">Nearsec Arcade</a>
           </div>
         </div>
 
@@ -1060,7 +1166,7 @@
           <input id="chatMsg" placeholder="Message..." maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
           <button onclick="sendChat()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
-              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
             </svg>
           </button>
         </div>
@@ -1069,7 +1175,7 @@
   </div>
 
   <!-- Tunnel Modal unchanged, keep original HTML -->
-<div class="modal-bg gone" id="tunnelModal">
+  <div class="modal-bg gone" id="tunnelModal">
     <div class="modal" style="position:relative;">
       <div class="modal-loading gone" id="tunnelLoading">
         <div class="spinner" id="tunnelSpinner"></div>
@@ -1079,95 +1185,112 @@
       </div>
 
       <div class="modal-head">
-        <h3>🌐 Choose a Tunnel Provider</h3>
+        <h3><svg class="svg-icon" style="width:20px; height:20px; margin-right:8px; vertical-align: middle; color:#fff;"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg> Choose a Tunnel Provider</h3>
         <p>The tunnel carries the <strong style="color:#f2f3f5">webpage + WebSocket signaling only</strong> — WebRTC
           video goes UDP peer-to-peer and never touches the tunnel.<br>Pick a provider — all listed options are <strong
             style="color:#57f287">free</strong>.</p>
       </div>
-      <div class="modal-body">
-
-        <label class="provider-card selected">
-          <input type="radio" name="provider" value="cloudflared" checked>
-          <div class="prov-emoji">☁️</div>
-          <div class="prov-info">
-            <div class="prov-name">cloudflared
-              <span class="pill pill-easy">Easy</span>
+      <div class="modal-body" style="padding: 16px;">
+        <div class="provider-grid">
+          <label class="provider-card selected">
+            <input type="radio" name="provider" value="cloudflared" checked>
+            <div style="display:flex; gap:12px; align-items:center;">
+              <div class="prov-emoji"><svg class="svg-icon" style="width:24px; height:24px; color:#fff;"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path>
+                </svg></div>
+              <div class="prov-name">cloudflared <span class="pill pill-easy">Easy</span></div>
             </div>
-            <div class="prov-desc">Random URL every restart · No account, no sign-up · Powered by Cloudflare's global
-              network</div>
-            <div class="prov-pills">
-              <span class="pill pill-lat">~20–80ms added</span>
-              <span class="pill pill-lat">HTTPS</span>
+            <div class="prov-desc">Random URL · No account required · Powered by Cloudflare.</div>
+            <div class="prov-install"><span class="cmd">sudo dpkg -i cloudflared-linux-amd64.deb</span> <button class="copy-btn" onclick="copyCmd(event, 'sudo dpkg -i cloudflared-linux-amd64.deb')">copy</button></div>
+          </label>
+          <label class="provider-card">
+            <input type="radio" name="provider" value="zrok">
+            <div style="display:flex; gap:12px; align-items:center;">
+              <div class="prov-emoji"><svg class="svg-icon" style="width:24px; height:24px; color:#fff;"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                </svg></div>
+              <div class="prov-name">zrok.io <span class="pill pill-star">Best</span></div>
             </div>
-            <div class="prov-install"><span class="comment"># Debian/Ubuntu:</span>
-              <span class="cmd">curl -L -o cf.deb
-                https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb</span>
-              <span class="cmd">sudo dpkg -i cf.deb</span>
+            <div class="prov-desc">Fastest tunnel · Open-source · Peer-to-peer speeds.</div>
+            <div class="prov-install"><span class="cmd">zrok enable [token]</span> <button class="copy-btn" onclick="copyCmd(event, 'zrok enable [token]')">copy</button></div>
+          </label>
+          <label class="provider-card">
+            <input type="radio" name="provider" value="localhostrun">
+            <div style="display:flex; gap:12px; align-items:center;">
+              <div class="prov-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon" style="width:24px; height:24px; color:#fff;"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg></div>
+              <div class="prov-name">localhost.run <span class="pill pill-easy">Fast</span></div>
             </div>
+            <div class="prov-desc">Uses SSH only · Nothing to install · Fast and simple.</div>
+            <div class="prov-install"><span class="cmd">ssh -R 80:localhost:3000 nokey@localhost.run</span> <button class="copy-btn" onclick="copyCmd(event, 'ssh -R 80:localhost:3000 nokey@localhost.run')">copy</button></div>
+          </label>
+          <label class="provider-card">
+            <input type="radio" name="provider" value="playit">
+            <div style="display:flex; gap:12px; align-items:center;">
+              <div class="prov-emoji"><svg class="svg-icon" style="width:24px; height:24px; color:#fff;"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152L2 17a1 1 0 0 0 1 1h2.128a1 1 0 0 0 .958-.71l.635-2.115C7.14 14.155 8.13 13.5 9.25 13.5h5.5c1.12 0 2.11.655 2.529 1.675l.635 2.115a1 1 0 0 0 .958.71H21a1 1 0 0 0 1-1l-.685-8.258A4 4 0 0 0 17.32 5z">
+                  </path>
+                </svg></div>
+              <div class="prov-name">playit.gg <span class="pill pill-hard">UDP/Paid</span></div>
+            </div>
+            <div class="prov-desc">Requires paid plan for HTTP/TCP signaling.</div>
+            <div class="prov-install"><span class="comment"># Premium required</span></div>
+          </label>
+          <label class="provider-card">
+            <input type="radio" name="provider" value="vps">
+            <div style="display:flex; gap:12px; align-items:center;">
+              <div class="prov-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon" style="width:24px; height:24px; color:#fff;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></div>
+              <div class="prov-name">Custom VPS (SSH) <span class="pill pill-hard">Advanced</span></div>
+            </div>
+            <div class="prov-desc">Tunnel to your own server using Reverse SSH.</div>
+            <div class="prov-install" style="padding: 12px; white-space: normal; display: flex; flex-direction: column; gap: 8px;">
+              <div style="color:#949ba4; font-size:10px; margin-bottom:-4px;">SSH Host (Alias or user@ip):</div>
+              <input type="text" id="vpsHostInput" placeholder="user@vps-ip" 
+                style="width:100%; background:#000; border:1px solid #444; color:#fff; font-size:12px; padding:8px; border-radius:4px;"
+                onclick="event.stopPropagation()">
+              
+              <div style="background:#080808; padding:10px; border-radius:4px; border:1px solid #222;">
+                <div style="font-size:9px; color:#555; margin-bottom:6px; letter-spacing:0.05em;">TERMINAL COMMAND:</div>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                  <code style="color:#888; font-size:10px; font-family:monospace; word-break:break-all; flex:1;">ssh -N -R 3000:localhost:3000 VPS</code>
+                  <button class="copy-btn" style="margin:0; padding:4px 8px; flex-shrink:0;" onclick="copyCmd(event, 'ssh -N -R 3000:localhost:3000 VPS')">copy</button>
+                </div>
+              </div>
+              
+              
+              </div>
+            </div>
+          </label>
+                </div>
+        <div style="border-top: 1px solid var(--border); margin: 0 -16px; padding: 12px 16px;">
+          <label class="provider-card" style="flex-direction:row; align-items:center; height:auto; margin-bottom:0; padding: 10px 14px;">
+            <input type="radio" name="provider" value="portforward">
+            <div class="prov-emoji" style="display:flex; align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon" style="width:20px; height:20px; color:#fff;"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+            <div class="prov-name">Manual Port Forwarding <span class="pill pill-lat">Direct</span></div>
+            <div style="margin-left:auto; font-size:10px; color:var(--muted);">Forward port 3000</div>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <div class="btn-row">
+            <button class="btn-confirm" onclick="confirmTunnel()">🚀 Connect</button>
+            <button class="btn-skip" onclick="closeTunnelModal()">Skip for now</button>
           </div>
-        </label>
-
-        <label class="provider-card">
-          <input type="radio" name="provider" value="playit">
-          <div class="prov-emoji">🎮</div>
-          <div class="prov-info">
-            <div class="prov-name">playit.gg
-              <span class="pill pill-hard">⚠ Paid for HTTP</span>
-            </div>
-            <div class="prov-desc">Free tier is <strong style="color:#f38ba8">UDP only</strong> — our signaling server
-              needs HTTP/TCP, which requires their paid plan. Not recommended unless you upgrade.</div>
-            <div class="prov-pills">
-              <span class="pill pill-lat">~10–40ms added</span>
-              <span class="pill pill-hard">Premium required</span>
-            </div>
-            <div class="prov-install"><span class="comment"># Only useful if you have playit premium (TCP/HTTP tunnel):
-                curl -SsL https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64 -o
-                playit
-                chmod +x playit && sudo mv playit /usr/local/bin/playit</span></div>
+          <div class="remember-row" style="margin: 0; padding-top: 4px; border: none;">
+            <input type="checkbox" id="rememberCheck">
+            <label for="rememberCheck">Remember this choice & don't ask again on startup</label>
           </div>
-        </label>
-
-        <label class="provider-card">
-          <input type="radio" name="provider" value="portforward">
-          <div class="prov-emoji">🌍</div>
-          <div class="prov-info">
-            <div class="prov-name">Port Forwarding
-              <span class="pill pill-easy">Fastest / Direct</span>
-            </div>
-            <div class="prov-desc">Direct peer-to-peer connection over your own network. Requires router configuration (port 3000).</div>
-            <div class="prov-pills">
-              <span class="pill pill-easy">+0ms latency</span>
-              <span class="pill pill-lat">Direct</span>
-            </div>
-            <div class="prov-install"><span class="comment"># Forward TCP port 3000 to this device's LAN IP.</span>
-              <span class="comment"># Then share the Public IP link displayed on the host page.</span>
-            </div>
-          </div>
-        </label>
-
-        <!-- Hidden local tunnel code and documentation kept as requested -->
-        <label class="provider-card" style="display: none;">
-          <input type="radio" name="provider" value="localhostrun">
-          <div class="prov-emoji">🔒</div>
-          <div class="prov-info">
-            <div class="prov-name">localhost.run
-              <span class="pill pill-easy">Zero install</span>
-            </div>
-            <div class="prov-desc">Random URL every restart · Uses SSH already on your system · Nothing to install or configure</div>
-            <div class="prov-install"><span class="cmd">ssh -R 80:localhost:3000 nokey@localhost.run</span></div>
-          </div>
-        </label>
-
-      </div>
-      <div class="remember-row">
-        <input type="checkbox" id="rememberCheck">
-        <label for="rememberCheck">Remember this choice &amp; don't ask again on startup</label>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-confirm" onclick="confirmTunnel()">🚀 Connect</button>
-        <button class="btn-skip" onclick="closeTunnelModal()">Skip for now</button>
-      </div>
-    </div>
+        </div>
+      </div> <!-- End of .modal -->
+    </div> <!-- End of .modal-bg -->
   </div>
 
   </div>
@@ -1191,6 +1314,15 @@
     const savedDeg = localStorage.getItem('ns_deg');
     if (savedDeg) document.getElementById('degSelect').value = savedDeg;
     document.getElementById('degSelect').addEventListener('change', (e) => localStorage.setItem('ns_deg', e.target.value));
+
+    // Persistent Resolution & FPS
+    const savedRes = localStorage.getItem('ns_res');
+    if (savedRes) document.getElementById('resSelect').value = savedRes;
+    document.getElementById('resSelect').addEventListener('change', (e) => localStorage.setItem('ns_res', e.target.value));
+
+    const savedFps = localStorage.getItem('ns_fps');
+    if (savedFps) document.getElementById('fpsSelect').value = savedFps;
+    document.getElementById('fpsSelect').addEventListener('change', (e) => localStorage.setItem('ns_fps', e.target.value));
 
     function preferVideoCodec(pc) {
       const caps = RTCRtpSender.getCapabilities?.('video');
@@ -1278,7 +1410,7 @@
       const rows = [
         tunnelUrl
           ? { url: tunnelUrl, label: 'HTTPS tunnel ← share this', color: 'var(--accent)' }
-          : { url: 'Waiting for tunnel...', label: 'cloudflared starting up', color: '#444', noclick: true },
+          : { url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true },
         { url: `http://${d.lanIP}:${d.port}/`, label: 'LAN — same network only', color: '#555' },
       ];
       // Only show public IP if no tunnel (tunnel is strictly better)
@@ -1302,9 +1434,9 @@
     function renderRoster(list) {
       const c = document.getElementById('roster');
       const o = document.getElementById('rosterEmpty');
-      
+
       const controllers = list.filter(v => v.gp);
-      
+
       if (controllers.length === 0) {
         c.innerHTML = '';
         o.style.display = 'block';
@@ -1382,10 +1514,25 @@
       btn.className = 'tog-btn' + (pinEnabled ? ' on' : '');
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: pinEnabled }));
     }
+    function regeneratePin() {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'regen-pin' }));
+        log('Requesting new PIN...', 'ok');
+      }
+    }
 
     function connectWS() {
       ws = new WebSocket(proto + '://' + location.host + '/ws/host');
-      ws.onopen = () => { log('Connected to server', 'ok'); fetch('/api/info').then(r => r.json()).then(d => { currentPin = d.pin; document.getElementById('pinVal').textContent = d.pin; renderUrls(d); }); checkTunnelOnConnect(); };
+      ws.onopen = () => {
+        log('Connected to server', 'ok');
+        fetch('/api/info').then(r => r.json()).then(d => {
+          currentPin = d.pin;
+          document.getElementById('pinVal').textContent = d.pin;
+          renderUrls(d);
+          ws.send(JSON.stringify({ type: 'sync-pin', pin: currentPin, enabled: pinEnabled }));
+        });
+        checkTunnelOnConnect();
+      };
       ws.onmessage = async (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'viewer-joined') {
@@ -1420,7 +1567,8 @@
           const pc = peerConnections[msg._viewerId];
           if (pc && msg.candidate) { try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { } }
         }
-        if (msg.type === 'tunnel-url') {
+        
+          if (msg.type === 'tunnel-url') {
           log('Tunnel ready: ' + msg.url, 'ok');
           fetch('/api/info').then(r => r.json()).then(d => { d.tunnelUrl = msg.url; renderUrls(d); });
           closeTunnelModal(); // Success!
@@ -1490,12 +1638,14 @@
       };
 
       const offer = await pc.createOffer();
-      
-      // Force higher starting bitrate (3000kbps) so quality doesn't start at 144p
-      // Note: Removed manual b=AS hard-cap to allow bitrate to scale to 8Mbps+ if selected.
+
+      // Force starting bitrate based on user selection (or auto)
       let modifiedSdp = offer.sdp;
-      modifiedSdp = modifiedSdp.replace(/(a=fmtp:96 .*)\r\n/g, '$1;x-google-start-bitrate=3000\r\n');
-      
+      const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
+      if (bitVal > 0) {
+        modifiedSdp = modifiedSdp.replace(/(a=fmtp:96 .*)\r\n/g, `$1;x-google-start-bitrate=${bitVal}\r\n`);
+      }
+
       await pc.setLocalDescription({ type: offer.type, sdp: modifiedSdp });
       ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));
       log('Offer → viewer ' + viewerId, 'ok');
@@ -1618,6 +1768,23 @@
       document.getElementById('tunnelErrorText').classList.remove('gone');
       document.getElementById('tunnelRetryBtn').classList.remove('gone');
     }
+
+    function copyCmd(e, cmd) {
+      e.stopPropagation();
+      let finalCmd = cmd;
+      if (cmd.includes('VPS')) {
+        const host = document.getElementById("vpsHostInput")?.value?.trim() || "VPS";
+        finalCmd = cmd.replace('VPS', host);
+      }
+      navigator.clipboard.writeText(finalCmd).then(() => {
+        const btn = e.target;
+        const orig = btn.textContent;
+        btn.textContent = '✓';
+        btn.style.borderColor = 'var(--accent)';
+        setTimeout(() => { btn.textContent = orig; btn.style.borderColor = '#4e5058'; }, 1000);
+      });
+    }
+
     function confirmTunnel() {
       const radio = document.querySelector('input[name="provider"]:checked');
       if (!radio) return;
@@ -1641,7 +1808,7 @@
       fetch('/api/start-tunnel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, remember })
+        body: JSON.stringify({ provider, remember, vpsHost: document.getElementById("vpsHostInput")?.value?.trim() })
       }).catch(() => showTunnelError('Network request failed'));
     }
     // Highlight selected card on click

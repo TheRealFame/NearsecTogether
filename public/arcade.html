@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nearsec Arcade - Play Local Co-op Anywhere</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0d0f;
+      --surface: #121518;
+      --accent: #ff5d3d; /* Stadia Orange */
+      --accent-dim: #ff5d3d22;
+      --text: #f0f3f5;
+      --muted: #88929b;
+      --border: #22282d;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    .top-bar {
+      height: 72px;
+      padding: 0 40px;
+      display: flex;
+      align-items: center;
+      background: rgba(11, 13, 15, 0.8);
+      backdrop-filter: blur(10px);
+      position: fixed;
+      top: 0; width: 100%;
+      border-bottom: 1px solid var(--border);
+      z-index: 1000;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 800; font-size: 20px; letter-spacing: -0.02em;
+    }
+    .logo img { height: 32px; }
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 120px 20px;
+      background: radial-gradient(circle at 50% 50%, #ff5d3d11 0%, transparent 60%);
+    }
+    .hero h1 {
+      font-size: 64px; font-weight: 800; margin-bottom: 24px;
+      line-height: 1.1; letter-spacing: -0.03em;
+    }
+    .hero p {
+      font-size: 20px; color: var(--muted); max-width: 600px; margin-bottom: 40px;
+    }
+    .btn {
+      background: var(--accent);
+      color: white; border: none; padding: 16px 32px;
+      border-radius: 40px; font-weight: 600; font-size: 18px;
+      cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      text-decoration: none;
+    }
+    .btn:hover { transform: scale(1.05); box-shadow: 0 0 30px var(--accent-dim); }
+    
+    .features {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 32px; padding: 80px 40px; max-width: 1200px; margin: 0 auto;
+    }
+    .feat-card {
+      background: var(--surface); padding: 40px; border-radius: 24px;
+      border: 1px solid var(--border);
+    }
+    .feat-card h3 { font-size: 24px; margin-bottom: 16px; color: var(--accent); }
+    .feat-card p { color: var(--muted); }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 40px; }
+      .top-bar { padding: 0 20px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="top-bar">
+    <div class="logo">
+      <img src="/assets/NearsecTogether.png" alt="logo">
+      <span>NEARSEC <span style="color:var(--accent)">ARCADE</span></span>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <h1>The Community Arcade<br>for Local Co-op.</h1>
+    <p>Nearsec Arcade connects you to high-performance gaming hosts around the world. Play your favorite local co-op titles with 0ms added input lag.</p>
+    <a href="/arcade-list.html" class="btn">Enter the Arcade</a>
+  </section>
+
+  <section class="features">
+    <div class="feat-card">
+      <h3>Low Latency</h3>
+      <p>Powered by NearsecTogether's WebRTC core, arcade sessions use direct peer-to-peer tunnels to ensure your controls feel like they're plugged in locally.</p>
+    </div>
+    <div class="feat-card">
+      <h3>Global Reach</h3>
+      <p>Browse a community-driven list of available hosts, categorized by region and measured by real-time millisecond latency.</p>
+    </div>
+    <div class="feat-card">
+      <h3>Plug and Play</h3>
+      <p>No software to install. Just plug in your gamepad, choose a session, and start playing directly in your browser.</p>
+    </div>
+  </section>
+</body>
+</html>

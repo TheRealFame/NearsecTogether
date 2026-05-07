@@ -1,3 +1,4 @@
-nearsectogether.config.json
+src/nearsectogether.config.json
 node_modules/
 .env
+.vscode

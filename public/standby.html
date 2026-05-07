@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nearsec Together - Standby</title>
+  <style>
+    body { margin: 0; background: #080808; overflow: hidden; font-family: monospace; }
+    #bLogo {
+      position: absolute;
+      width: 200px;
+      filter: drop-shadow(0 0 15px #00ff88);
+    }
+    #status {
+      position: fixed; bottom: 20px; left: 0; right: 0; text-align: center;
+      color: #333; font-size: 10px; letter-spacing: 0.2em;
+    }
+  </style>
+</head>
+<body>
+  <img id="bLogo" src="/assets/NearsecTogether.png" alt="logo">
+  <div id="status">RELAY ACTIVE • WAITING FOR HOST</div>
+
+  <script>
+    const img = document.getElementById('bLogo');
+    let x = Math.random() * (window.innerWidth - 200);
+    let y = Math.random() * (window.innerHeight - 100);
+    let dx = 2; let dy = 2;
+
+    function animate() {
+      x += dx; y += dy;
+      if (x + 200 >= window.innerWidth || x <= 0) dx *= -1;
+      if (y + 100 >= window.innerHeight || y <= 0) dy *= -1;
+      img.style.left = x + 'px';
+      img.style.top = y + 'px';
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    // Auto-reload logic
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(proto + '://' + location.host + '/ws/viewer?standby=true');
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'host-live' || msg.type === 'host-stream-ready') {
+        location.reload();
+      }
+    };
+  </script>
+</body>
+</html>

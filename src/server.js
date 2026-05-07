@@ -5,11 +5,31 @@ const WebSocket = require("ws");
 const os = require("os");
 const net = require("net");
 const fs = require("fs");
+const path = require("path");
 const { exec, spawn } = require("child_process");
+let hostWS = null;
+let tunnelUrl = null;
+let activeTunnelProc = null;
+let vidCount = 0;
+const viewers = new Map();
+const viewerNames = new Map();
+const inputPerms = new Map();
+const pinAttempts = new Map();
+
+
+if (!fs.existsSync(path.join(__dirname, '..', '.env'))) {
+  fs.writeFileSync(path.join(__dirname, '..', '.env'), `CF_TOKEN=
+CUSTOM_URL=
+ZROK_RESERVED_NAME=
+USE_VPS=false
+VPS_HOST=
+IS_VPS=false
+`);
+}
 
 // Parse optional .env file for secrets
 try {
-  fs.readFileSync(__dirname + '/.env', 'utf8').split('\n').forEach(line => {
+  fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').split('\n').forEach(line => {
     const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
     if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
   });
@@ -20,6 +40,25 @@ function getLanIP() {
     for (const n of iface)
       if (n.family === "IPv4" && !n.internal) return n.address;
   return "127.0.0.1";
+}
+function shouldRequirePin(ip, hasTunnelHeader = false) { return true; // Security: everyone requires PIN
+  if (!ip) return true;
+  // 1. If it's a 192.168.x.x address, it's someone physically in the house.
+  if (ip.startsWith('192.168.') || ip.startsWith('::ffff:192.168.')) {
+    return false; // Safe to bypass
+  }
+  // 2. Localhost check
+  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
+    // If we have a tunnel header OR USING_TUNNEL is explicitly true, treat as remote
+    if (hasTunnelHeader || process.env.USING_TUNNEL === 'true') {
+      return true; // Require PIN
+    }
+    return false; // Safe if just testing locally
+  }
+  // 3. Tailscale range (100.x.x.x) - treat as semi-trusted if needed, but safer to require PIN
+  if (ip.startsWith('100.')) return false; 
+
+  return true; // Everyone else requires a PIN
 }
 function getTailscaleIP() {
   // Tailscale assigns 100.64.0.0/10 addresses (CGNAT range)
@@ -58,7 +97,7 @@ function startTunnelCloudflared(port) {
         const proc = spawn("cloudflared", ["tunnel", "--no-autoupdate", "run", "--token", process.env.CF_TOKEN], { stdio: ["ignore", "pipe", "pipe"] });
         const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
-        return resolve({ url, proc });
+        return activeTunnelProc = proc; resolve({ url, proc });
       }
 
       // If the user provided a tunnel name in .env (Locally Managed - "The old way")
@@ -67,7 +106,7 @@ function startTunnelCloudflared(port) {
         const proc = spawn("cloudflared", ["tunnel", "run", process.env.CF_TUNNEL_NAME], { stdio: ["ignore", "pipe", "pipe"] });
         const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
-        return resolve({ url, proc });
+        return activeTunnelProc = proc; resolve({ url, proc });
       }
 
       console.log("  \x1b[33m~\x1b[0m Starting cloudflared tunnel...");
@@ -161,15 +200,88 @@ function startTunnelServeo(port) {
   });
 }
 
+
+function startTunnelVps(port, vpsHost) {
+  return new Promise((resolve) => {
+    console.log(`  \x1b[33m~\x1b[0m Starting VPS Reverse SSH Tunnel to ${vpsHost}...`);
+    const proc = spawn("ssh", [
+      "-v", "-N", "-T", 
+      "-o", "ExitOnForwardFailure=yes",
+      "-o", "StrictHostKeyChecking=no", 
+      "-o", "UserKnownHostsFile=/dev/null",
+      "-R", `0.0.0.0:${port}:localhost:${port}`, vpsHost
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    
+    const url = process.env.CUSTOM_URL || `http://${vpsHost.split('@').pop().trim()}:${port}`;
+    let done = false;
+    
+    proc.stderr.on("data", data => {
+      const out = data.toString();
+      // Print to terminal console as requested
+      process.stderr.write(out);
+      // Logs removed from GUI as requested
+
+      // Check for success markers in verbose output
+      if ((out.includes("remote forward success") || out.includes("Forwarding address")) && !done) {
+        done = true;
+        process.env.USING_TUNNEL = "true";
+        activeTunnelProc = proc; resolve({ url, proc });
+      }
+    });
+    proc.on("close", () => { if (!done) resolve(null); });
+    setTimeout(() => { 
+      if (!done) { 
+        done = true; 
+        process.env.USING_TUNNEL = "true";
+        activeTunnelProc = proc; resolve({ url, proc }); 
+      } 
+    }, 5000);
+  });
+}
+
+function startTunnelZrok(port) {
+  return new Promise(async (resolve) => {
+    const findZrok = () => {
+      const paths = ['zrok2', 'zrok', '/usr/bin/zrok2', '/usr/bin/zrok', '/usr/local/bin/zrok', path.join(process.env.HOME || '', 'bin/zrok'), './zrok'];
+      for (const p of paths) if (fs.existsSync(p)) return p;
+      return 'zrok2';
+    };
+    const bin = findZrok();
+    console.log(`  \x1b[33m~\x1b[0m Starting ${bin} public share...`);
+    const args = ["share", "public", "http://localhost:" + port, "--backend-mode", "proxy", "--headless"];
+    const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let done = false;
+    const check = data => {
+      const out = data.toString();
+      const m = out.match(/(https:\/\/)?([a-z0-9\-]+\.shares?\.zrok\.io)/i);
+      if (m && !done) {
+        done = true;
+        const url = m[1] ? m[0] : "https://" + m[2];
+        process.env.USING_TUNNEL = "true";
+        activeTunnelProc = proc; resolve({ url, proc });
+        console.log("  \x1b[32m\u2713\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
+      }
+    };
+    proc.stdout.on("data", check); proc.stderr.on("data", check);
+    proc.on("close", () => { if (!done) resolve(null); });
+    setTimeout(() => { if (!done) { done = true; proc.kill(); resolve(null); } }, 20000);
+  });
+}
+
+
 async function startTunnel(port) {
   const forced = (process.env.TUNNEL || "").toLowerCase();
+  if (forced === "zrok") return startTunnelZrok(port);
+  if (forced === "vps") return startTunnelVps(port, process.env.VPS_HOST);
   if (forced === "cloudflared") return startTunnelCloudflared(port);
   if (forced === "playit") return startTunnelPlayit(port);
   if (forced === "localhostrun") return startTunnelLocalhostRun(port);
   if (forced === "serveo") return startTunnelServeo(port);
-  // Auto: try each in order (SSH providers run in parallel to save time)
+  // Auto: try cloudflared -> zrok -> playit
   const cf = await startTunnelCloudflared(port);
   if (cf) return cf;
+  const z = await startTunnelZrok(port);
+  if (z) return z;
   const pl = await startTunnelPlayit(port);
   if (pl) return pl;
   // Try both SSH providers in parallel — whichever answers first wins
@@ -193,7 +305,7 @@ function sanitize(str) {
 function makePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
 
 // ── Persistent config (tunnel preference) ────────────────────────────────────
-const CONFIG_FILE = __dirname + "/nearsectogether.config.json";
+const CONFIG_FILE = path.join(__dirname, "..", "nearsectogether.config.json");
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")); } catch { return {}; }
 }
@@ -209,7 +321,7 @@ async function main() {
   const PUBLIC_IP = await getPublicIP();
   let PIN = makePin();
   let pinEnabled = true;
-  let tunnelUrl = null;
+// tunnelUrl moved to top
 
   console.log("\n  \x1b[1mNearsecTogether\x1b[0m");
   console.log("  Host page : http://localhost:" + PORT + "/host");
@@ -218,6 +330,28 @@ async function main() {
   console.log("  PIN       : \x1b[1;32m" + PIN + "\x1b[0m\n");
 
   const app = express();
+  
+  // Auto-start VPS tunnel if configured in .env
+  if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
+    startTunnelVps(PORT, process.env.VPS_HOST.trim()).then(tun => {
+      if (tun) tunnelUrl = tun.url;
+    });
+  } else {
+    // Check config for saved tunnel preference
+    const cfg = loadConfig();
+    if (cfg.neverAsk && cfg.tunnelProvider && cfg.tunnelProvider !== 'portforward') {
+      const vpsHost = cfg.vpsHost || process.env.VPS_HOST;
+      const fn = { 
+        zrok: startTunnelZrok, 
+        cloudflared: startTunnelCloudflared, 
+        playit: startTunnelPlayit, 
+        localhostrun: startTunnelLocalhostRun,
+        vps: (p) => startTunnelVps(p, vpsHost)
+      }[cfg.tunnelProvider];
+      if (fn) fn(PORT).then(tun => { if (tun) tunnelUrl = tun.url; });
+    }
+  }
+
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server });
 
@@ -229,22 +363,57 @@ async function main() {
   });
 
   const APP_VERSION = "1.0.0";
-  app.get("/", (req, res) => res.sendFile(__dirname + "/public/index.html"));
-  app.get("/host", (req, res) => res.sendFile(__dirname + "/public/host.html"));
+  app.use(express.static(path.join(__dirname, "..", "public")));
+  app.use("/assets", express.static(path.join(__dirname, "..", "assets")));
+
+  app.get("/", (req, res) => res.sendFile(path.join(__dirname, "..", "public/index.html")));
+  app.get("/host", (req, res) => res.sendFile(path.join(__dirname, "..", "public/host.html")));
   app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
-  app.get("/api/pin-required", (req, res) => res.json({ required: pinEnabled }));
+  app.get("/api/pin-required", (req, res) => {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
+    res.json({ required: pinEnabled && shouldRequirePin(clientIp, hasTunnelHeader) });
+  });
   app.get("/api/config", (req, res) => res.json(loadConfig()));
   app.post("/api/config", express.json(), (req, res) => { res.json(saveConfig(req.body || {})); });
 
+  app.get("/api/status", (req, res) => {
+    res.json({
+      online: !!hostWS,
+      streaming: hostStreaming,
+      viewers: viewers.size,
+      controllers: controllerViewerCount(),
+      tunnel: tunnelUrl,
+      version: APP_VERSION,
+      uptime: process.uptime()
+    });
+  });
+
   // Trigger a tunnel start from the host UI picker
   app.post("/api/start-tunnel", express.json(), async (req, res) => {
-    if (tunnelUrl) return res.json({ url: tunnelUrl }); // already running
+    if (tunnelUrl) {
+      const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
+      if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
+      return res.json({ url: tunnelUrl }); // already running
+    }
     const provider = (req.body && req.body.provider) || "cloudflared";
     if (req.body && req.body.remember) saveConfig({ tunnelProvider: provider, neverAsk: true });
     if (req.body && req.body.remember === false) saveConfig({ neverAsk: false }); // clear preference
     res.json({ ok: true, starting: true });
     // Start asynchronously so the response returns immediately
-    const fn = { cloudflared: startTunnelCloudflared, playit: startTunnelPlayit, localhostrun: startTunnelLocalhostRun, portforward: async () => null }[provider] || startTunnel;
+    const fn = { 
+      zrok: startTunnelZrok, 
+      cloudflared: startTunnelCloudflared, 
+      playit: startTunnelPlayit, 
+      localhostrun: startTunnelLocalhostRun, 
+      vps: (p) => startTunnelVps(p, ((req.body && req.body.vpsHost) || process.env.VPS_HOST || '').trim()),
+      portforward: async () => null 
+    }[provider] || startTunnel;
+    
+    if (provider === 'vps' && req.body && req.body.vpsHost) {
+      saveConfig({ vpsHost: req.body.vpsHost });
+    }
+
     const tun = await fn(PORT);
     if (tun) {
       tunnelUrl = tun.url;
@@ -258,7 +427,7 @@ async function main() {
 
   // ── uinput sidecar ─────────────────────────────────────────────────────────
   let uinputProc = null;
-  const sidecar = __dirname + "/input_driver.py";
+  const sidecar = path.join(__dirname, "..", "input_driver.py");
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   if (fs.existsSync(sidecar)) {
@@ -274,16 +443,16 @@ async function main() {
     setImmediate(() => { try { uinputProc.stdin.write(JSON.stringify(msg) + "\n"); } catch { } });
   }
 
-  let hostWS = null;
+// hostWS moved to top
   let hostStreaming = false;
-  const viewers = new Map();
+// viewers moved to top
   const audioViewers = new Set();
-  const inputPerms = new Map();
-  const viewerNames = new Map();
+// inputPerms moved to top
+// viewerNames moved to top
   const viewerGamepads = new Map(); // viewerId -> Set of padIndices
   const viewerHasController = new Set(); // viewerIds that have sent at least one gpid
-  const pinAttempts = new Map(); // ip -> { count, lockedUntil }
-  let vidCount = 0;
+// pinAttempts moved to top // ip -> { count, lockedUntil }
+// vidCount moved to top
 
   // ── Join & Leave Sounds ────────────────────────────────────────────────────
   const JOIN_SOUND = __dirname + '/assets/joinsound.wav';
@@ -345,6 +514,8 @@ async function main() {
     if (path === "/ws/host") {
       console.log("[host] connected");
       hostWS = ws;
+      // Broadcast to all viewers that a host is now online
+      broadcast(JSON.stringify({ type: "host-connected" }));
       // Replay existing viewers so host can re-offer on reconnect
       viewers.forEach((_, id) => ws.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id })));
       if (tunnelUrl) ws.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
@@ -406,7 +577,10 @@ async function main() {
       // ── VIEWER ───────────────────────────────────────────────────────────────
     } else if (path === "/ws/viewer") {
       const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-      if (pinEnabled) {
+      const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
+      const requirePin = shouldRequirePin(clientIp, hasTunnelHeader);
+
+      if (pinEnabled && requirePin) {
         const attempt = pinAttempts.get(clientIp) || { count: 0, lockedUntil: 0 };
         if (Date.now() < attempt.lockedUntil) {
           try { ws.send(JSON.stringify({ type: "pin-rejected", reason: "rate-limited" })); } catch { }
@@ -417,8 +591,8 @@ async function main() {
         if (pin !== PIN) {
           attempt.count++;
           if (attempt.count >= 6) {
-            attempt.lockedUntil = Date.now() + 5 * 60 * 1000; // 5 mins
-            console.log(`[viewer] IP ${clientIp} locked out for 5 minutes (PIN brute-force)`);
+            attempt.lockedUntil = Date.now() + 2 * 60 * 1000; // 2 mins
+            console.log(`[viewer] IP ${clientIp} locked out for 2 minutes (PIN brute-force)`);
           }
           pinAttempts.set(clientIp, attempt);
           try { ws.send(JSON.stringify({ type: "pin-rejected" })); } catch { }
@@ -427,6 +601,9 @@ async function main() {
           return;
         }
         pinAttempts.delete(clientIp);
+      } else {
+        // Log that a local user bypassed the check
+        console.log(`[viewer] IP ${clientIp} (requirePin=${requirePin}) bypassing PIN/rate-limit check`);
       }
       let id = "v" + (++vidCount);
       const defaultName = "Guest" + (1000 + Math.floor(Math.random() * 9000));
@@ -507,6 +684,16 @@ async function main() {
           if (msg.type === "gpid") {
             const padIdx = msg.padIndex || 0;
             const pads = viewerGamepads.get(id) || new Set();
+            
+            // Deduplicate: ignore if this padIndex is already registered for this viewer
+            if (pads.has(padIdx)) return;
+            
+            // Slot Cap: ignore if we already have 16 controllers total
+            if (controllerViewerCount() >= 16) {
+              console.log("[viewer] slot cap reached (16), ignoring controller from", id);
+              return;
+            }
+
             pads.add(padIdx);
             viewerGamepads.set(id, pads);
             
@@ -566,13 +753,21 @@ async function main() {
         viewerGamepads.delete(id);
         viewerHasController.delete(id);
         // We leave inputPerms intact in case they F5 refresh to reclaim their spot!
-        
         if (hadController) {
           playLeaveSound();
           // Send a zero/neutral flush before destroying — prevents stuck D-pad / joystick
           toUinput({ type: 'flush_neutral', viewer_id: id });
           // Then destroy all virtual controllers for this viewer
           toUinput({ type: 'disconnect_viewer', viewer_id: id });
+        }
+        
+        // Only delete if this specific connection is still the active one for this ID
+        if (viewers.get(id) === ws) {
+          viewers.delete(id);
+          viewerNames.delete(id);
+          viewerHasController.delete(id);
+          viewerGamepads.delete(id);
+          broadcastRoster();
           if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
         }
         
@@ -645,3 +840,15 @@ async function main() {
 }
 
 main();
+
+function cleanupAndExit() {
+  console.log("\n  \x1b[33m!\x1b[0m Shutting down... cleaning up ports.");
+  if (activeTunnelProc) {
+    try { activeTunnelProc.kill(); } catch(e) {}
+  }
+  // Try to kill local port 3000 one last time
+  try { exec("fuser -k 3000/tcp"); } catch(e) {}
+  process.exit();
+}
+process.on('SIGINT', cleanupAndExit);
+process.on('SIGTERM', cleanupAndExit);

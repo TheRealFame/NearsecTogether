@@ -6,8 +6,11 @@ const fs = require('fs');
 // Must be set before app is ready
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 app.commandLine.appendSwitch('enable-features',
-  'VaapiVideoEncoder,VaapiVideoDecoder,PlatformHEVCDecoderSupport');
+  'VaapiVideoEncoder,VaapiVideoDecoder,PlatformHEVCDecoderSupport,WebRTCPipeWireCapturer');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('disable-gpu-vsync');
+app.commandLine.appendSwitch('disable-frame-rate-limit');
+
 app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
@@ -42,7 +45,7 @@ function startServer() {
     const origLog = console.log;
     // Override openBrowser since Electron handles the window
     process.env.ELECTRON_MODE = '1';
-    require('./server.js');
+    require('./src/server.js');
     // server.js calls console.log("Listening on port N")
     // We hook it briefly to grab the port
     const _log = console.log.bind(console);
@@ -103,10 +106,14 @@ async function createWindow() {
   const { desktopCapturer } = require('electron');
   win.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
-      // Pass the first screen source — getDisplayMedia's own picker still runs in page
-      callback({ video: sources[0], audio: 'loopback' });
+      if (sources && sources.length > 0) {
+        callback({ video: sources[0], audio: 'loopback' });
+      } else {
+        console.error('[electron] No screen sources found. Wayland Portal may be failing.');
+        callback({});
+      }
     }).catch(err => {
-      console.error('[electron] desktopCapturer error:', err.message);
+      console.error('[electron] desktopCapturer error:', err);
       callback({});
     });
   });

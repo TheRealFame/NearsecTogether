@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Nearsec Together Launcher
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
 echo ""
@@ -69,9 +69,9 @@ if git status --porcelain | grep -qE "^\?\? (\.env|nearsectogether\.config\.json
   echo "    Please ensure .env and nearsectogether.config.json are in your .gitignore"
 fi
 
-if [ -f node_modules/.bin/electron ]; then
-  echo "  ▶ Launching NearsecTogether host app..."
+if [[ "$1" != "--server" ]]; then
   exec node_modules/.bin/electron . "$@"
 else
-  echo "  ✗ Electron not found. Run 'npm install' to get it."; exit 1
+  # VPS/Server mode
+  exec $(which node) $(pwd)/src/server.js "$@"
 fi
