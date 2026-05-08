@@ -632,6 +632,7 @@
     // ── Gamepad polling + heartbeat ───────────────────────────────────────────────
     // Sends on change OR every 100ms to keep held analog values flowing
     let gpPolling = false, gpRaf = null, lastGpStr = {}, lastGpSend = {};
+    let sentGpid = new Set();
 
     function activateGamepad() {
       if (gpPolling) return;
@@ -648,7 +649,18 @@
       const now = Date.now();
       for (const gp of pads) {
         if (!gp) continue;
-        const forceHeartbeat = now - (lastGpSend[gp.index] || 0) > 100;
+
+        // Ensure gpid is sent for every active pad found during polling
+        if (!sentGpid.has(gp.index)) {
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'gpid', padIndex: gp.index, id: gp.id }));
+            sentGpid.add(gp.index);
+            console.log('[gamepad] Polling found new controller, sending gpid:', gp.id);
+          }
+        }
+
+        const forceHeartbeat = now - (lastGpSend[gp.index] || 0) * 1; // dummy mult
+        const forceHb = now - (lastGpSend[gp.index] || 0) > 100;
         const state = {
           type: 'gamepad',
           padIndex: gp.index,
@@ -656,7 +668,7 @@
           buttons: gp.buttons.map(b => ({ pressed: b.pressed, value: Math.round(b.value * 255) }))
         };
         const str = JSON.stringify(state);
-        if (str !== lastGpStr[gp.index] || forceHeartbeat) {
+        if (str !== lastGpStr[gp.index] || forceHb) {
           lastGpStr[gp.index] = str;
           lastGpSend[gp.index] = now;
           if (ws && ws.readyState === 1) ws.send(str);

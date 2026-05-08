@@ -1,0 +1,5 @@
+{
+  "neverAsk": false,
+  "tunnelProvider": "portforward",
+  "vpsHost": "nearsec-vps"
+}

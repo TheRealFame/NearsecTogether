@@ -41,6 +41,13 @@ PROFILES = {
         'version': 0x0301,
         'bustype': 0x0003,
     },
+    'xboxseries': {
+        'name':    'Microsoft Xbox Series S|X Controller',
+        'vendor':  0x045e,
+        'product': 0x0b12,
+        'version': 0x0507,
+        'bustype': 0x0003,
+    },
     'ps4': {
         'name':    'Sony Interactive Entertainment Wireless Controller',
         'vendor':  0x054c,
@@ -60,12 +67,25 @@ PROFILES = {
 def detect_profile(gpid: str) -> str:
     """Detect controller type from browser gamepad ID string."""
     g = gpid.lower()
+    
+    # Sony detection
     is_sony = any(k in g for k in ['054c', 'sony', 'dualsense', 'dualshock', 'playstation'])
     if is_sony:
         is_ps5 = any(k in g for k in ['0ce6', 'dualsense', 'ps5'])
         return 'ps5' if is_ps5 else 'ps4'
-    is_xbox_one = any(k in g for k in ['xbox one', '02ea', '02d1', '02fd'])
-    return 'xboxone' if is_xbox_one else 'xbox'
+    
+    # Xbox Series detection (0b12)
+    if '0b12' in g or 'xbox series' in g:
+        return 'xboxseries'
+        
+    # Xbox One detection (02ea, 02d1, 02fd, 02dd, etc)
+    is_xbox_one = any(k in g for k in ['xbox one', '02ea', '02d1', '02fd', '02dd', '0291'])
+    if is_xbox_one:
+        return 'xboxone'
+        
+    # Original Xbox / 360 / Fallback
+    # Original Xbox usually shows as '045e' and '0202' or '0285' or '0289'
+    return 'xbox'
 
 def make_device(profile_key: str):
     p = PROFILES[profile_key]

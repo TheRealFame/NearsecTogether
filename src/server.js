@@ -19,12 +19,12 @@ const pinAttempts = new Map();
 
 if (!fs.existsSync(path.join(__dirname, '..', '.env'))) {
   fs.writeFileSync(path.join(__dirname, '..', '.env'), `CF_TOKEN=
-CUSTOM_URL=
-ZROK_RESERVED_NAME=
-USE_VPS=false
-VPS_HOST=
-IS_VPS=false
-`);
+  CUSTOM_URL=
+  ZROK_RESERVED_NAME=
+  USE_VPS=false
+  VPS_HOST=
+  IS_VPS=false
+  `);
 }
 
 // Parse optional .env file for secrets
@@ -33,15 +33,16 @@ try {
     const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
     if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
   });
-} catch (e) {}
+} catch (e) { }
 
 function getLanIP() {
   for (const iface of Object.values(os.networkInterfaces()))
     for (const n of iface)
       if (n.family === "IPv4" && !n.internal) return n.address;
-  return "127.0.0.1";
+      return "127.0.0.1";
 }
-function shouldRequirePin(ip, hasTunnelHeader = false) { return true; // Security: everyone requires PIN
+function shouldRequirePin(ip, hasTunnelHeader = false) {
+  return true; // Security: everyone requires PIN
   if (!ip) return true;
   // 1. If it's a 192.168.x.x address, it's someone physically in the house.
   if (ip.startsWith('192.168.') || ip.startsWith('::ffff:192.168.')) {
@@ -56,7 +57,7 @@ function shouldRequirePin(ip, hasTunnelHeader = false) { return true; // Securit
     return false; // Safe if just testing locally
   }
   // 3. Tailscale range (100.x.x.x) - treat as semi-trusted if needed, but safer to require PIN
-  if (ip.startsWith('100.')) return false; 
+  if (ip.startsWith('100.')) return false;
 
   return true; // Everyone else requires a PIN
 }
@@ -65,7 +66,7 @@ function getTailscaleIP() {
   for (const iface of Object.values(os.networkInterfaces()))
     for (const n of iface)
       if (n.family === "IPv4" && n.address.startsWith("100.")) return n.address;
-  return null;
+      return null;
 }
 function findFreePort(start) {
   return new Promise(resolve => {
@@ -90,7 +91,7 @@ function startTunnelCloudflared(port) {
   return new Promise(resolve => {
     exec("which cloudflared", err => {
       if (err) return resolve(null);
-      
+
       // If the user provided a token in .env (Remotely Managed)
       if (process.env.CF_TOKEN) {
         console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Token)...");
@@ -137,7 +138,7 @@ function startTunnelPlayit(port) {
         if (claim) { console.log("  \x1b[33m!\x1b[0m playit first-run — visit: \x1b[1m" + claim[0] + "\x1b[0m"); openBrowser(claim[0]); }
         // Assigned tunnel URL
         const url = str.match(/https?:\/\/[a-z0-9\-]+\.at\.playit\.gg(?::\d+)?/i)
-          || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
+        || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
         if (url && !done) { done = true; resolve({ url: url[0], proc }); console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url[0] + "\x1b[0m"); }
       };
       proc.stdout.on("data", check); proc.stderr.on("data", check);
@@ -205,16 +206,16 @@ function startTunnelVps(port, vpsHost) {
   return new Promise((resolve) => {
     console.log(`  \x1b[33m~\x1b[0m Starting VPS Reverse SSH Tunnel to ${vpsHost}...`);
     const proc = spawn("ssh", [
-      "-v", "-N", "-T", 
+      "-v", "-N", "-T",
       "-o", "ExitOnForwardFailure=yes",
-      "-o", "StrictHostKeyChecking=no", 
+      "-o", "StrictHostKeyChecking=no",
       "-o", "UserKnownHostsFile=/dev/null",
       "-R", `0.0.0.0:${port}:localhost:${port}`, vpsHost
     ], { stdio: ["ignore", "pipe", "pipe"] });
-    
+
     const url = process.env.CUSTOM_URL || `http://${vpsHost.split('@').pop().trim()}:${port}`;
     let done = false;
-    
+
     proc.stderr.on("data", data => {
       const out = data.toString();
       // Print to terminal console as requested
@@ -229,12 +230,12 @@ function startTunnelVps(port, vpsHost) {
       }
     });
     proc.on("close", () => { if (!done) resolve(null); });
-    setTimeout(() => { 
-      if (!done) { 
-        done = true; 
+    setTimeout(() => {
+      if (!done) {
+        done = true;
         process.env.USING_TUNNEL = "true";
-        activeTunnelProc = proc; resolve({ url, proc }); 
-      } 
+        activeTunnelProc = proc; resolve({ url, proc });
+      }
     }, 5000);
   });
 }
@@ -288,7 +289,7 @@ async function startTunnel(port) {
   console.log("  \x1b[33m~\x1b[0m Trying localhost.run and serveo in parallel...");
   const ssh = await Promise.any([
     startTunnelLocalhostRun(port),
-    startTunnelServeo(port)
+                                startTunnelServeo(port)
   ].map(p => p.then(r => r || Promise.reject()))).catch(() => null);
   if (ssh) return ssh;
   console.log("  \x1b[33m!\x1b[0m All tunnels failed. Options:");
@@ -300,7 +301,7 @@ async function startTunnel(port) {
 
 function sanitize(str) {
   return String(str).replace(/[<>&"']/g, c =>
-    ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c])).slice(0, 300);
+  ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c])).slice(0, 300);
 }
 function makePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
 
@@ -321,16 +322,16 @@ async function main() {
   const PUBLIC_IP = await getPublicIP();
   let PIN = makePin();
   let pinEnabled = true;
-// tunnelUrl moved to top
+  // tunnelUrl moved to top
 
   console.log("\n  \x1b[1mNearsecTogether\x1b[0m");
   console.log("  Host page : http://localhost:" + PORT + "/host");
   console.log("  LAN URL   : http://" + LAN_IP + ":" + PORT + "/");
   if (PUBLIC_IP) console.log("  Public IP : http://" + PUBLIC_IP + ":" + PORT + "/ (needs port forward)");
-  console.log("  PIN       : \x1b[1;32m" + PIN + "\x1b[0m\n");
+    console.log("  PIN       : \x1b[1;32m" + PIN + "\x1b[0m\n");
 
   const app = express();
-  
+
   // Auto-start VPS tunnel if configured in .env
   if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
     startTunnelVps(PORT, process.env.VPS_HOST.trim()).then(tun => {
@@ -341,10 +342,10 @@ async function main() {
     const cfg = loadConfig();
     if (cfg.neverAsk && cfg.tunnelProvider && cfg.tunnelProvider !== 'portforward') {
       const vpsHost = cfg.vpsHost || process.env.VPS_HOST;
-      const fn = { 
-        zrok: startTunnelZrok, 
-        cloudflared: startTunnelCloudflared, 
-        playit: startTunnelPlayit, 
+      const fn = {
+        zrok: startTunnelZrok,
+        cloudflared: startTunnelCloudflared,
+        playit: startTunnelPlayit,
         localhostrun: startTunnelLocalhostRun,
         vps: (p) => startTunnelVps(p, vpsHost)
       }[cfg.tunnelProvider];
@@ -383,9 +384,9 @@ async function main() {
       streaming: hostStreaming,
       viewers: viewers.size,
       controllers: controllerViewerCount(),
-      tunnel: tunnelUrl,
-      version: APP_VERSION,
-      uptime: process.uptime()
+             tunnel: tunnelUrl,
+             version: APP_VERSION,
+             uptime: process.uptime()
     });
   });
 
@@ -401,15 +402,15 @@ async function main() {
     if (req.body && req.body.remember === false) saveConfig({ neverAsk: false }); // clear preference
     res.json({ ok: true, starting: true });
     // Start asynchronously so the response returns immediately
-    const fn = { 
-      zrok: startTunnelZrok, 
-      cloudflared: startTunnelCloudflared, 
-      playit: startTunnelPlayit, 
-      localhostrun: startTunnelLocalhostRun, 
+    const fn = {
+      zrok: startTunnelZrok,
+      cloudflared: startTunnelCloudflared,
+      playit: startTunnelPlayit,
+      localhostrun: startTunnelLocalhostRun,
       vps: (p) => startTunnelVps(p, ((req.body && req.body.vpsHost) || process.env.VPS_HOST || '').trim()),
-      portforward: async () => null 
+           portforward: async () => null
     }[provider] || startTunnel;
-    
+
     if (provider === 'vps' && req.body && req.body.vpsHost) {
       saveConfig({ vpsHost: req.body.vpsHost });
     }
@@ -443,16 +444,16 @@ async function main() {
     setImmediate(() => { try { uinputProc.stdin.write(JSON.stringify(msg) + "\n"); } catch { } });
   }
 
-// hostWS moved to top
+  // hostWS moved to top
   let hostStreaming = false;
-// viewers moved to top
+  // viewers moved to top
   const audioViewers = new Set();
-// inputPerms moved to top
-// viewerNames moved to top
+  // inputPerms moved to top
+  // viewerNames moved to top
   const viewerGamepads = new Map(); // viewerId -> Set of padIndices
   const viewerHasController = new Set(); // viewerIds that have sent at least one gpid
-// pinAttempts moved to top // ip -> { count, lockedUntil }
-// vidCount moved to top
+  // pinAttempts moved to top // ip -> { count, lockedUntil }
+  // vidCount moved to top
 
   // ── Join & Leave Sounds ────────────────────────────────────────────────────
   const JOIN_SOUND = __dirname + '/assets/joinsound.wav';
@@ -463,7 +464,7 @@ async function main() {
     // aplay is standard on any ALSA Linux system; -q = quiet (no banner)
     const ap = spawn('aplay', ['-q', file], { stdio: 'ignore', detached: true });
     ap.unref();
-    ap.on('error', () => {}); // ignore if aplay not present
+    ap.on('error', () => { }); // ignore if aplay not present
   }
   function playJoinSound() { playSound(JOIN_SOUND); }
   function playLeaveSound() { playSound(LEAVE_SOUND); }
@@ -490,9 +491,9 @@ async function main() {
         roster.push({
           id: rosterId,
           name: (viewerNames.get(id) || id) + nameSuffix,
-          gp: !!p.gp,
-          kb: isExtra ? false : !!p.kb,
-          slot: p.slot ?? null
+                    gp: !!p.gp,
+                    kb: isExtra ? false : !!p.kb,
+                    slot: p.slot ?? null
         });
       });
     });
@@ -535,7 +536,7 @@ async function main() {
           if (msg.type === "set-input") {
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { gp: !!msg.gp, kb: !!msg.kb, slot: cur.slot });
-            
+
             // If host disabled them, and they are pad 0, notify the client.
             const realId = msg.viewerId.split('_')[0];
             const vws = viewers.get(realId);
@@ -548,7 +549,7 @@ async function main() {
           if (msg.type === "assign-slot") {
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { ...cur, slot: msg.slot });
-            
+
             const realId = msg.viewerId.split('_')[0];
             const vws = viewers.get(realId);
             if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
@@ -558,10 +559,10 @@ async function main() {
             return;
           }
           if (msg.type === "chat") { broadcast(JSON.stringify(msg)); return; }
-          
+
           if (msg.type === "host-stream-ready") hostStreaming = true;
           if (msg.type === "host-stream-stopped") hostStreaming = false;
-          
+
           // Fallback broadcast (host-stream-stopped, host-stream-ready, etc.)
           broadcast(JSON.stringify(msg));
         } catch { }
@@ -613,7 +614,7 @@ async function main() {
       console.log("[viewer]", id, "(" + defaultName + ") joined (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
       ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: defaultName }));
       ws.send(JSON.stringify({ type: "input-state", gp: true, kb: false }));
-      
+
       // Send viewer-joined so they immediately get a stream offer
       if (hostWS && hostWS.readyState === 1) {
         hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: defaultName }));
@@ -621,7 +622,7 @@ async function main() {
           ws.send(JSON.stringify({ type: "host-stream-ready" }));
         }
       }
-      
+
       broadcastRoster();
 
       ws.on("message", raw => {
@@ -653,12 +654,12 @@ async function main() {
               viewers.delete(tempId);
               viewerNames.set(claimedId, viewerNames.get(tempId) || viewerNames.get(claimedId) || "Guest");
               viewerNames.delete(tempId);
-              
+
               if (viewerHasController.has(tempId)) {
                 viewerHasController.delete(tempId);
                 viewerHasController.add(claimedId);
               }
-              
+
               console.log("[viewer]", claimedId, "rejoined (slot reused, no duplicate)");
               id = claimedId;
 
@@ -684,10 +685,10 @@ async function main() {
           if (msg.type === "gpid") {
             const padIdx = msg.padIndex || 0;
             const pads = viewerGamepads.get(id) || new Set();
-            
+
             // Deduplicate: ignore if this padIndex is already registered for this viewer
             if (pads.has(padIdx)) return;
-            
+
             // Slot Cap: ignore if we already have 16 controllers total
             if (controllerViewerCount() >= 16) {
               console.log("[viewer] slot cap reached (16), ignoring controller from", id);
@@ -696,7 +697,7 @@ async function main() {
 
             pads.add(padIdx);
             viewerGamepads.set(id, pads);
-            
+
             msg.pad_id = id + '_' + padIdx;
             if (!inputPerms.has(msg.pad_id)) inputPerms.set(msg.pad_id, { gp: true, kb: false, slot: null });
 
@@ -731,14 +732,29 @@ async function main() {
           if (msg.type === "gamepad" || msg.type === "keyboard") {
             const padIdx = msg.padIndex || 0;
             const rosterId = msg.type === "gamepad" ? id + '_' + padIdx : id + '_0';
-            const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
 
-            // Only forward input if this viewer is actually counted (has a controller)
-            if (!viewerHasController.has(id)) return;
-            
+            // Auto-register controller if we haven't seen gpid yet for this pad
+            if (msg.type === "gamepad") {
+              const pads = viewerGamepads.get(id) || new Set();
+              if (!pads.has(padIdx)) {
+                pads.add(padIdx);
+                viewerGamepads.set(id, pads);
+                if (!inputPerms.has(rosterId)) inputPerms.set(rosterId, { gp: true, kb: false, slot: null });
+
+                const isNew = !viewerHasController.has(id);
+                viewerHasController.add(id);
+                if (isNew) {
+                  playJoinSound();
+                  console.log("[viewer]", id, "controller auto-detected from input");
+                }
+                broadcastRoster();
+              }
+            }
+
+            const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
             if (msg.type === "gamepad" && !perms.gp) return;
             if (msg.type === "keyboard" && !perms.kb) return;
-            
+
             msg.pad_id = rosterId;
             toUinput(msg);
             return;
@@ -760,7 +776,7 @@ async function main() {
           // Then destroy all virtual controllers for this viewer
           toUinput({ type: 'disconnect_viewer', viewer_id: id });
         }
-        
+
         // Only delete if this specific connection is still the active one for this ID
         if (viewers.get(id) === ws) {
           viewers.delete(id);
@@ -770,7 +786,7 @@ async function main() {
           broadcastRoster();
           if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
         }
-        
+
         console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
         broadcastRoster();
       });
@@ -821,11 +837,22 @@ async function main() {
   server.listen(PORT, "0.0.0.0", async () => {
     console.log("Listening on port " + PORT);
     if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + PORT + "/host");
-    const cfg = loadConfig();
-    if (cfg.neverAsk && cfg.tunnelProvider) {
+      const cfg = loadConfig();
+    if (cfg.neverAsk && cfg.tunnelProvider === 'portforward') {
+      // Port-forward mode: no tunnel process needed. Host shares their public IP directly.
+      // tunnelUrl stays null here; the host page reads neverAsk=true and skips the picker modal.
+      console.log("  ~ Tunnel: port forward mode (saved). Share your Public IP URL with viewers.");
+    } else if (cfg.neverAsk && cfg.tunnelProvider) {
       // Use saved preference without asking
       console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "' (edit nearsectogether.config.json to change)");
-      const fn = { cloudflared: startTunnelCloudflared, playit: startTunnelPlayit, localhostrun: startTunnelLocalhostRun }[cfg.tunnelProvider] || startTunnel;
+      const fn = {
+        zrok: startTunnelZrok,
+        cloudflared: startTunnelCloudflared,
+        playit: startTunnelPlayit,
+        localhostrun: startTunnelLocalhostRun,
+        serveo: startTunnelServeo,
+        vps: (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || '')
+      }[cfg.tunnelProvider] || startTunnel;
       const tun = await fn(PORT);
       if (tun) {
         tunnelUrl = tun.url;
@@ -844,10 +871,10 @@ main();
 function cleanupAndExit() {
   console.log("\n  \x1b[33m!\x1b[0m Shutting down... cleaning up ports.");
   if (activeTunnelProc) {
-    try { activeTunnelProc.kill(); } catch(e) {}
+    try { activeTunnelProc.kill(); } catch (e) { }
   }
   // Try to kill local port 3000 one last time
-  try { exec("fuser -k 3000/tcp"); } catch(e) {}
+  try { exec("fuser -k 3000/tcp"); } catch (e) { }
   process.exit();
 }
 process.on('SIGINT', cleanupAndExit);

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nearsec Visualizer v4 - Final Polish</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0d0f;
+      --surface: #121518;
+      --accent: #ff5d3d;
+      --text: #f0f3f5;
+      --muted: #4a5157;
+      --border: #22282d;
+      --green: #4ade80;
+    }
+
+    body {
+      background-color: transparent;
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .widget-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 30px;
+      width: 100%;
+      max-width: 500px;
+      text-align: center;
+    }
+
+    .header {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--muted); display: inline-block; margin-right: 8px;
+    }
+
+    .status-dot.active {
+      background: var(--green); box-shadow: 0 0 12px var(--green);
+    }
+
+    #controller-svg {
+      width: 100%; height: auto;
+      filter: drop-shadow(0 15px 30px rgba(0,0,0,0.5));
+    }
+
+    .shell { fill: #1a1e22; stroke: var(--border); stroke-width: 2; }
+    .button-base { fill: #22282d; transition: fill 0.05s, opacity 0.05s; }
+    .stick-well { fill: #0b0d0f; stroke: var(--border); stroke-width: 1; }
+
+    .active-input {
+      fill: var(--accent) !important;
+      filter: drop-shadow(0 0 8px var(--accent));
+    }
+
+    .info-tray {
+      margin-top: 25px;
+      display: flex;
+      justify-content: space-around;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stick-val { color: var(--text); font-weight: 700; min-width: 70px; display: inline-block; }
+  </style>
+</head>
+<body>
+
+  <div class="widget-card">
+    <div class="header">
+      <div style="font-weight: 700; font-size: 14px;">
+        <span id="dot" class="status-dot"></span>
+        <span id="gp-name">DISCONNECTED</span>
+      </div>
+      <div id="gp-index" style="color: var(--muted); font-size: 12px;">PORT --</div>
+    </div>
+
+    <svg id="controller-svg" viewBox="0 0 440 340">
+      <path class="shell" d="M110,80 L330,80 C390,80 430,120 420,200 C410,260 360,280 330,270 L280,250 L160,250 L110,270 C80,280 30,260 20,200 C10,120 50,80 110,80 Z" />
+
+      <rect id="b4" class="button-base" x="80" y="55" width="80" height="20" rx="6" />
+      <rect id="b5" class="button-base" x="280" y="55" width="80" height="20" rx="6" />
+
+      <path id="b6" class="button-base" d="M90,20 L150,20 L150,50 L90,50 Z" />
+      <path id="b7" class="button-base" d="M290,20 L350,20 L350,50 L290,50 Z" />
+
+      <g id="dpad" transform="translate(100, 150)">
+        <circle id="b12" class="button-base" cx="0" cy="-25" r="14" />
+        <circle id="b13" class="button-base" cx="0" cy="25" r="14" />
+        <circle id="b14" class="button-base" cx="-25" cy="0" r="14" />
+        <circle id="b15" class="button-base" cx="25" cy="0" r="14" />
+      </g>
+
+      <g id="face-buttons" transform="translate(340, 150)">
+        <circle id="b3" class="button-base" cx="0" cy="-35" r="18" />
+        <circle id="b0" class="button-base" cx="0" cy="35" r="18" />
+        <circle id="b2" class="button-base" cx="-35" cy="0" r="18" />
+        <circle id="b1" class="button-base" cx="35" cy="0" r="18" />
+      </g>
+
+      <rect id="b8" class="button-base" x="175" y="130" width="30" height="12" rx="4" />
+      <rect id="b9" class="button-base" x="235" y="130" width="30" height="12" rx="4" />
+      <circle id="b16" class="button-base" cx="220" cy="110" r="18" />
+
+      <g transform="translate(175, 215)">
+        <circle class="stick-well" cx="0" cy="0" r="35" />
+        <circle id="stick-l" class="button-base" cx="0" cy="0" r="26" style="stroke: var(--border); stroke-width: 2;" />
+      </g>
+
+      <g transform="translate(265, 215)">
+        <circle class="stick-well" cx="0" cy="0" r="35" />
+        <circle id="stick-r" class="button-base" cx="0" cy="0" r="26" style="stroke: var(--border); stroke-width: 2;" />
+      </g>
+    </svg>
+
+    <div class="info-tray">
+      <div>L-STICK: <span id="val-l" class="stick-val">0, 0</span></div>
+      <div>R-STICK: <span id="val-r" class="stick-val">0, 0</span></div>
+    </div>
+  </div>
+
+  <script>
+    const stickL = document.getElementById('stick-l');
+    const stickR = document.getElementById('stick-r');
+    const nameEl = document.getElementById('gp-name');
+    const indexEl = document.getElementById('gp-index');
+    const dot = document.getElementById('dot');
+
+    function update() {
+      const gps = navigator.getGamepads();
+      let gp = null;
+      for (let g of gps) { if (g) { gp = g; break; } }
+
+      if (gp) {
+        dot.classList.add('active');
+        nameEl.textContent = (gp.id.split('(')[0] || 'Controller').trim().toUpperCase();
+        indexEl.textContent = 'PORT ' + gp.index;
+
+        // --- BUTTON LOGIC ---
+        gp.buttons.forEach((btn, i) => {
+          const el = document.getElementById('b' + i);
+          if (el) {
+            // TRIGGER FIX: Check if pressure > 0.05 and ensure it isn't "stuck" at -1.0
+            const isPressed = btn.pressed || btn.value > 0.05;
+            if (isPressed) {
+              el.classList.add('active-input');
+              if (i === 6 || i === 7) el.style.opacity = Math.max(0.4, btn.value);
+            } else {
+              el.classList.remove('active-input');
+              el.style.opacity = 1;
+            }
+          }
+        });
+
+        // --- STICK MAPPING ---
+        // L-Stick: Usually Axes 0 & 1
+        const lx = gp.axes[0] * 12;
+        const ly = gp.axes[1] * 12;
+        stickL.setAttribute('transform', `translate(${lx}, ${ly})`);
+        if (gp.buttons[10]?.pressed) stickL.classList.add('active-input');
+        else stickL.classList.remove('active-input');
+
+        // R-Stick Detection
+        // Standard is 2 & 3, but some Linux/8BitDo drivers use 3 & 4 or 4 & 5
+        let rx_val = 0, ry_val = 0;
+        if (gp.mapping === 'standard') {
+            rx_val = gp.axes[2];
+            ry_val = gp.axes[3];
+        } else {
+            // Fallback for generic/raw drivers where triggers might occupy Axis 2
+            rx_val = gp.axes[3] || 0;
+            ry_val = gp.axes[4] || 0;
+        }
+
+        const rx = rx_val * 12;
+        const ry = ry_val * 12;
+        stickR.setAttribute('transform', `translate(${rx}, ${ry})`);
+        if (gp.buttons[11]?.pressed) stickR.classList.add('active-input');
+        else stickR.classList.remove('active-input');
+
+        document.getElementById('val-l').textContent = `${gp.axes[0].toFixed(2)}, ${gp.axes[1].toFixed(2)}`;
+        document.getElementById('val-r').textContent = `${rx_val.toFixed(2)}, ${ry_val.toFixed(2)}`;
+
+      } else {
+        dot.classList.remove('active');
+        nameEl.textContent = 'DISCONNECTED';
+      }
+      requestAnimationFrame(update);
+    }
+    update();
+  </script>
+</body>
+</html>
