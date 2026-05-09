@@ -6,13 +6,16 @@
   "scripts": {
     "start": "node src/server.js",
     "electron": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "dependencies": {
     "express": "^4.18.0",
     "ws": "^8.0.0"
   },
   "devDependencies": {
-    "electron": "^28.0.0"
+    "electron": "^28.0.0",
+    "wrangler": "^4.90.0"
   }
 }
