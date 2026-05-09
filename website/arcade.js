@@ -74,14 +74,16 @@ arcadeChannel.bind('client-session-ping', (data) => {
     } else {
         data.lastSeen = Date.now();
         sessions.unshift(data);
-        updateLiveDot(true);
-        filterCards();
+
+        // Trigger your UI updates (Make sure these match your actual function names!)
+        if (typeof updateLiveDot === 'function') updateLiveDot(true);
+        if (typeof filterCards === 'function') filterCards();
     }
 });
 
 arcadeChannel.bind('client-session-stop', (data) => {
     sessions = sessions.filter(s => s.id !== data.id);
-    filterCards();
+    if (typeof filterCards === 'function') filterCards();
 });
 
 // --- Heartbeat Pruning Timer ---
@@ -91,8 +93,12 @@ setInterval(() => {
     const initialCount = sessions.length;
     sessions = sessions.filter(s => (now - s.lastSeen) < 25000);
 
-    if (sessions.length !== initialCount) filterCards();
-    if (sessions.length === 0) updateLiveDot(false);
+    if (sessions.length !== initialCount) {
+        if (typeof filterCards === 'function') filterCards();
+    }
+    if (sessions.length === 0) {
+        if (typeof updateLiveDot === 'function') updateLiveDot(false);
+    }
 }, 5000);
 
 function addSessionToGrid(session) {
@@ -335,7 +341,3 @@ async function _doJoin() {
     try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (_) {}
     location.href = joinUrl;
 }
-
-// Initialize
-fetchSessions();
-setInterval(fetchSessions, POLL_INTERVAL);
