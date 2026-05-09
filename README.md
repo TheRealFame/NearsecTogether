@@ -1,3 +1,8 @@
+<p align="left">
+  <img src="assets/NearsecTogether.png" width="160" height="140"><br>
+  <hr width="15%">
+</p>
+
 # NearsecTogether
 
 ## Project Description
