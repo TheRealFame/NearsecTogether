@@ -15,7 +15,7 @@ const viewers = new Map();
 const viewerNames = new Map();
 const inputPerms = new Map();
 const pinAttempts = new Map();
-
+const crypto = require("crypto");
 
 if (!fs.existsSync(path.join(__dirname, '..', '.env'))) {
   fs.writeFileSync(path.join(__dirname, '..', '.env'), `CF_TOKEN=
@@ -416,6 +416,21 @@ async function main() {
              version: APP_VERSION,
              uptime: process.uptime()
     });
+  });
+
+  // ── PUSHER AUTHENTICATION FOR HOST ───────────────────────────────────────
+  app.post('/api/pusher-auth', express.urlencoded({ extended: true }), (req, res) => {
+    const socketId = req.body.socket_id;
+    const channelName = req.body.channel_name;
+
+    // Update this if you reset your Pusher secret!
+    const secret = "ee208da1939a3b1cc025";
+    const key = "a3560ec7b7f5161460a1";
+
+    const stringToSign = `${socketId}:${channelName}`;
+    const signature = crypto.createHmac('sha256', secret).update(stringToSign).digest('hex');
+
+    res.json({ auth: `${key}:${signature}` });
   });
 
   // ── Arcade sessions REST (polled by arcade.js as fallback) ───────────────────

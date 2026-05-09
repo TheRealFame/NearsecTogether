@@ -4,6 +4,7 @@ let audioCtx, analyser, animFrame;
 let pinEnabled = true, currentPin = '----';
 
 // --- Pusher Arcade Integration ---
+Pusher.logToConsole = true;
 const pusher = new Pusher('a3560ec7b7f5161460a1', {
     cluster: 'us2',
     authEndpoint: '/api/pusher-auth'
