@@ -19,6 +19,62 @@ function maybeShowControllerGuide() {
     if (!localStorage.getItem(CONTROLLER_GUIDE_STORAGE_KEY)) setTimeout(() => { openControllerGuide(); }, 700);
 }
 
+// ── WebRTC Peer Connection (Restored) ─────────────────────────────────────────
+async function createPC() {
+    if (pc) {
+        try { pc.close(); } catch (e) {}
+    }
+
+    pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            // Free TURN servers to guarantee connection if firewalls are strict
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+        ],
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        sdpSemantics: 'unified-plan'
+    });
+
+    pc.onicecandidate = (e) => {
+        if (e.candidate && ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'ice-viewer', candidate: e.candidate }));
+        }
+    };
+
+    pc.ontrack = (e) => {
+        const track = e.track;
+
+        // Apply your codec priorities
+        preferReceiverCodec(e.transceiver);
+
+        if (track.kind === 'video') {
+            startFrameProcessor(track);
+        } else if (track.kind === 'audio') {
+            if (!video.srcObject) video.srcObject = new MediaStream();
+            video.srcObject.addTrack(track);
+        }
+    };
+
+    pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        if (s === 'connected') {
+            setStatus('Live', true);
+            document.getElementById('overlay').classList.add('gone');
+            document.getElementById('spinner').style.display = 'none';
+        } else if (s === 'disconnected' || s === 'failed') {
+            setStatus('Connection lost...');
+            document.getElementById('overlay').classList.remove('gone');
+            document.getElementById('spinner').style.display = 'block';
+        }
+    };
+}
+
 // ── Codec priority for receiver ────────────────────────────────────────────────
 const CODEC_PRIORITY = ['video/H264', 'video/VP8'];
 

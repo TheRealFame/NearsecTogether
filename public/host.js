@@ -827,7 +827,6 @@ const arcadeConfig = {
 function showArcadeModal() {
     document.getElementById('arcadeGameTitle').value = arcadeConfig.title;
     document.getElementById('arcadeGameDesc').value = arcadeConfig.desc;
-    document.getElementById('arcadeThumbnail').value = arcadeConfig.thumbnail;
     document.getElementById('arcadeMaxPlayers').value = arcadeConfig.maxPlayers;
     document.getElementById('arcadeRequirePin').checked = arcadeConfig.requirePin;
     document.getElementById('arcadeModal').classList.remove('gone');
@@ -837,12 +836,26 @@ function closeArcadeModal() {
     document.getElementById('arcadeModal').classList.add('gone');
 }
 
+// Function to securely fetch official game art via our Cloudflare proxy
+async function fetchGameThumbnail(gameTitle) {
+    try {
+        const res = await fetch(`/api/game-art?title=${encodeURIComponent(gameTitle)}`);
+        const data = await res.json();
+        return data.thumbnail || '';
+    } catch (e) {
+        console.warn('Could not fetch official thumbnail:', e);
+        return '';
+    }
+}
+
 async function startArcadeSession() {
     arcadeConfig.title = document.getElementById('arcadeGameTitle').value.trim() || 'Arcade Game';
     arcadeConfig.desc = document.getElementById('arcadeGameDesc').value.trim();
-    arcadeConfig.thumbnail = document.getElementById('arcadeThumbnail').value.trim();
     arcadeConfig.maxPlayers = document.getElementById('arcadeMaxPlayers').value;
     arcadeConfig.requirePin = document.getElementById('arcadeRequirePin').checked;
+
+    // Fetch the game art via the secure proxy
+    arcadeConfig.thumbnail = await fetchGameThumbnail(arcadeConfig.title);
 
     localStorage.setItem('ns_arcade_title', arcadeConfig.title);
     localStorage.setItem('ns_arcade_desc', arcadeConfig.desc);
@@ -867,7 +880,7 @@ function _doArcadeRegister() {
             log('⚠ Arcade: No tunnel URL yet. Start a tunnel first, then launch Arcade.', 'warn');
             return;
         }
-        log(`Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
+        log(`🎮 Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
 
         const pingData = {
             id: hostSessionId,
@@ -875,7 +888,7 @@ function _doArcadeRegister() {
             thumbnail: arcadeConfig.thumbnail,
             hasPin: arcadeConfig.requirePin,
             url: info.tunnelUrl,
-            region: 'Pusher Host' // You can make this dynamic later!
+            region: 'Pusher Host' // Feel free to make this dynamic later!
         };
 
         // Send an immediate ping to show up instantly
@@ -890,5 +903,6 @@ function _doArcadeRegister() {
     }).catch(() => log('Arcade: Could not read server info', 'err'));
 }
 
+// ── INITIALIZATION ────────────────────────────────────────────────────────
 applyCtrlSettingsUI();
 connectWS();
