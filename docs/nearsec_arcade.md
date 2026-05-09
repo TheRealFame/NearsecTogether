@@ -1,9 +1,3 @@
-This is a great move. Documentation is the "armor" of an open-source project—it protects your users from making mistakes and protects you by setting clear boundaries for how the Arcade should be used.
-
-I’ve drafted a dedicated **Nearsec Arcade Manifesto** using the same professional formatting as your main README. This covers the "80-minute reaper," the security whitelists, and the core aims for both the Host and the Player.
-
----
-
 # 🌐 Nearsec Arcade: The Matchmaking Core
 
 Nearsec Arcade is a decentralized, public matchmaking directory designed to connect hosts with players for local-multiplayer gaming. Unlike the private "Direct Share" mode, the Arcade is built for discovery, community testing, and low-friction co-op.
