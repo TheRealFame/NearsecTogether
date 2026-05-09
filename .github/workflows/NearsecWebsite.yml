@@ -24,8 +24,14 @@ jobs:
 
       - name: Prepare Files
         run: |
-          # Copy your home file to index.html for GitHub Pages
+          # 1. Copy your home file to index.html for the root domain
           cp website/nearsec-home.html website/index.html
+
+          # 2. Create the 'arcade' folder for clean URL routing
+          mkdir -p website/arcade
+
+          # 3. Copy the arcade HTML into that folder as index.html
+          cp website/nearsec-arcade.html website/arcade/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -16,8 +16,9 @@ const POLL_INTERVAL = 6000;
 // ── Security: only sessions from these tunnel providers are shown ─────────────
 // Enforced client-side as a second layer; server validates before broadcasting.
 const ARCADE_ALLOWED_DOMAINS = [
-    'trycloudflare.com',
+'trycloudflare.com',
 'zrok.io',
+'cutefame.net',
 'localhost.run',
 'serveo.net',
 ];
@@ -54,74 +55,45 @@ window.closeGamepadTester = function() {
     }
 };
 
-// --- WebSocket Connection ---
-function connectArcadeWS() {
-    try {
-        arcadeWS = new WebSocket(WS_URL);
+// --- Pusher Connection & State ---
+const pusher = new Pusher('a3560ec7b7f5161460a1', {
+    cluster: 'us2',
+    authEndpoint: '/api/pusher-auth'
+});
 
-        arcadeWS.onopen = () => {
-            console.log('[Arcade WS] Connected');
-            arcadeWS.send(JSON.stringify({ type: 'arcade-query' }));
-        };
+// We use a 'private-' channel to allow client-to-client events
+const arcadeChannel = pusher.subscribe('private-arcade-global');
 
-        arcadeWS.onmessage = (e) => {
-            try {
-                const msg = JSON.parse(e.data);
+arcadeChannel.bind('client-session-ping', (data) => {
+    // Only allow trusted URLs
+    if (!isAllowedArcadeUrl(data.url)) return;
 
-                // Server sends full list on connect / arcade-query response
-                if (msg.type === 'arcade-sessions') {
-                    const trusted = (msg.sessions || []).filter(s => isAllowedArcadeUrl(s.url));
-                    // Replace all server-sourced sessions (keep any local ones if needed)
-                    sessions = sessions.filter(s => !s.id?.startsWith('ns-'));
-                    sessions = [...trusted, ...sessions];
-                    updateLiveDot(true);
-                    filterCards();
-                    return;
-                }
-
-                if (msg.type === 'arcade-session-active') {
-                    console.log('[Arcade WS] Session active:', msg.session);
-                    if (!isAllowedArcadeUrl(msg.session?.url)) {
-                        console.warn('[Arcade] Rejected session with disallowed URL:', msg.session?.url);
-                        return;
-                    }
-                    currentLiveSession = msg.session;
-                    addSessionToGrid(msg.session);
-                    updateLiveDot(true);
-                } else if (msg.type === 'arcade-session-stopped') {
-                    console.log('[Arcade WS] Session stopped:', msg.id);
-                    // Capture gameTitle before nulling currentLiveSession
-                    const stoppedId = msg.id || currentLiveSession?.id;
-                    const stoppedTitle = currentLiveSession?.game;
-                    currentLiveSession = null;
-                    if (stoppedId) {
-                        sessions = sessions.filter(s => s.id !== stoppedId);
-                    } else if (stoppedTitle) {
-                        sessions = sessions.filter(s => s.game !== stoppedTitle);
-                    }
-                    filterCards();
-                } else if (msg.type === 'arcade-no-session') {
-                    console.log('[Arcade WS] No active session');
-                }
-            } catch (err) {
-                console.error('[Arcade WS] Parse error:', err);
-            }
-        };
-
-        arcadeWS.onerror = (e) => {
-            console.error('[Arcade WS] Error:', e);
-            updateLiveDot(false);
-        };
-
-        arcadeWS.onclose = () => {
-            console.log('[Arcade WS] Disconnected, reconnecting in 3s');
-            setTimeout(connectArcadeWS, 3000);
-        };
-    } catch (err) {
-        console.error('[Arcade WS] Connection error:', err);
-        setTimeout(connectArcadeWS, 3000);
+    const existing = sessions.find(s => s.id === data.id);
+    if (existing) {
+        existing.lastSeen = Date.now(); // Update heartbeat
+    } else {
+        data.lastSeen = Date.now();
+        sessions.unshift(data);
+        updateLiveDot(true);
+        filterCards();
     }
-}
+});
+
+arcadeChannel.bind('client-session-stop', (data) => {
+    sessions = sessions.filter(s => s.id !== data.id);
+    filterCards();
+});
+
+// --- Heartbeat Pruning Timer ---
+// Check every 5 seconds. If a host hasn't pinged in 25 seconds, remove it.
+setInterval(() => {
+    const now = Date.now();
+    const initialCount = sessions.length;
+    sessions = sessions.filter(s => (now - s.lastSeen) < 25000);
+
+    if (sessions.length !== initialCount) filterCards();
+    if (sessions.length === 0) updateLiveDot(false);
+}, 5000);
 
 function addSessionToGrid(session) {
     if (!isAllowedArcadeUrl(session?.url)) {
@@ -147,24 +119,6 @@ function removeSessionFromGrid(gameTitle) {
     filterCards();
 }
 
-// --- Polling & Data Fetching ---
-async function fetchSessions() {
-    try {
-        const res = await fetch(API_URL, { cache: 'no-store' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const fetchedSessions = await res.json();
-        // Domain whitelist — client-side second layer; server enforces on broadcast
-        const trusted = fetchedSessions.filter(s => isAllowedArcadeUrl(s.url));
-        const wsSessionIds = new Set(sessions.filter(s => s.id?.startsWith('ns-')).map(s => s.id));
-        const newSessions = trusted.filter(s => !wsSessionIds.has(s.id));
-        sessions = [...sessions, ...newSessions];
-        updateLiveDot(true);
-    } catch (e) {
-        console.warn('[Arcade] Fetch error:', e.message);
-        updateLiveDot(false);
-    }
-    filterCards();
-}
 
 function updateLiveDot(ok) {
     const dot = document.getElementById('liveDot');

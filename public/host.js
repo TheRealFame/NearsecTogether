@@ -3,6 +3,15 @@ let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCou
 let audioCtx, analyser, animFrame;
 let pinEnabled = true, currentPin = '----';
 
+// --- Pusher Arcade Integration ---
+const pusher = new Pusher('a3560ec7b7f5161460a1', {
+    cluster: 'us2',
+    authEndpoint: '/api/pusher-auth'
+});
+const arcadeChannel = pusher.subscribe('private-arcade-global');
+let arcadePingInterval = null;
+const hostSessionId = 'ns-' + Math.random().toString(36).substr(2, 9);
+
 // ── DYNAMIC BITRATE CONGESTION CONTROL ─────────────────────────────────────
 const congestionControl = {
     enabled: true,
@@ -115,6 +124,19 @@ document.getElementById('resSelect').addEventListener('change', (e) => localStor
 const savedFps = localStorage.getItem('ns_fps');
 if (savedFps) document.getElementById('fpsSelect').value = savedFps;
 document.getElementById('fpsSelect').addEventListener('change', (e) => localStorage.setItem('ns_fps', e.target.value));
+
+async function fetchGameThumbnail(gameTitle) {
+    try {
+        // Notice there is no API key here! We just ask our own server.
+        const res = await fetch(`/api/game-art?title=${encodeURIComponent(gameTitle)}`);
+        const data = await res.json();
+
+        return data.thumbnail || '';
+    } catch (e) {
+        console.warn('Could not fetch official thumbnail:', e);
+        return '';
+    }
+}
 
 function preferVideoCodec(pc) {
     const caps = RTCRtpSender.getCapabilities?.('video');
@@ -608,11 +630,20 @@ function stopCapture() {
     document.getElementById('btnStop').disabled = true;
     Object.values(peerConnections).forEach(pc => pc.close());
     peerConnections = {};
-    ws.send(JSON.stringify({ type: 'host-stream-stopped' }));
-    // If arcade mode was active, notify server
+
+    // Notify local host server that stream stopped
     if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: 'arcade-session-stop' }));
+        ws.send(JSON.stringify({ type: 'host-stream-stopped' }));
     }
+
+    // --- PUSHER: If arcade mode was active, notify Arcade to remove the session ---
+    if (arcadePingInterval) {
+        clearInterval(arcadePingInterval);
+        arcadePingInterval = null;
+        arcadeChannel.trigger('client-session-stop', { id: hostSessionId });
+        log('🎮 Arcade Mode: Session ended on Arcade', 'warn');
+    }
+
     log('Capture stopped');
 }
 
@@ -806,7 +837,7 @@ function closeArcadeModal() {
     document.getElementById('arcadeModal').classList.add('gone');
 }
 
-function startArcadeSession() {
+async function startArcadeSession() {
     arcadeConfig.title = document.getElementById('arcadeGameTitle').value.trim() || 'Arcade Game';
     arcadeConfig.desc = document.getElementById('arcadeGameDesc').value.trim();
     arcadeConfig.thumbnail = document.getElementById('arcadeThumbnail').value.trim();
@@ -831,20 +862,31 @@ function startArcadeSession() {
 }
 
 function _doArcadeRegister() {
-    // Re-fetch /api/info to get the current tunnel URL
     fetch('/api/info').then(r => r.json()).then(info => {
         if (!info.tunnelUrl) {
             log('⚠ Arcade: No tunnel URL yet. Start a tunnel first, then launch Arcade.', 'warn');
             return;
         }
-        log(`🎮 Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
-        if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({
-                type: 'arcade-session-start',
-                tunnelUrl: info.tunnelUrl,
-                config: arcadeConfig
-            }));
-        }
+        log(`Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
+
+        const pingData = {
+            id: hostSessionId,
+            game: arcadeConfig.title,
+            thumbnail: arcadeConfig.thumbnail,
+            hasPin: arcadeConfig.requirePin,
+            url: info.tunnelUrl,
+            region: 'Pusher Host' // You can make this dynamic later!
+        };
+
+        // Send an immediate ping to show up instantly
+        arcadeChannel.trigger('client-session-ping', pingData);
+
+        // Keep pinging every 10 seconds to stay alive on the Arcade
+        if (arcadePingInterval) clearInterval(arcadePingInterval);
+        arcadePingInterval = setInterval(() => {
+            arcadeChannel.trigger('client-session-ping', pingData);
+        }, 10000);
+
     }).catch(() => log('Arcade: Could not read server info', 'err'));
 }
 
