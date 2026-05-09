@@ -2,3 +2,5 @@ nearsectogether.config.json
 node_modules/
 .env
 .vscode
+kbm_bindings.json
+*.bak

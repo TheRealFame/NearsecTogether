@@ -23,6 +23,7 @@
       --accent: #c084fc;
       --accent-green: #00ff88;
       --accent-orange: #ffaa88;
+      --accent-dim: rgba(192, 132, 252, 0.18);
       --muted: #555;
       --danger: #ff4444;
       --warn: #ffaa00;
@@ -265,7 +266,7 @@
       border: 1px solid #1a1a1a;
       border-right: none;
       transition: width .2s;
-      z-index: 200;
+      z-index: 280;
     }
 
     #bar:hover,
@@ -307,7 +308,7 @@
       transform: translateY(-50%);
       width: clamp(8px, .7vw, 14px);
       height: clamp(40px, 6vh, 80px);
-      z-index: 199;
+      z-index: 279;
       background: transparent;
       border: none;
       cursor: pointer;
@@ -435,7 +436,7 @@
       width: 20px;
       height: 20px;
     }
-    
+
     .brand-wrap {
       display: flex;
       flex-direction: column;
@@ -454,6 +455,237 @@
       text-transform: uppercase;
       color: var(--accent);
     }
+
+    /* ── Controller guide modal ───────────────────────── */
+    #controllerGuideModal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.78);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 600;
+      opacity: 1;
+      transition: opacity .2s;
+    }
+
+    #controllerGuideModal.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #controllerGuideCard {
+      width: 500px;
+      height: 570px;
+      max-width: 90vw;
+      max-height: 90vh;
+      background: #0b0b0b;
+      border: 1px solid #222;
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 0 30px rgba(0,0,0,.6);
+    }
+
+    #controllerGuideTop {
+      height: 52px;
+      border-bottom: 1px solid #1d1d1d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+
+    #controllerGuideTitle {
+      font-size: 12px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    #controllerGuideClose {
+      background: none;
+      border: 1px solid #222;
+      color: #777;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 7px 14px;
+      cursor: pointer;
+      border-radius: 999px;
+    }
+
+    #controllerGuideClose:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    #controllerGuideFrame {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #controllerGuideConfirm {
+      border: none;
+      border-top: 1px solid #1d1d1d;
+      background: #111;
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      height: 52px;
+      transition: background .2s;
+    }
+
+    #controllerGuideConfirm:hover {
+      background: #171717;
+    }
+
+    /* ── Touch UI Overlay (Transparent) ───────────────────────── */
+    #touchUI {
+      position: fixed;
+      inset: 0;
+      z-index: 250; /* Over video, under modals */
+      pointer-events: none; /* Let clicks pass through empty space */
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #touchUI.gone {
+      display: none;
+    }
+
+    #touchUI .controls-left,
+    #touchUI .controls-right,
+    #touchUI .top-buttons,
+    #touchUI .center-ui {
+      pointer-events: auto; /* Re-enable clicks on controls */
+    }
+
+    #touchUI .controls-left,
+    #touchUI .controls-right {
+      position: absolute;
+      bottom: 4vh;
+      width: 38vw;
+      height: 42vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #touchUI .controls-left { left: 0; }
+    #touchUI .controls-right { right: 0; }
+
+    #touchUI .joystick-base {
+      position: relative;
+      width: min(30vw, 180px);
+      height: min(30vw, 180px);
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(255,255,255,0.14);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #touchUI .joystick-stick {
+      width: 42%;
+      height: 42%;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      border: 2px solid rgba(255,255,255,0.22);
+      box-shadow: 0 0 20px rgba(255,255,255,0.08);
+      transition: transform 0.05s linear;
+    }
+
+    #touchUI .buttons {
+      position: relative;
+      width: min(34vw, 260px);
+      height: min(34vw, 260px);
+    }
+
+    #touchUI .button {
+      position: absolute;
+      width: min(14vw, 78px);
+      height: min(14vw, 78px);
+      border-radius: 50%;
+      border: none;
+      background: rgba(255,255,255,0.1);
+      border: 2px solid rgba(255,255,255,0.14);
+      color: white;
+      font-size: clamp(18px, 2vw, 26px);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+    }
+
+    #touchUI .button:active {
+      transform: scale(0.95);
+      background: rgba(255,255,255,0.18);
+    }
+
+    #touchUI .y { top: 0; left: 50%; transform: translateX(-50%); }
+    #touchUI .x { left: 0; top: 50%; transform: translateY(-50%); }
+    #touchUI .b { right: 0; top: 50%; transform: translateY(-50%); }
+    #touchUI .a { bottom: 0; left: 50%; transform: translateX(-50%); }
+
+    #touchUI .top-buttons {
+      position: absolute;
+      top: 2vh;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 4vw;
+    }
+
+    #touchUI .trigger-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    #touchUI .trigger {
+      width: min(18vw, 130px);
+      height: min(7vh, 48px);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(14px, 1.6vw, 18px);
+      backdrop-filter: blur(8px);
+    }
+
+    #touchUI .trigger:active {
+      background: rgba(255,255,255,0.18);
+    }
+
+    #touchUI .center-ui {
+      position: absolute;
+      top: 2vh;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.48);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-size: clamp(12px, 1.2vw, 14px);
+      backdrop-filter: blur(10px);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
   </style>
 </head>
 
@@ -480,9 +712,7 @@
     <div id="pinErr"></div>
   </div>
 
-  <!-- Audio-only: video element kept for audio track, hidden when canvas takes over -->
   <video id="video" autoplay playsinline disableRemotePlayback style="display:block"></video>
-  <!-- Canvas: used by MediaStreamTrackProcessor for always-latest-frame rendering -->
   <canvas id="frameCanvas"
     style="position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none"></canvas>
 
@@ -493,13 +723,12 @@
     </div>
     <div class="spin" id="spinner"></div>
     <div id="overlayStatus" style="color: var(--accent); text-shadow: 0 0 10px var(--accent);">Connecting...</div>
-    <!-- Kishi / Gamepad activation prompt — visible until user taps -->
     <div id="gpPrompt" onclick="activateGamepad()" style="border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 10px var(--accent-dim);">
       🎮 Tap here to activate controller<br>
       <span style="font-size:9px;color:#333">(Required by browser — once only)</span>
     </div>
   </div>
-  
+
   <button class="fs-btn-overlay" id="fsOverlayBtn" onclick="toggleFS()" title="Toggle Fullscreen" style="border: 2px solid var(--accent) !important; background: rgba(0,0,0,0.6) !important;">
     <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">
       <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
@@ -510,12 +739,17 @@
     <span class="dot-live" id="liveDot"></span>
     <span id="topStatus">Connecting...</span>
     <span id="codecLabel">—</span>
+    <span style="font-size: 8px; color: var(--muted); margin-left: 10px; border-left: 1px solid #222; padding-left: 10px; display: none;" id="kbmHint">
+      Click video to lock Keyboard/Mouse. Press ESC to release.
+    </span>
     <span id="statsHud"
       style="margin-left:auto;display:none;gap:8px;font-size:9px;color:#444;display:none;align-items:center"></span>
   </div>
 
   <div id="bar">
     <div id="bar-inner">
+      <button id="touchToggleBtn" onclick="toggleTouch()">📱 Touch UI</button>
+      <button id="guideBtn" onclick="openControllerGuide()">? Guide</button>
       <button id="fsBtn" onclick="toggleFS()">[ ] Full</button>
       <button id="audBtn" onclick="toggleAudio()">♪ Audio</button>
       <button id="chatBtn" onclick="toggleChat()">✎ Chat</button>
@@ -531,485 +765,52 @@
     </div>
   </div>
 
-  <script>
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const host = location.host;
-    let ws, pc, myId = sessionStorage.getItem('ns_viewer_id');
-    let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random() * 9000 + 1000);
-    document.getElementById('nameInput').value = myName;
-    const CLIENT_VERSION = "1.0.0";
-    let enteredPin = '', audioMuted = false;
+  <div id="touchUI" class="gone">
+    <div class="top-buttons">
+      <div class="trigger-group">
+        <div class="trigger" data-btn="4">L1</div>
+        <div class="trigger" data-btn="6">L2</div>
+      </div>
+      <div class="trigger-group">
+        <div class="trigger" data-btn="5">R1</div>
+        <div class="trigger" data-btn="7">R2</div>
+      </div>
+    </div>
 
-    // ── Codec priority for receiver ────────────────────────────────────────────────
-    // Match host: H.264 (hardware) > VP8 (fast software fallback)
-    const CODEC_PRIORITY = ['video/H264', 'video/VP8'];
+    <div class="center-ui" onclick="toggleGyro()" id="gyroToggleBtn">
+      Aim Gyro: OFF
+    </div>
 
-    function preferReceiverCodec(transceiver) {
-      const caps = RTCRtpReceiver.getCapabilities?.('video');
-      if (!caps || !transceiver) return null;
-      const sorted = [
-        ...CODEC_PRIORITY.flatMap(mime => caps.codecs.filter(c => c.mimeType === mime)),
-        ...caps.codecs.filter(c => !CODEC_PRIORITY.includes(c.mimeType))
-      ];
-      try { transceiver.setCodecPreferences(sorted); return sorted[0]?.mimeType || null; } catch { return null; }
-    }
+    <div class="controls-left">
+      <div class="joystick-base" id="jBase">
+        <div class="joystick-stick" id="jStick"></div>
+      </div>
+    </div>
 
-    // ── Always-latest-frame engine ────────────────────────────────────────────────
-    // MediaStreamTrackProcessor pulls decoded VideoFrames off the WebRTC track.
-    // We drain the queue as fast as possible and only ever render the newest one.
-    // This bypasses the video element's internal buffer entirely.
-    const video = document.getElementById('video');
-    const frameCanvas = document.getElementById('frameCanvas');
-    const frameCtx = frameCanvas.getContext('2d', { alpha: false });
-    let processorRunning = false;
-    let lastFlush = 0;
+    <div class="controls-right">
+      <div class="buttons">
+        <button class="button y" data-btn="3">Y</button>
+        <button class="button x" data-btn="2">X</button>
+        <button class="button b" data-btn="1">B</button>
+        <button class="button a" data-btn="0">A</button>
+      </div>
+    </div>
+  </div>
 
-    function startFrameProcessor(track) {
-      if (!window.MediaStreamTrackProcessor) {
-        // Fallback: use video element + stats-based flush
-        if (!video.srcObject) video.srcObject = new MediaStream();
-        video.srcObject.addTrack(track);
-        video.onplaying = () => {
-          showOverlay(false);
-          setStatus('Live', true);
-          document.getElementById('spinner').style.display = 'none';
-          document.getElementById('gpPrompt').classList.add('gone');
-        };
-        return;
-      }
+  <div id="controllerGuideModal" class="hidden">
+    <div id="controllerGuideCard">
+      <div id="controllerGuideTop">
+        <div id="controllerGuideTitle">Controller Guide</div>
+        <button id="controllerGuideClose" onclick="closeControllerGuide()">Close</button>
+      </div>
 
-      processorRunning = true;
-      frameCanvas.style.display = 'block';
-      video.style.display = 'none'; // video element kept only for audio
+      <iframe id="controllerGuideFrame" src="gamepad-popup.html" scrolling="no"></iframe>
 
-      const processor = new MediaStreamTrackProcessor({ track });
-      const reader = processor.readable.getReader();
-      let pending = null; // the latest decoded frame waiting to be drawn
-      let firstFrame = true;
+      <button id="controllerGuideConfirm" onclick="acknowledgeControllerGuide()">Alright</button>
+    </div>
+  </div>
 
-      // Drain loop: read frames as fast as they arrive, discard all but the newest.
-      // This is the key: by consuming faster than the jitter buffer can fill,
-      // we always get the most recent frame with no stale backlog.
-      (async () => {
-        while (processorRunning) {
-          let result;
-          try { result = await reader.read(); } catch { break; }
-          if (result.done) break;
-          if (pending) pending.close(); // throw away the old frame
-          pending = result.value;
-        }
-      })();
-
-      // Render loop: draw whatever the latest frame is at 60fps
-      (function renderLoop() {
-        if (!processorRunning) return;
-        requestAnimationFrame(renderLoop);
-        if (!pending) return;
-        if (frameCanvas.width !== pending.displayWidth ||
-          frameCanvas.height !== pending.displayHeight) {
-          frameCanvas.width = pending.displayWidth;
-          frameCanvas.height = pending.displayHeight;
-        }
-        frameCtx.drawImage(pending, 0, 0);
-        pending.close();
-        pending = null;
-        if (firstFrame) {
-          firstFrame = false;
-          showOverlay(false);
-          setStatus('Live', true);
-          document.getElementById('spinner').style.display = 'none';
-          document.getElementById('gpPrompt').classList.add('gone');
-        }
-      })();
-
-      track.addEventListener('ended', () => {
-        processorRunning = false;
-        frameCanvas.style.display = 'none';
-        video.style.display = 'block';
-      });
-    }
-
-    // ── Gamepad polling + heartbeat ───────────────────────────────────────────────
-    // Sends on change OR every 100ms to keep held analog values flowing
-    let gpPolling = false, gpRaf = null, lastGpStr = {}, lastGpSend = {};
-    let sentGpid = new Set();
-
-    function activateGamepad() {
-      if (gpPolling) return;
-      gpPolling = true;
-      document.getElementById('gpPrompt').classList.add('active');
-      document.getElementById('gpPrompt').textContent = '🎮 Controller active';
-      pollGamepad();
-    }
-
-    function pollGamepad() {
-      if (!gpPolling) return;
-      gpRaf = requestAnimationFrame(pollGamepad);
-      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-      const now = Date.now();
-      for (const gp of pads) {
-        if (!gp) continue;
-
-        // Ensure gpid is sent for every active pad found during polling
-        if (!sentGpid.has(gp.index)) {
-          if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({ type: 'gpid', padIndex: gp.index, id: gp.id }));
-            sentGpid.add(gp.index);
-            console.log('[gamepad] Polling found new controller, sending gpid:', gp.id);
-          }
-        }
-
-        const forceHeartbeat = now - (lastGpSend[gp.index] || 0) * 1; // dummy mult
-        const forceHb = now - (lastGpSend[gp.index] || 0) > 100;
-        const state = {
-          type: 'gamepad',
-          padIndex: gp.index,
-          axes: Array.from(gp.axes).map(v => Math.round(v * 32767)),
-          buttons: gp.buttons.map(b => ({ pressed: b.pressed, value: Math.round(b.value * 255) }))
-        };
-        const str = JSON.stringify(state);
-        if (str !== lastGpStr[gp.index] || forceHb) {
-          lastGpStr[gp.index] = str;
-          lastGpSend[gp.index] = now;
-          if (ws && ws.readyState === 1) ws.send(str);
-        }
-      }
-    }
-
-    // Activate on ANY user gesture — tapping overlay, video, anything
-    ['click', 'touchstart', 'keydown'].forEach(ev =>
-      document.addEventListener(ev, () => { if (!gpPolling) activateGamepad(); }, { once: true, passive: true })
-    );
-    window.addEventListener('gamepadconnected', (e) => {
-      console.log('Gamepad connected:', e.gamepad.id, 'Index:', e.gamepad.index);
-      if (!gpPolling) activateGamepad();
-      document.getElementById('gpPrompt').classList.add('gone');
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'gpid', padIndex: e.gamepad.index, id: e.gamepad.id }));
-    });
-
-    // ── Overlay / status helpers ──────────────────────────────────────────────────
-    function setStatus(msg, live) {
-      document.getElementById('overlayStatus').textContent = msg;
-      document.getElementById('topStatus').textContent = msg;
-      if (live) document.getElementById('liveDot').style.display = 'inline-block';
-    }
-    function showOverlay(v) {
-      document.getElementById('overlay').classList.toggle('gone', !v);
-    }
-
-    // ── WebRTC ───────────────────────────────────────────────────────────────────
-    let freezeTimer = null;
-
-    async function createPC() {
-      if (pc) { pc.close(); pc = null; }
-      clearInterval(freezeTimer);
-
-      const isLocalView = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.') || location.hostname.startsWith('172.16.');
-
-      pc = new RTCPeerConnection({
-        iceServers: isLocalView ? [] : [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun.cloudflare.com:3478' },
-          // TURN — required when both sides are behind symmetric NAT (most home routers).
-          // Without this, WebRTC P2P silently fails ~90% of the time over the internet.
-          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-        ]
-      });
-      // ICE candidate buffer — holds candidates that arrive before setRemoteDescription
-      pc._iceBuf = [];
-      pc._remoteSet = false;
-
-      pc.ontrack = (e) => {
-        // Jitter buffer minimums — belt-and-suspenders even with frame processor
-        try {
-          if ('jitterBufferTarget' in e.receiver) e.receiver.jitterBufferTarget = 0;
-          if ('playoutDelayHint' in e.receiver) e.receiver.playoutDelayHint = 0;
-          if ('jitterBufferDelayHint' in e.receiver) e.receiver.jitterBufferDelayHint = 0;
-        } catch { }
-
-        if (e.track.kind === 'video') {
-          // Codec badge
-          const codec = preferReceiverCodec(e.transceiver);
-          if (codec) document.getElementById('codecLabel').textContent = codec.split('/')[1];
-          // Route to frame processor — always-latest-frame drain loop
-          processorRunning = false; // stop any previous processor
-          startFrameProcessor(e.track);
-
-            // Freeze detection for canvas path (no requestVideoFrameCallback on canvas)
-            if (window.MediaStreamTrackProcessor) {
-              let lastRender = Date.now();
-              const origRender = frameCtx.drawImage.bind(frameCtx);
-              frameCtx.drawImage = (...args) => { lastRender = Date.now(); origRender(...args); };
-              clearInterval(freezeTimer);
-              freezeTimer = setInterval(() => {
-                // Increased timeout to 10s to prevent false-positives during slow ICE gathering on LAN/VPN
-                if (processorRunning && Date.now() - lastRender > 10000) {
-                  console.warn('[freeze] Canvas stalled 10s — reconnecting');
-                  clearInterval(freezeTimer);
-                  processorRunning = false;
-                  if (pc) { pc.close(); pc = null; }
-                  showOverlay(true); setStatus('Reconnecting (encoder reset)...');
-                  document.getElementById('spinner').style.display = 'block';
-                  setTimeout(connect, 500);
-                }
-              }, 2000);
-            }
-        }
-
-        if (e.track.kind === 'audio') {
-          // Audio always stays in the video element regardless of canvas mode
-          if (!video.srcObject) video.srcObject = new MediaStream();
-          video.srcObject.addTrack(e.track);
-          video.play().catch(() => { });
-        }
-      };
-
-      // Filter empty ICE candidates — prevent 'Failed to parse: ""' errors on host
-      pc.onicecandidate = (e) => {
-        if (e.candidate && e.candidate.candidate) {
-          ws.send(JSON.stringify({ type: 'ice-viewer', candidate: e.candidate }));
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-          clearInterval(freezeTimer);
-          processorRunning = false;
-          showOverlay(true); setStatus('Reconnecting...');
-          video.srcObject = null;
-          document.getElementById('spinner').style.display = 'block';
-          setTimeout(connect, 2000);
-        }
-      };
-    }
-
-
-    // ── WebSocket signaling ───────────────────────────────────────────────────────
-    function connect() {
-      const url = proto + '://' + host + '/ws/viewer' + (enteredPin ? '?pin=' + enteredPin : '');
-      ws = new WebSocket(url);
-
-      ws.onopen = () => {
-        setStatus('Waiting for host...');
-        ws.send(JSON.stringify({ type: 'set-name', name: myName }));
-        // Rejoin session if we have a saved ID
-        if (myId) ws.send(JSON.stringify({ type: 'viewer-rejoin', viewerId: myId }));
-      };
-
-      ws.onmessage = async (e) => {
-        const msg = JSON.parse(e.data);
-
-        if (msg.type === 'pin-rejected') {
-          document.getElementById('pinScreen').classList.remove('gone');
-          document.getElementById('pinErr').textContent = 'Wrong PIN — try again';
-          ws.close(); return;
-        }
-        if (msg.type === 'your-id') {
-          myId = msg.viewerId;
-          sessionStorage.setItem('ns_viewer_id', myId);
-        }
-        if (msg.type === 'host-connected') {
-          setStatus('Host is online, waiting for stream...');
-        }
-        if (msg.type === 'host-stream-ready') {
-          setStatus('Host found, connecting...');
-          await createPC();
-        }
-        if (msg.type === 'offer') {
-          if (!pc) await createPC();
-          await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-          pc._remoteSet = true;
-          // Flush any ICE candidates that arrived before the offer
-          for (const c of (pc._iceBuf || [])) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { }
-          }
-          pc._iceBuf = [];
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
-        }
-        if (msg.type === 'ice-host' && msg.candidate) {
-          if (!pc) return;
-          if (pc._remoteSet) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { }
-          } else {
-            // Buffer it — remote description not set yet
-            pc._iceBuf = pc._iceBuf || [];
-            pc._iceBuf.push(msg.candidate);
-          }
-        }
-        if (msg.type === 'host-disconnected' || msg.type === 'host-stream-stopped') {
-          showOverlay(true); setStatus('Host stopped streaming');
-          if (pc) { pc.close(); pc = null; }
-          video.srcObject = null;
-        }
-        if (msg.type === 'host-not-streaming') {
-          showOverlay(true); setStatus('Host is not sharing their screen yet...');
-          document.getElementById('spinner').style.display = 'none';
-          if (pc) { pc.close(); pc = null; }
-          video.srcObject = null;
-        }
-        if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
-        if (msg.type === 'input-state') {
-          // Could dim the gamepad prompt if gp is disabled by host
-        }
-      };
-
-
-      ws.onclose = () => { setStatus('Reconnecting...'); setTimeout(connect, 2000); };
-    }
-
-    // ── PIN flow ──────────────────────────────────────────────────────────────────
-    let pinRequired = false;
-    fetch('/api/pin-required').then(r => r.json()).then(d => {
-      pinRequired = d.required;
-      if (!d.required) document.getElementById('pinWrap').style.display = 'none';
-    }).catch(() => {
-      document.getElementById('pinWrap').style.display = 'none';
-    });
-
-    function submitPin() {
-      const nameVal = document.getElementById('nameInput').value.trim();
-      if (nameVal) {
-        myName = nameVal;
-        localStorage.setItem('ns_name', myName);
-      }
-
-      if (pinRequired) {
-        const val = document.getElementById('pinInput').value.trim();
-        if (val.length !== 4) { document.getElementById('pinErr').textContent = 'Enter 4 digits'; return; }
-        enteredPin = val;
-      }
-      document.getElementById('pinErr').textContent = '';
-      document.getElementById('pinScreen').classList.add('gone');
-
-      fetch('/api/info')
-        .then(r => r.json())
-        .then(d => {
-          if (d.version && d.version !== CLIENT_VERSION) {
-            alert(`Version mismatch: Host is using v${d.version}, but you are using v${CLIENT_VERSION}. Things might not work perfectly!`);
-          }
-          connect();
-          if (!gpPolling) activateGamepad();
-        })
-        .catch(() => {
-          connect();
-          if (!gpPolling) activateGamepad();
-        });
-    }
-
-    // ── Chat ──────────────────────────────────────────────────────────────────────
-    function appendChat(name, text, isMe) {
-      const el = document.getElementById('chatLog');
-      const d = document.createElement('div');
-      d.className = 'cmsg';
-      d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
-      el.appendChild(d); el.scrollTop = el.scrollHeight;
-    }
-    function sendChat() {
-      const inp = document.getElementById('chatMsg');
-      const msg = inp.value.trim();
-      if (!msg || !ws || ws.readyState !== 1) return;
-      ws.send(JSON.stringify({ type: 'chat', from: myName, msg }));
-      appendChat(myName, msg, true);
-      inp.value = '';
-    }
-    function toggleChat() { document.getElementById('chatPanel').classList.toggle('open'); }
-    function toggleAudio() {
-      audioMuted = !audioMuted;
-      if (video.srcObject) video.srcObject.getAudioTracks().forEach(t => { t.enabled = !audioMuted; });
-      document.getElementById('audBtn').textContent = audioMuted ? '♪ Muted' : '♪ Audio';
-    }
-
-    // ── Screen wake lock — prevent phone sleeping during stream ──────────────────
-    let wakeLock = null;
-    async function acquireWakeLock() {
-      if (!('wakeLock' in navigator)) return;
-      try {
-        wakeLock = await navigator.wakeLock.request('screen');
-        wakeLock.addEventListener('release', () => {
-          // Re-acquire when tab comes back to foreground
-          if (document.visibilityState === 'visible') acquireWakeLock();
-        });
-      } catch { }
-    }
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') acquireWakeLock();
-    });
-    acquireWakeLock();
-
-    // ── Live stats HUD — RTT / jitter / FPS / bitrate from getStats() ─────────
-    const statsHud = document.getElementById('statsHud');
-    let prevBytesReceived = 0, prevStatsTime = 0, prevJitterDelay = 0, prevEmitted = 0;
-
-    async function updateStats() {
-      if (!pc) return;
-      try {
-        const stats = await pc.getStats();
-        let rtt = null, jitter = null, fps = null, kbps = null;
-        for (const r of stats.values()) {
-          if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null)
-            rtt = (r.currentRoundTripTime * 1000).toFixed(0);
-          if (r.type === 'inbound-rtp' && r.kind === 'video') {
-            const emitted = r.jitterBufferEmittedCount || 1;
-            const delay = r.jitterBufferDelay || 0;
-
-            if (prevStatsTime) {
-              const emittedDelta = emitted - prevEmitted;
-              const delayDelta = delay - prevJitterDelay;
-              if (emittedDelta > 0) jitter = ((delayDelta / emittedDelta) * 1000).toFixed(0);
-
-              const dt = (r.timestamp - prevStatsTime) / 1000;
-              kbps = (((r.bytesReceived - prevBytesReceived) * 8) / dt / 1000).toFixed(0);
-            }
-            prevBytesReceived = r.bytesReceived;
-            prevStatsTime = r.timestamp;
-            prevJitterDelay = delay;
-            prevEmitted = emitted;
-          }
-        }
-        if (rtt !== null) {
-          statsHud.style.display = 'flex';
-          statsHud.textContent = [
-            rtt != null ? rtt + 'ms RTT' : null,
-            jitter != null ? jitter + 'ms buf' : null,
-            fps != null ? fps + 'fps' : null,
-            kbps != null ? kbps + 'kbps' : null,
-          ].filter(Boolean).join('  ·  ');
-        }
-      } catch { }
-    }
-    setInterval(updateStats, 2000);
-
-    // ── Fullscreen + landscape ────────────────────────────────────────────────────
-    function landscape() {
-      if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => { });
-    }
-    function toggleFS() {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().then(landscape).catch(() => { });
-        document.getElementById('fsBtn').textContent = '[x] Full';
-      } else {
-        document.exitFullscreen();
-        document.getElementById('fsBtn').textContent = '[ ] Full';
-      }
-    }
-    document.addEventListener('touchstart', () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().then(landscape).catch(() => { });
-        document.getElementById('fsBtn').textContent = '[x] Full';
-      }
-    }, { once: true });
-    document.addEventListener('fullscreenchange', () => {
-      if (document.fullscreenElement) landscape();
-      document.getElementById('fsBtn').textContent = document.fullscreenElement ? '[x] Full' : '[ ] Full';
-    });
-  </script>
+  <script src="viewer.js"></script>
 </body>
 
 </html>

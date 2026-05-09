@@ -989,12 +989,49 @@
       background: #4e5058;
       color: #fff;
     }
+    /* ── Controller Settings Modal ──────────────────────────────────────── */
+    .ctrl-modal-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 14px;
+      background: #1e1f22;
+      border: 1px solid #2e3035;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color .15s;
+      user-select: none;
+    }
+    .ctrl-modal-row:hover { border-color: var(--accent); }
+    .ctrl-modal-row.active { border-color: var(--accent); background: var(--accent-dim); }
+    .ctrl-toggle-track {
+      flex-shrink: 0;
+      width: 36px; height: 20px;
+      background: #444;
+      border-radius: 10px;
+      position: relative;
+      transition: background .2s;
+      margin-top: 2px;
+    }
+    .ctrl-toggle-track.on { background: var(--accent); }
+    .ctrl-toggle-thumb {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 14px; height: 14px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform .2s;
+    }
+    .ctrl-toggle-track.on .ctrl-toggle-thumb { transform: translateX(16px); }
+    .ctrl-row-text { flex: 1; }
+    .ctrl-row-label { font-size: 12px; font-weight: 600; color: #f2f3f5; margin-bottom: 3px; }
+    .ctrl-row-desc { font-size: 10px; color: #949ba4; line-height: 1.55; }
+    .ctrl-row-warn { font-size: 9px; color: var(--warn); margin-top: 4px; }
   </style>
 </head>
 
 <body>
   <div class="app-layout">
-    <!-- LEFT SIDE: Video -->
     <div class="preview-panel">
       <video id="preview" autoplay playsinline muted></video>
       <div class="preview-overlay" id="prevOverlay">
@@ -1011,7 +1048,6 @@
       </div>
     </div>
 
-    <!-- RIGHT SIDE: Sidebar -->
     <div class="sidebar">
       <header>
         <div class="logo-wrap">
@@ -1024,6 +1060,11 @@
         </div>
         <div class="hdr-right">
           <span id="codecBadge" class="codec-badge">—</span>
+          <button class="gear-btn" onclick="showCtrlModal()" title="Controller settings" id="ctrlSettingsBtn">
+            <svg style="width:16px; height:16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152L2 17a1 1 0 0 0 1 1h2.128a1 1 0 0 0 .958-.71l.635-2.115C7.14 14.155 8.13 13.5 9.25 13.5h5.5c1.12 0 2.11.655 2.529 1.675l.635 2.115a1 1 0 0 0 .958.71H21a1 1 0 0 0 1-1l-.685-8.258A4 4 0 0 0 17.32 5z"/>
+            </svg>
+          </button>
           <button class="gear-btn" onclick="showTunnelModal()" title="Tunnel settings">
             <svg class="svg-icon" style="width:16px; height:16px; color:var(--muted)" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1056,6 +1097,17 @@
             <svg viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg> Stop
+          </button>
+          <button class="btn" id="btnArcade" onclick="showArcadeModal()" title="Configure and launch Arcade mode">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="13" y1="6" x2="20" y2="6"></line>
+              <line x1="13" y1="9" x2="20" y2="9"></line>
+              <line x1="13" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="6" x2="12" y2="6"></line>
+              <line x1="4" y1="9" x2="12" y2="9"></line>
+              <line x1="4" y1="12" x2="12" y2="12"></line>
+            </svg> Arcade Mode
           </button>
         </div>
 
@@ -1152,7 +1204,7 @@
           </div>
           <div
             style="margin-top:12px; padding:8px; background:#111; border:1px solid #222; border-radius:4px; font-size:9px; color:#666;">
-            Play retro games with others at <a href="https://arcade.nearsec.net" target="_blank"
+            Play retro games with others at <a href="https://nearsec.cutefame.net/arcade" target="_blank"
               style="color:var(--accent);">Nearsec Arcade</a>
           </div>
         </div>
@@ -1174,7 +1226,134 @@
     </div>
   </div>
 
-  <!-- Tunnel Modal unchanged, keep original HTML -->
+  <div class="modal-bg gone" id="arcadeModal">
+    <div class="modal" style="position:relative; width:520px;">
+      <div class="modal-head">
+        <h3>
+          <svg style="width:18px; height:18px; margin-right:8px; vertical-align:middle; color:#fff;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="13" y1="6" x2="20" y2="6"></line>
+            <line x1="13" y1="9" x2="20" y2="9"></line>
+            <line x1="13" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="6" x2="12" y2="6"></line>
+            <line x1="4" y1="9" x2="12" y2="9"></line>
+            <line x1="4" y1="12" x2="12" y2="12"></line>
+          </svg>
+          Arcade Mode Configuration
+        </h3>
+        <p>Configure your arcade session to be shared with players on the Nearsec Arcade platform.</p>
+      </div>
+      <div class="modal-body" style="padding: 16px; display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="font-size:11px; font-weight:600; color:#f2f3f5;">Game Title</label>
+          <input type="text" id="arcadeGameTitle" placeholder="e.g., Street Fighter II" style="width:100%; padding:8px 10px; background:#000000; color:#eeeeee; border:1px solid #333333; border-radius:6px; font-size:11px; font-family:inherit;">
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="font-size:11px; font-weight:600; color:#f2f3f5;">Game Description</label>
+          <textarea id="arcadeGameDesc" placeholder="Describe the game and rules..." style="width:100%; padding:8px 10px; background:#000000; color:#eeeeee; border:1px solid #333333; border-radius:6px; font-size:11px; font-family:inherit; resize:vertical; min-height:60px; max-height:100px;"></textarea>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="font-size:11px; font-weight:600; color:#f2f3f5;">Thumbnail URL (optional)</label>
+          <input type="text" id="arcadeThumbnail" placeholder="https://example.com/image.jpg" style="width:100%; padding:8px 10px; background:#000000; color:#eeeeee; border:1px solid #333333; border-radius:6px; font-size:11px; font-family:inherit;">
+          <div style="font-size:10px; color:#666;">Leave empty for auto-generated screenshot</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="font-size:11px; font-weight:600; color:#f2f3f5;">Max Players</label>
+          <select id="arcadeMaxPlayers" style="width:100%; padding:8px 10px; background:#000000; color:#eeeeee; border:1px solid #333333; border-radius:6px; font-size:11px; font-family:inherit;">
+            <option value="2">2 Players</option>
+            <option value="4" selected>4 Players</option>
+            <option value="6">6 Players</option>
+            <option value="8">8 Players</option>
+            <option value="16">16 Players</option>
+          </select>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:4px;">
+          <label style="display:flex; align-items:center; gap:8px; font-size:11px; cursor:pointer; flex:1;">
+            <input type="checkbox" id="arcadeRequirePin" style="width:16px; height:16px; accent-color:var(--accent);">
+            <span>Require PIN to join</span>
+          </label>
+        </div>
+
+        <div style="background:#111; border:1px solid #222; border-radius:4px; padding:10px; font-size:10px; color:#666; margin-top:8px;">
+          💡 Once you start sharing, your session URL will be displayed below. Share this link on the Arcade page!
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="btn-row">
+          <button class="btn-confirm" onclick="startArcadeSession()">🚀 Launch Arcade</button>
+          <button class="btn-skip" onclick="closeArcadeModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg gone" id="ctrlModal">
+    <div class="modal" style="position:relative; width:480px;">
+      <div class="modal-head">
+        <h3>
+          <svg style="width:18px; height:18px; margin-right:8px; vertical-align:middle; color:#fff;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152L2 17a1 1 0 0 0 1 1h2.128a1 1 0 0 0 .958-.71l.635-2.115C7.14 14.155 8.13 13.5 9.25 13.5h5.5c1.12 0 2.11.655 2.529 1.675l.635 2.115a1 1 0 0 0 .958.71H21a1 1 0 0 0 1-1l-.685-8.258A4 4 0 0 0 17.32 5z"/>
+          </svg>
+          Controller Settings
+        </h3>
+        <p>Virtual controller emulation options. Changes apply to <strong style="color:#f2f3f5">all connected viewers</strong> immediately.</p>
+      </div>
+      <div class="modal-body" style="padding: 16px; display:flex; flex-direction:column; gap:10px;">
+
+        <div class="ctrl-modal-row" id="ctrlRowForceXboxOne" onclick="toggleCtrlSetting('forceXboxOne')">
+          <div class="ctrl-toggle-track" id="ctrlTrackForceXboxOne">
+            <div class="ctrl-toggle-thumb"></div>
+          </div>
+          <div class="ctrl-row-text">
+            <div class="ctrl-row-label">Disable Xbox 360 emulation</div>
+            <div class="ctrl-row-desc">
+              Forces Xbox One S profile for all Xbox controllers instead of the 360-compat fallback.
+              Use this if games are showing wrong button prompts.
+            </div>
+            <div class="ctrl-row-warn" id="ctrlWarnForceXboxOne" style="display:none;">
+              ⚠ Existing controllers will be re-enumerated on next connect. Reconnect viewers after toggling.
+            </div>
+          </div>
+        </div>
+
+        <div class="ctrl-modal-row" id="ctrlRowDualShock" onclick="toggleCtrlSetting('enableDualShock')">
+          <div class="ctrl-toggle-track" id="ctrlTrackDualShock">
+            <div class="ctrl-toggle-thumb"></div>
+          </div>
+          <div class="ctrl-row-text">
+            <div class="ctrl-row-label">Native PlayStation Profiles</div>
+            <div class="ctrl-row-desc">
+              Allows DualShock 4 and DualSense controllers to appear natively to games (supports native lightbar/touchpad if the game allows it). If disabled, they will automatically emulate Xbox controllers for maximum compatibility.
+            </div>
+          </div>
+        </div>
+
+        <div class="ctrl-modal-row" id="ctrlRowMotion" onclick="toggleCtrlSetting('enableMotion')">
+          <div class="ctrl-toggle-track" id="ctrlTrackMotion">
+            <div class="ctrl-toggle-thumb"></div>
+          </div>
+          <div class="ctrl-row-text">
+            <div class="ctrl-row-label">Enable Motion Controls (Gyro)</div>
+            <div class="ctrl-row-desc">
+              Passes gyroscope and accelerometer data to the host. <br>
+              <span style="color: var(--warn);">Note: Viewers must use a Chromium-based browser and manually grant WebHID permissions.</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <div class="btn-row">
+          <button class="btn-confirm" onclick="closeCtrlModal()">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-bg gone" id="tunnelModal">
     <div class="modal" style="position:relative;">
       <div class="modal-loading gone" id="tunnelLoading">
@@ -1319,557 +1498,7 @@
           <label for="rememberCheck">Remember this choice & don't ask again on startup</label>
         </div>
       </div>
-    </div> <!-- End of .modal -->
-  </div> <!-- End of .modal-bg -->
-  </div>
-
-  </div>
-  </div>
-
-  <script>
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCount = 0;
-    let audioCtx, analyser, animFrame;
-    let pinEnabled = true, currentPin = '----';
-
-    // Load saved settings
-    const savedCodec = localStorage.getItem('ns_codec');
-    if (savedCodec) document.getElementById('codecSelect').value = savedCodec;
-    document.getElementById('codecSelect').addEventListener('change', (e) => localStorage.setItem('ns_codec', e.target.value));
-
-    const savedBitrate = localStorage.getItem('ns_bitrate');
-    if (savedBitrate) document.getElementById('bitrateSelect').value = savedBitrate;
-    document.getElementById('bitrateSelect').addEventListener('change', (e) => localStorage.setItem('ns_bitrate', e.target.value));
-
-    const savedDeg = localStorage.getItem('ns_deg');
-    if (savedDeg) document.getElementById('degSelect').value = savedDeg;
-    document.getElementById('degSelect').addEventListener('change', (e) => localStorage.setItem('ns_deg', e.target.value));
-
-    // Persistent Resolution & FPS
-    const savedRes = localStorage.getItem('ns_res');
-    if (savedRes) document.getElementById('resSelect').value = savedRes;
-    document.getElementById('resSelect').addEventListener('change', (e) => localStorage.setItem('ns_res', e.target.value));
-
-    const savedFps = localStorage.getItem('ns_fps');
-    if (savedFps) document.getElementById('fpsSelect').value = savedFps;
-    document.getElementById('fpsSelect').addEventListener('change', (e) => localStorage.setItem('ns_fps', e.target.value));
-
-    function preferVideoCodec(pc) {
-      const caps = RTCRtpSender.getCapabilities?.('video');
-      if (!caps) return null;
-      const preferred = 'video/' + document.getElementById('codecSelect').value;
-      const sorted = [
-        ...caps.codecs.filter(c => c.mimeType === preferred),
-        ...caps.codecs.filter(c => c.mimeType !== preferred)
-      ];
-      let used = null;
-      pc.getTransceivers().forEach(t => {
-        if (t.sender?.track?.kind === 'video') {
-          try { t.setCodecPreferences(sorted); used = sorted[0]?.mimeType || null; } catch { }
-        }
-      });
-      return used;
-    }
-
-    async function setLowLatencyParams(pc) {
-      const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-      if (!sender) return;
-      try {
-        const params = sender.getParameters();
-        const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
-        const degVal = document.getElementById('degSelect').value;
-        if (params.encodings?.length) {
-          if (bitVal > 0) {
-            params.encodings[0].maxBitrate = bitVal;
-          } else {
-            delete params.encodings[0].maxBitrate; // Auto
-          }
-          params.encodings[0].networkPriority = 'high';
-          params.encodings[0].priority = 'high';
-          params.encodings[0].degradationPreference = degVal;
-        }
-        await sender.setParameters(params);
-      } catch { }
-    }
-
-    async function applyBitrateToAll() {
-      for (const pc of Object.values(peerConnections)) {
-        await setLowLatencyParams(pc);
-      }
-      const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
-      log('Stream bitrate changed to ' + (bitVal > 0 ? (bitVal / 1000000) + ' Mbps' : 'Auto'), 'ok');
-    }
-
-    function log(msg, cls) {
-      const el = document.getElementById('log');
-      const d = document.createElement('div');
-      d.className = 'll' + (cls ? ' ' + cls : '');
-      d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-      el.appendChild(d); el.scrollTop = el.scrollHeight;
-    }
-
-    function appendChat(name, text, isMe) {
-      const el = document.getElementById('chatLog');
-      const d = document.createElement('div');
-      d.className = 'cmsg';
-      d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
-      el.appendChild(d); el.scrollTop = el.scrollHeight;
-    }
-    function sendChat() {
-      const inp = document.getElementById('chatMsg');
-      const msg = inp.value.trim(); if (!msg || !ws || ws.readyState !== 1) return;
-      ws.send(JSON.stringify({ type: 'chat', from: 'Host', msg }));
-      appendChat('Host', msg, true);
-      inp.value = '';
-    }
-
-    function setCapDot(state) {
-      document.getElementById('capDot').className = 'dot' + (state === 'live' ? ' live' : state === 'err' ? ' err' : '');
-      document.getElementById('capStatus').textContent = state === 'live' ? 'Live' : state === 'err' ? 'Error' : 'Idle';
-    }
-    function setAudDot(state, label) {
-      document.getElementById('audDot').className = 'dot' + (state === 'live' ? ' live' : state === 'warn' ? ' warn' : '');
-      document.getElementById('audStatus').textContent = label;
-    }
-
-    function renderUrls(d) {
-      const el = document.getElementById('urlList');
-      el.innerHTML = '';
-      // Tunnel always first — it's the primary shareable URL over Cloudflare
-      const tunnelUrl = d.tunnelUrl || null;
-      const rows = [
-        tunnelUrl
-          ? { url: tunnelUrl, label: 'HTTPS tunnel ← share this', color: 'var(--accent)' }
-          : { url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true },
-        { url: `http://${d.lanIP}:${d.port}/`, label: 'LAN — same network only', color: '#555' },
-      ];
-      // Only show public IP if no tunnel (tunnel is strictly better)
-      if (!tunnelUrl && d.publicIP)
-        rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/`, label: 'Public IP (needs port forward)', color: '#666' });
-      rows.forEach(r => {
-        const div = document.createElement('div');
-        div.className = 'url-row';
-        div.style.color = r.color;
-        div.textContent = r.url;
-        if (!r.noclick) div.onclick = () => {
-          navigator.clipboard.writeText(r.url).catch(() => { });
-          const tmp = div.textContent; div.textContent = '✓ copied!';
-          setTimeout(() => div.textContent = tmp, 1500);
-        };
-        const sub = document.createElement('div');
-        sub.className = 'url-label'; sub.textContent = '↑ ' + r.label;
-        el.appendChild(div); el.appendChild(sub);
-      });
-    }
-    function renderRoster(list) {
-      const c = document.getElementById('roster');
-      const o = document.getElementById('rosterEmpty');
-
-      const controllers = list.filter(v => v.gp);
-
-      if (controllers.length === 0) {
-        c.innerHTML = '';
-        o.style.display = 'block';
-        return;
-      }
-      o.style.display = 'none';
-
-      c.innerHTML = '';
-      controllers.forEach((v, index) => {
-        const r = document.createElement('div');
-        r.className = 'rcard';
-        r.draggable = true;
-        r.dataset.id = v.id;
-
-        r.innerHTML = `<div class="rnum">\${index + 1}</div>
-          <div style="flex:1; overflow:hidden;">
-            <div class="rname">\${v.name}</div>
-            <div class="rtitle">Controller \${index + 1}</div>
-          </div>
-          <div class="rstat">\${v.slot !== null ? '(Assigned)' : ''}</div>
-          <button class="rkick" onclick="killGp('\${v.id}')" title="Revoke controller">×</button>
-        `;
-        c.appendChild(r);
-      });
-
-      attachDragDrop(c);
-    }
-
-    let draggedItem = null;
-    function attachDragDrop(container) {
-      const items = container.querySelectorAll('.rcard');
-      items.forEach(item => {
-        item.addEventListener('dragstart', (e) => {
-          draggedItem = item;
-          setTimeout(() => item.classList.add('dragging'), 0);
-        });
-        item.addEventListener('dragend', () => {
-          if (draggedItem) draggedItem.classList.remove('dragging');
-          draggedItem = null;
-          items.forEach(i => i.classList.remove('drag-over'));
-        });
-        item.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          if (item !== draggedItem) item.classList.add('drag-over');
-        });
-        item.addEventListener('dragleave', () => {
-          item.classList.remove('drag-over');
-        });
-        item.addEventListener('drop', (e) => {
-          e.preventDefault();
-          item.classList.remove('drag-over');
-          if (item !== draggedItem && draggedItem) {
-            const all = Array.from(container.querySelectorAll('.rcard'));
-            if (all.indexOf(draggedItem) < all.indexOf(item)) item.after(draggedItem);
-            else item.before(draggedItem);
-            updateSlotsAfterDrop(container);
-          }
-        });
-      });
-    }
-
-    function updateSlotsAfterDrop(container) {
-      Array.from(container.querySelectorAll('.rcard')).forEach((item, index) => {
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'assign-slot', viewerId: item.dataset.id, slot: index }));
-      });
-    }
-
-    function killGp(id) {
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-input', viewerId: id, gp: false, kb: false }));
-    }
-    function togglePin() {
-      pinEnabled = !pinEnabled;
-      const btn = document.getElementById('pinToggle');
-      btn.textContent = pinEnabled ? 'ON' : 'OFF';
-      btn.className = 'tog-btn' + (pinEnabled ? ' on' : '');
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: pinEnabled }));
-    }
-    function regeneratePin() {
-      if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: 'regen-pin' }));
-        log('Requesting new PIN...', 'ok');
-      }
-    }
-
-    function connectWS() {
-      ws = new WebSocket(proto + '://' + location.host + '/ws/host');
-      ws.onopen = () => {
-        log('Connected to server', 'ok');
-        fetch('/api/info').then(r => r.json()).then(d => {
-          currentPin = d.pin;
-          document.getElementById('pinVal').textContent = d.pin;
-          renderUrls(d);
-          ws.send(JSON.stringify({ type: 'sync-pin', pin: currentPin, enabled: pinEnabled }));
-        });
-        checkTunnelOnConnect();
-      };
-      ws.onmessage = async (e) => {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'viewer-joined') {
-          const isNew = !knownViewers.has(msg.viewerId);
-          knownViewers.add(msg.viewerId);
-          if (isNew) {
-            log('Controller viewer ' + (msg.name || msg.viewerId) + ' joined', 'ok');
-          } else {
-            log('Viewer ' + (msg.name || msg.viewerId) + ' re-offer requested', 'ok');
-          }
-          if (currentStream) {
-            await sendOfferToViewer(msg.viewerId);
-          } else {
-            ws.send(JSON.stringify({ type: 'host-not-streaming', viewerId: msg.viewerId }));
-          }
-        }
-        if (msg.type === 'viewer-left') {
-          knownViewers.delete(msg.viewerId);
-          if (peerConnections[msg.viewerId]) { peerConnections[msg.viewerId].close(); delete peerConnections[msg.viewerId]; }
-          log('Controller viewer ' + msg.viewerId + ' left');
-        }
-        if (msg.type === 'roster') {
-          renderRoster(msg.viewers);
-          // Update the header counter to reflect only controller-equipped viewers
-          document.getElementById('viewerCount').textContent = msg.controllerCount ?? msg.viewers.length;
-        }
-        if (msg.type === 'answer') {
-          const pc = peerConnections[msg._viewerId];
-          if (pc) { try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); } catch (e) { log('answer err: ' + e.message, 'err'); } }
-        }
-        if (msg.type === 'ice-viewer') {
-          const pc = peerConnections[msg._viewerId];
-          if (pc && msg.candidate) { try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { } }
-        }
-
-        if (msg.type === 'tunnel-url') {
-          log('Tunnel ready: ' + msg.url, 'ok');
-          fetch('/api/info').then(r => r.json()).then(d => { d.tunnelUrl = msg.url; renderUrls(d); });
-          closeTunnelModal(); // Success!
-        }
-        if (msg.type === 'tunnel-error') {
-          log('Tunnel failed: ' + msg.provider, 'err');
-          showTunnelError('Failed to start ' + msg.provider + '.\n\nIf using a SSH tunnel (localhost.run / serveo), outbound port 22 is likely blocked by your router/ISP.\n\nTry using cloudflared instead.');
-        }
-        if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
-        if (msg.type === 'viewer-gpid') log('Controller: ' + msg.id, 'ok');
-      };
-      ws.onclose = () => { log('Disconnected — retrying', 'warn'); setTimeout(connectWS, 2000); };
-      ws.onerror = () => log('WS error', 'err');
-    }
-
-    async function sendOfferToViewer(viewerId) {
-      if (!currentStream) return;
-      // Guard: close any stale PC to prevent 'wrong state: stable' race
-      if (peerConnections[viewerId]) {
-        try { peerConnections[viewerId].close(); } catch { }
-        delete peerConnections[viewerId];
-      }
-      const pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun.cloudflare.com:3478' },
-          // TURN servers — critical for users behind symmetric NAT (most home routers).
-          // Without TURN, ICE silently fails when both sides are behind strict NAT.
-          // OpenRelay is a free, open-source public TURN service.
-          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-        ],
-        iceCandidatePoolSize: 4,
-      });
-      peerConnections[viewerId] = pc;
-
-      currentStream.getTracks().forEach(track => {
-        pc.addTrack(track, currentStream);
-        // NOTE: removed contentHint = 'motion' here to stop text/UI flickering.
-        // WebRTC will balance framerate/resolution naturally.
-      });
-
-      // Codec preference BEFORE createOffer
-      const codec = preferVideoCodec(pc);
-      if (codec) document.getElementById('codecBadge').textContent = codec.split('/')[1];
-
-      pc.onicecandidate = (e) => {
-        // Filter empty candidates — they cause 'Failed to parse' errors on receiver
-        if (e.candidate && e.candidate.candidate) {
-          ws.send(JSON.stringify({ type: 'ice-host', candidate: e.candidate, _viewerId: viewerId }));
-        }
-      };
-      pc.onconnectionstatechange = () => {
-        const s = pc.connectionState;
-        log('Viewer ' + viewerId + ': ' + s, s === 'connected' ? 'ok' : s === 'failed' ? 'err' : '');
-        if (s === 'connected') setLowLatencyParams(pc);
-        if (s === 'failed') {
-          // Auto-retry once on failure
-          log('Retrying offer to ' + viewerId, 'warn');
-          delete peerConnections[viewerId];
-          setTimeout(() => sendOfferToViewer(viewerId), 1000);
-        }
-      };
-
-      const offer = await pc.createOffer();
-
-      // Force starting bitrate based on user selection (or auto)
-      let modifiedSdp = offer.sdp;
-      const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
-      if (bitVal > 0) {
-        modifiedSdp = modifiedSdp.replace(/(a=fmtp:96 .*)\r\n/g, `$1;x-google-start-bitrate=${bitVal}\r\n`);
-      }
-
-      await pc.setLocalDescription({ type: offer.type, sdp: modifiedSdp });
-      ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));
-      log('Offer → viewer ' + viewerId, 'ok');
-    }
-
-    async function startCapture() {
-      document.getElementById('btnStart').disabled = true;
-      document.getElementById('btnSwitch').disabled = true;
-
-      if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); stopAudioMeter(); currentStream = null; }
-      Object.values(peerConnections).forEach(pc => pc.close());
-      peerConnections = {}; // knownViewers kept — viewers still connected
-
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: { ideal: 60, max: 60 } }, audio: false
-        });
-        const vTrack = screenStream.getVideoTracks()[0];
-        if (!vTrack || vTrack.readyState === 'ended') {
-          log('Screen capture cancelled', 'warn'); setCapDot('');
-          document.getElementById('btnStart').disabled = false; return;
-        }
-        const settings = vTrack.getSettings();
-
-        let aTrack = null;
-        try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 48000 }, video: false
-          });
-          aTrack = audioStream.getAudioTracks()[0];
-          log('Audio: ' + (aTrack.label || 'default'), 'ok');
-        } catch (audioErr) { log('Audio: ' + audioErr.message, 'warn'); }
-
-        const combined = new MediaStream();
-        combined.addTrack(vTrack);
-        if (aTrack) combined.addTrack(aTrack);
-        currentStream = combined;
-
-        const prev = document.getElementById('preview');
-        prev.srcObject = screenStream;
-        if (settings.width && settings.height) prev.style.aspectRatio = settings.width + '/' + settings.height;
-        document.getElementById('prevOverlay').classList.add('hidden');
-        document.getElementById('trackInfo').innerHTML =
-          '<strong>' + (vTrack.label || 'Screen') + '</strong><br>' +
-          settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
-          (aTrack ? 'Audio: ' + (aTrack.label || 'default') : 'No audio');
-
-        setCapDot('live');
-        if (aTrack) { setAudDot('live', 'Audio active'); startAudioMeter(combined); }
-        else setAudDot('warn', 'No audio — check PipeWire default sink');
-
-        ws.send(JSON.stringify({ type: 'host-stream-ready' }));
-        // Offer ALL known viewers (knownViewers covers pre-connected viewers too)
-        [...knownViewers].forEach(id => sendOfferToViewer(id));
-
-        vTrack.onended = () => { log('Capture ended by OS', 'warn'); stopCapture(); };
-        document.getElementById('btnSwitch').disabled = false;
-        document.getElementById('btnStop').disabled = false;
-      } catch (err) {
-        if (err.name === 'NotAllowedError' || err.name === 'AbortError') log('Capture cancelled', 'warn');
-        else { log('Capture failed: ' + err.message, 'err'); setCapDot('err'); }
-        document.getElementById('btnStart').disabled = false;
-      }
-    }
-
-    function stopCapture() {
-      if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
-      stopAudioMeter();
-      document.getElementById('preview').srcObject = null;
-      document.getElementById('prevOverlay').classList.remove('hidden');
-      setCapDot(''); setAudDot('', 'No audio');
-      document.getElementById('trackInfo').textContent = '—';
-      document.getElementById('btnStart').disabled = false;
-      document.getElementById('btnSwitch').disabled = true;
-      document.getElementById('btnStop').disabled = true;
-      Object.values(peerConnections).forEach(pc => pc.close());
-      peerConnections = {};
-      ws.send(JSON.stringify({ type: 'host-stream-stopped' }));
-      log('Capture stopped');
-    }
-
-    function startAudioMeter(stream) {
-      audioCtx = new AudioContext();
-      analyser = audioCtx.createAnalyser(); analyser.fftSize = 256;
-      audioCtx.createMediaStreamSource(stream).connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      const fill = document.getElementById('meter');
-      (function draw() { animFrame = requestAnimationFrame(draw); analyser.getByteFrequencyData(data); fill.style.width = Math.min(100, data.reduce((a, b) => a + b, 0) / data.length * 2) + '%'; })();
-    }
-    function stopAudioMeter() {
-      if (animFrame) cancelAnimationFrame(animFrame);
-      if (audioCtx) { audioCtx.close(); audioCtx = null; }
-      document.getElementById('meter').style.width = '0%';
-    }
-
-
-    // ── Tunnel picker modal ───────────────────────────────────────────────────────
-    function showTunnelModal() {
-      resetTunnelModal();
-      document.getElementById('tunnelModal').classList.remove('gone');
-      // Sync card highlights to current radio selection
-      document.querySelectorAll('.provider-card').forEach(c => {
-        c.classList.toggle('selected', c.querySelector('input').checked);
-      });
-    }
-    function resetTunnelModal() {
-      document.getElementById('tunnelLoading').classList.add('gone');
-      document.getElementById('tunnelSpinner').classList.remove('gone');
-      document.getElementById('tunnelErrorText').classList.add('gone');
-      document.getElementById('tunnelRetryBtn').classList.add('gone');
-    }
-    function closeTunnelModal() {
-      document.getElementById('tunnelModal').classList.add('gone');
-      resetTunnelModal();
-    }
-    function showTunnelError(msg) {
-      document.getElementById('tunnelSpinner').classList.add('gone');
-      document.getElementById('tunnelLoadText').textContent = 'Connection Failed';
-      document.getElementById('tunnelErrorText').textContent = msg;
-      document.getElementById('tunnelErrorText').classList.remove('gone');
-      document.getElementById('tunnelRetryBtn').classList.remove('gone');
-    }
-
-    function copyCmd(e, cmd) {
-      e.stopPropagation();
-      let finalCmd = cmd;
-      if (cmd.includes('VPS')) {
-        const host = document.getElementById("vpsHostInput")?.value?.trim() || "VPS";
-        finalCmd = cmd.replace('VPS', host);
-      }
-      navigator.clipboard.writeText(finalCmd).then(() => {
-        const btn = e.target;
-        const orig = btn.textContent;
-        btn.textContent = '✓';
-        btn.style.borderColor = 'var(--accent)';
-        setTimeout(() => { btn.textContent = orig; btn.style.borderColor = '#4e5058'; }, 1000);
-      });
-    }
-
-    function confirmTunnel() {
-      const radio = document.querySelector('input[name="provider"]:checked');
-      if (!radio) return;
-      const provider = radio.value;
-      const remember = document.getElementById('rememberCheck').checked;
-
-      if (provider === 'portforward') {
-        if (remember) {
-          fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tunnelProvider: 'portforward', neverAsk: true }) });
-        }
-        closeTunnelModal();
-        log('Using direct Port Forwarding. Share your Public IP URL.', 'ok');
-        return;
-      }
-
-      // Show loading overlay
-      document.getElementById('tunnelLoading').classList.remove('gone');
-      document.getElementById('tunnelLoadText').textContent = 'Starting ' + provider + '...';
-
-      log('Starting ' + provider + ' tunnel' + (remember ? ' (saved)' : '') + '…', 'ok');
-      fetch('/api/start-tunnel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, remember, vpsHost: document.getElementById("vpsHostInput")?.value?.trim() })
-      }).catch(() => showTunnelError('Network request failed'));
-    }
-    // Highlight selected card on click
-    document.querySelectorAll('input[name="provider"]').forEach(radio => {
-      radio.addEventListener('change', () => {
-        document.querySelectorAll('.provider-card').forEach(c => {
-          c.classList.toggle('selected', c.querySelector('input').checked);
-        });
-      });
-    });
-    // Also allow clicking the whole card
-    document.querySelectorAll('.provider-card').forEach(card => {
-      card.addEventListener('click', () => {
-        card.querySelector('input').checked = true;
-        document.querySelectorAll('.provider-card').forEach(c =>
-          c.classList.toggle('selected', c.querySelector('input').checked));
-      });
-    });
-
-    async function checkTunnelOnConnect() {
-      try {
-        const cfg = await fetch('/api/config').then(r => r.json());
-        if (cfg.neverAsk) return; // auto-started, modal not needed
-        const info = await fetch('/api/info').then(r => r.json());
-        if (!info.tunnelUrl) showTunnelModal(); // no tunnel yet → ask
-      } catch { }
-    }
-
-    connectWS();
-
-  </script>
+    </div> </div> <script src="host.js"></script>
 </body>
 
 </html>

@@ -4,19 +4,160 @@
  */
 
 const API_URL = 'https://nearsec.cutefame.net/api/arcade/sessions';
+const WS_URL = (() => {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const host = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    ? location.host
+    : 'nearsec.cutefame.net';
+    return `${proto}://${host}/ws/arcade`;
+})();
 const POLL_INTERVAL = 6000;
+
+// ── Security: only sessions from these tunnel providers are shown ─────────────
+// Enforced client-side as a second layer; server validates before broadcasting.
+const ARCADE_ALLOWED_DOMAINS = [
+    'trycloudflare.com',
+'zrok.io',
+'localhost.run',
+'serveo.net',
+];
+function isAllowedArcadeUrl(rawUrl) {
+    try {
+        const u = new URL(rawUrl);
+        if (u.protocol !== 'https:') return false;
+        return ARCADE_ALLOWED_DOMAINS.some(d =>
+        u.hostname === d || u.hostname.endsWith('.' + d)
+        );
+    } catch { return false; }
+}
 
 let sessions = [];
 let filteredSessions = [];
 let activeSession = null;
 let latencyMap = {};
+let arcadeWS = null;
+let currentLiveSession = null;
+
+const modal = document.getElementById('gamepadModal');
+
+window.openGamepadTester = function() {
+    const modal = document.getElementById('gamepadModal');
+    if (modal) {
+        modal.classList.add('open');
+    }
+};
+
+window.closeGamepadTester = function() {
+    const modal = document.getElementById('gamepadModal');
+    if (modal) {
+        modal.classList.remove('open');
+    }
+};
+
+// --- WebSocket Connection ---
+function connectArcadeWS() {
+    try {
+        arcadeWS = new WebSocket(WS_URL);
+
+        arcadeWS.onopen = () => {
+            console.log('[Arcade WS] Connected');
+            arcadeWS.send(JSON.stringify({ type: 'arcade-query' }));
+        };
+
+        arcadeWS.onmessage = (e) => {
+            try {
+                const msg = JSON.parse(e.data);
+
+                // Server sends full list on connect / arcade-query response
+                if (msg.type === 'arcade-sessions') {
+                    const trusted = (msg.sessions || []).filter(s => isAllowedArcadeUrl(s.url));
+                    // Replace all server-sourced sessions (keep any local ones if needed)
+                    sessions = sessions.filter(s => !s.id?.startsWith('ns-'));
+                    sessions = [...trusted, ...sessions];
+                    updateLiveDot(true);
+                    filterCards();
+                    return;
+                }
+
+                if (msg.type === 'arcade-session-active') {
+                    console.log('[Arcade WS] Session active:', msg.session);
+                    if (!isAllowedArcadeUrl(msg.session?.url)) {
+                        console.warn('[Arcade] Rejected session with disallowed URL:', msg.session?.url);
+                        return;
+                    }
+                    currentLiveSession = msg.session;
+                    addSessionToGrid(msg.session);
+                    updateLiveDot(true);
+                } else if (msg.type === 'arcade-session-stopped') {
+                    console.log('[Arcade WS] Session stopped:', msg.id);
+                    // Capture gameTitle before nulling currentLiveSession
+                    const stoppedId = msg.id || currentLiveSession?.id;
+                    const stoppedTitle = currentLiveSession?.game;
+                    currentLiveSession = null;
+                    if (stoppedId) {
+                        sessions = sessions.filter(s => s.id !== stoppedId);
+                    } else if (stoppedTitle) {
+                        sessions = sessions.filter(s => s.game !== stoppedTitle);
+                    }
+                    filterCards();
+                } else if (msg.type === 'arcade-no-session') {
+                    console.log('[Arcade WS] No active session');
+                }
+            } catch (err) {
+                console.error('[Arcade WS] Parse error:', err);
+            }
+        };
+
+        arcadeWS.onerror = (e) => {
+            console.error('[Arcade WS] Error:', e);
+            updateLiveDot(false);
+        };
+
+        arcadeWS.onclose = () => {
+            console.log('[Arcade WS] Disconnected, reconnecting in 3s');
+            setTimeout(connectArcadeWS, 3000);
+        };
+    } catch (err) {
+        console.error('[Arcade WS] Connection error:', err);
+        setTimeout(connectArcadeWS, 3000);
+    }
+}
+
+function addSessionToGrid(session) {
+    if (!isAllowedArcadeUrl(session?.url)) {
+        console.warn('[Arcade] Blocked session with disallowed URL:', session?.url);
+        return;
+    }
+    if (!sessions.find(s => s.id === session.id)) {
+        sessions.unshift({
+            id: session.id || ('arcade-' + Date.now()),
+                         game: session.game || session.gameTitle,
+                         thumbnail: session.thumbnail,
+                         region: 'Live Arcade',
+                         hasPin: session.hasPin || session.requirePin,
+                         url: session.url || session.tunnelUrl,
+                         viewers: session.viewers || session.viewerCount || 0,
+        });
+        filterCards();
+    }
+}
+
+function removeSessionFromGrid(gameTitle) {
+    sessions = sessions.filter(s => s.game !== gameTitle);
+    filterCards();
+}
 
 // --- Polling & Data Fetching ---
 async function fetchSessions() {
     try {
         const res = await fetch(API_URL, { cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        sessions = await res.json();
+        const fetchedSessions = await res.json();
+        // Domain whitelist — client-side second layer; server enforces on broadcast
+        const trusted = fetchedSessions.filter(s => isAllowedArcadeUrl(s.url));
+        const wsSessionIds = new Set(sessions.filter(s => s.id?.startsWith('ns-')).map(s => s.id));
+        const newSessions = trusted.filter(s => !wsSessionIds.has(s.id));
+        sessions = [...sessions, ...newSessions];
         updateLiveDot(true);
     } catch (e) {
         console.warn('[Arcade] Fetch error:', e.message);
@@ -174,6 +315,57 @@ function closeJoin() {
 }
 
 async function joinSession() {
+    if (!activeSession || !activeSession.url) return;
+
+    // Security disclaimer — shown every time before joining a third-party host
+    if (!document.getElementById('securityDisclaimerShown')?.dataset.accepted) {
+        showSecurityDisclaimer(() => _doJoin());
+        return;
+    }
+    _doJoin();
+}
+
+function showSecurityDisclaimer(onAccept) {
+    let overlay = document.getElementById('arcadeSecurityModal');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'arcadeSecurityModal';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:monospace;';
+        overlay.innerHTML = `
+        <div style="background:#1e1f22;border-radius:12px;padding:28px;max-width:460px;width:92vw;box-shadow:0 16px 48px rgba(0,0,0,.8);border:1px solid #333;">
+        <div style="font-size:15px;font-weight:700;color:#f2f3f5;margin-bottom:10px;">⚠ Before you join</div>
+        <p style="font-size:11px;color:#949ba4;line-height:1.7;margin-bottom:16px;">
+        You are about to connect to a <strong style="color:#f2f3f5">third-party host machine</strong>.
+        The transport is encrypted via WebRTC, but you should:
+        </p>
+        <ul style="font-size:11px;color:#949ba4;line-height:2;margin:0 0 16px 18px;">
+        <li>Never enter passwords or personal credentials.</li>
+        <li>Never download or run files offered during a session.</li>
+        <li>Leave immediately if asked to do anything suspicious.</li>
+        </ul>
+        <p style="font-size:10px;color:#555;margin-bottom:20px;">
+        Nearsec verifies that sessions use approved tunnel providers but cannot audit host behaviour.
+        </p>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button id="arcadeSecDecline" style="padding:8px 20px;border-radius:6px;border:none;background:#383a40;color:#b5bac1;font-family:inherit;font-size:11px;cursor:pointer;">Cancel</button>
+        <button id="arcadeSecAccept" style="padding:8px 20px;border-radius:6px;border:none;background:#c084fc;color:#000;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;">I Understand — Join</button>
+        </div>
+        </div>`;
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    document.getElementById('arcadeSecAccept').onclick = () => {
+        overlay.style.display = 'none';
+        // Mark as accepted for this page session so it doesn't re-prompt in a loop
+        let marker = document.getElementById('securityDisclaimerShown');
+        if (!marker) { marker = document.createElement('div'); marker.id = 'securityDisclaimerShown'; marker.style.display = 'none'; document.body.appendChild(marker); }
+        marker.dataset.accepted = '1';
+        onAccept();
+    };
+    document.getElementById('arcadeSecDecline').onclick = () => { overlay.style.display = 'none'; };
+}
+
+async function _doJoin() {
     if (!activeSession || !activeSession.url) return;
     let joinUrl = activeSession.url;
     if (activeSession.hasPin) {

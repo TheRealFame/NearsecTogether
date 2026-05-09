@@ -1,0 +1,26 @@
+{
+    "buttons": {
+        "KEY_SPACE": "BTN_A",
+        "KEY_LEFTSHIFT": "BTN_B",
+        "KEY_E": "BTN_X",
+        "KEY_R": "BTN_Y",
+        "KEY_Q": "BTN_TL",
+        "KEY_F": "BTN_TR",
+        "KEY_TAB": "BTN_SELECT",
+        "KEY_ESC": "BTN_START"
+    },
+    "left_stick": {
+        "KEY_W": { "axis": "ABS_Y", "val": -32767 },
+        "KEY_S": { "axis": "ABS_Y", "val": 32767 },
+        "KEY_A": { "axis": "ABS_X", "val": -32767 },
+        "KEY_D": { "axis": "ABS_X", "val": 32767 }
+    },
+    "dpad": {
+        "KEY_1": { "axis": "ABS_HAT0Y", "val": -1 },
+        "KEY_2": { "axis": "ABS_HAT0Y", "val": 1 },
+        "KEY_3": { "axis": "ABS_HAT0X", "val": -1 },
+        "KEY_4": { "axis": "ABS_HAT0X", "val": 1 }
+    },
+    "right_stick_mouse": true,
+    "right_stick_multiplier": 1800
+}

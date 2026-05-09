@@ -305,6 +305,34 @@ function sanitize(str) {
 }
 function makePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
 
+// ── Arcade session registry ───────────────────────────────────────────────────
+const arcadeSessions = new Map(); // hostWS-id → session object
+const arcadeClients  = new Set(); // /ws/arcade subscriber connections
+let   arcadeHostId   = 0;         // simple counter for host identity key
+
+// Only sessions originating from known tunnel providers are listed.
+// This prevents malicious redirects to attacker-controlled domains.
+const ARCADE_ALLOWED_DOMAINS = [
+  'trycloudflare.com',
+'zrok.io',
+'localhost.run',
+'serveo.net',
+];
+function isAllowedArcadeUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    // Must be HTTPS
+    if (u.protocol !== 'https:') return false;
+    return ARCADE_ALLOWED_DOMAINS.some(d =>
+    u.hostname === d || u.hostname.endsWith('.' + d)
+    );
+  } catch { return false; }
+}
+function broadcastToArcade(msg) {
+  const data = JSON.stringify(msg);
+  arcadeClients.forEach(c => { if (c.readyState === 1) c.send(data); });
+}
+
 // ── Persistent config (tunnel preference) ────────────────────────────────────
 const CONFIG_FILE = path.join(__dirname, "..", "nearsectogether.config.json");
 function loadConfig() {
@@ -388,6 +416,11 @@ async function main() {
              version: APP_VERSION,
              uptime: process.uptime()
     });
+  });
+
+  // ── Arcade sessions REST (polled by arcade.js as fallback) ───────────────────
+  app.get("/api/arcade/sessions", (req, res) => {
+    res.json([...arcadeSessions.values()]);
   });
 
   // Trigger a tunnel start from the host UI picker
@@ -560,8 +593,103 @@ async function main() {
           }
           if (msg.type === "chat") { broadcast(JSON.stringify(msg)); return; }
 
+          // ── Controller settings — forwarded to Python sidecar, NOT broadcast ──
+          if (msg.type === "ctrl-settings") {
+            toUinput({ type: 'set_force_xboxone',    value: !!msg.forceXboxOne });
+            toUinput({ type: 'set_enable_dualshock', value: !!msg.enableDualShock });
+            toUinput({ type: 'set_enable_motion',    value: !!msg.enableMotion });
+            console.log("[host] ctrl-settings: forceXboxOne=%s enableDualShock=%s enableMotion=%s",
+                        !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion);
+            return;
+          }
+
+          // ── Input mode change for a specific viewer slot ──────────────────────
+          if (msg.type === "set-input-mode") {
+            const modeMap = { gamepad: { gp: true, kb: false }, kbm: { gp: false, kb: true }, kbm_emulated: { gp: true, kb: true }, disabled: { gp: false, kb: false } };
+            const perms = modeMap[msg.mode] || { gp: true, kb: false };
+            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
+            inputPerms.set(msg.viewerId, { ...cur, ...perms });
+            const realId = msg.viewerId.split('_')[0];
+            const vws = viewers.get(realId);
+            if (vws && vws.readyState === 1) vws.send(JSON.stringify({ type: "input-state", gp: perms.gp, kb: perms.kb, mode: msg.mode }));
+            broadcastRoster();
+            return;
+          }
+
+          // ── Toggle slot lock ──────────────────────────────────────────────────
+          if (msg.type === "toggle-slot-lock") {
+            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
+            inputPerms.set(msg.viewerId, { ...cur, locked: !!msg.locked });
+            broadcastRoster();
+            return;
+          }
+
+          // ── Regenerate PIN ────────────────────────────────────────────────────
+          if (msg.type === "regen-pin") {
+            PIN = makePin();
+            console.log("[host] PIN regenerated:", PIN);
+            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
+            return;
+          }
+
+          // ── Arcade session management ─────────────────────────────────────────
+          if (msg.type === "arcade-session-start") {
+            const url = msg.tunnelUrl || tunnelUrl;
+            if (!url) {
+              if (hostWS && hostWS.readyState === 1)
+                hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'No tunnel URL active. Start a tunnel first.' }));
+              return;
+            }
+            if (!isAllowedArcadeUrl(url)) {
+              console.warn("[arcade] Rejected URL — not in whitelist:", url);
+              if (hostWS && hostWS.readyState === 1)
+                hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'Tunnel provider not allowed. Use cloudflared, zrok, localhost.run, or serveo.' }));
+              return;
+            }
+            if (!hostStreaming) {
+              if (hostWS && hostWS.readyState === 1)
+                hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'No active stream. Start sharing your screen first.' }));
+              return;
+            }
+            const sessionId = 'ns-' + Date.now() + '-' + (++arcadeHostId);
+            const session = {
+              id: sessionId,
+              game: sanitize(msg.config?.title || 'Arcade Game'),
+            thumbnail: msg.config?.thumbnail || null,
+            region: 'Nearsec Arcade',
+            hasPin: !!msg.config?.requirePin,
+            maxPlayers: parseInt(msg.config?.maxPlayers || 4),
+            url: url,
+            startedAt: Date.now(),
+            isStreaming: true,
+            };
+            arcadeSessions.set(sessionId, session);
+            console.log("[arcade] Session registered:", session.game, url);
+            broadcastToArcade({ type: 'arcade-session-active', session });
+            if (hostWS && hostWS.readyState === 1)
+              hostWS.send(JSON.stringify({ type: 'arcade-session-active', session }));
+            return;
+          }
+
+          if (msg.type === "arcade-session-stop") {
+            // Remove any session owned by this host connection
+            for (const [id, s] of arcadeSessions) {
+              arcadeSessions.delete(id);
+              broadcastToArcade({ type: 'arcade-session-stopped', id });
+              console.log("[arcade] Session stopped:", s.game);
+            }
+            return;
+          }
+
           if (msg.type === "host-stream-ready") hostStreaming = true;
-          if (msg.type === "host-stream-stopped") hostStreaming = false;
+          if (msg.type === "host-stream-stopped") {
+            hostStreaming = false;
+            // Mark all arcade sessions as not streaming — stops them from appearing live
+            for (const [id, s] of arcadeSessions) {
+              arcadeSessions.delete(id);
+              broadcastToArcade({ type: 'arcade-session-stopped', id });
+            }
+          }
 
           // Fallback broadcast (host-stream-stopped, host-stream-ready, etc.)
           broadcast(JSON.stringify(msg));
@@ -572,6 +700,11 @@ async function main() {
         console.log("[host] disconnected");
         hostWS = null;
         hostStreaming = false;
+        // Delist any arcade sessions owned by this host
+        for (const [id] of arcadeSessions) {
+          arcadeSessions.delete(id);
+          broadcastToArcade({ type: 'arcade-session-stopped', id });
+        }
         broadcast(JSON.stringify({ type: "host-disconnected" }));
       });
 
@@ -790,6 +923,21 @@ async function main() {
         console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
         broadcastRoster();
       });
+
+      // ── ARCADE CLIENTS (arcade.js subscribers at nearsec.cutefame.net/arcade) ─
+    } else if (path === "/ws/arcade") {
+      arcadeClients.add(ws);
+      // Immediately send all current sessions so the page doesn't wait for a change
+      ws.send(JSON.stringify({ type: 'arcade-sessions', sessions: [...arcadeSessions.values()] }));
+      ws.on("message", raw => {
+        try {
+          const msg = JSON.parse(raw);
+          if (msg.type === 'arcade-query') {
+            ws.send(JSON.stringify({ type: 'arcade-sessions', sessions: [...arcadeSessions.values()] }));
+          }
+        } catch { }
+      });
+      ws.on("close", () => arcadeClients.delete(ws));
 
       // ── AUDIO (WebSocket fallback — WebRTC carries audio natively) ────────────
     } else if (path === "/ws/audio-host") {
