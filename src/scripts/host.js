@@ -171,7 +171,8 @@ async function setLowLatencyParams(pc) {
             }
             params.encodings[0].networkPriority = 'high';
             params.encodings[0].priority = 'high';
-            params.encodings[0].degradationPreference = degVal;
+            // HARDCODE FRAMERATE: Never drop below 60fps. Make it blurry instead.
+            params.encodings[0].degradationPreference = 'maintain-framerate';
         }
         await sender.setParameters(params);
     } catch { }
@@ -528,11 +529,6 @@ async function sendOfferToViewer(viewerId) {
     let modifiedSdp = offer.sdp;
     const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
 
-    // LOW LATENCY TWEAK: Force start bitrate
-    if (bitVal > 0) {
-        modifiedSdp = modifiedSdp.replace(/(a=fmtp:96 .*)\r\n/g, `$1;x-google-start-bitrate=${bitVal}\r\n`);
-    }
-
     // LOW LATENCY TWEAK: Force H.264 Baseline Profile (42e01f) if H.264 is used. Disables B-frames.
     if (modifiedSdp.includes('profile-level-id=')) {
         modifiedSdp = modifiedSdp.replace(/profile-level-id=[0-9a-fA-F]+/g, 'profile-level-id=42e01f');
@@ -578,7 +574,7 @@ async function startCapture() {
         }
 
         // LOW LATENCY TWEAK: contentHint 'detail' forces crisp frames, skipping heavy motion estimation
-        vTrack.contentHint = 'detail';
+        vTrack.contentHint = 'motion';
 
         const settings = vTrack.getSettings();
         let aTrack = screenStream.getAudioTracks()[0] || null;

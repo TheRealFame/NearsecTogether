@@ -3,17 +3,17 @@ export default {
     const url = new URL(request.url);
 
     // ==========================================
-    // ROUTE 0: DIAGNOSTIC (Delete this later!)
+    // CORS HEADERS (Allows localhost to talk to Cloudflare)
     // ==========================================
-    if (url.pathname === "/api/debug-env") {
-      return new Response(JSON.stringify({
-        hasRawgKey: !!env.RAWG_API_KEY,
-        hasPusherSecret: !!env.PUSHER_SECRET,
-        hasPusherKey: !!env.PUSHER_KEY,
-        rawgLength: env.RAWG_API_KEY ? env.RAWG_API_KEY.length : 0
-      }, null, 2), {
-        headers: { "Content-Type": "application/json" }
-      });
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    };
+
+    // If the browser sends an OPTIONS preflight check, approve it immediately
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
     }
 
     // ==========================================
@@ -21,34 +21,27 @@ export default {
     // ==========================================
     if (url.pathname === "/api/pusher-auth") {
       if (request.method !== "POST") {
-        return new Response("Method Not Allowed. This endpoint requires POST.", { status: 405 });
+        return new Response("Method Not Allowed.", { status: 405, headers: corsHeaders });
       }
-
       try {
         const formData = await request.formData();
         const socketId = formData.get("socket_id");
         const channelName = formData.get("channel_name");
-
         const secret = env.PUSHER_SECRET;
         const key = env.PUSHER_KEY;
 
         const stringToSign = `${socketId}:${channelName}`;
         const encoder = new TextEncoder();
-        const cryptoKey = await crypto.subtle.importKey(
-          "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-        );
-
+        const cryptoKey = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
         const signature = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(stringToSign));
         const hash = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
 
         return new Response(JSON.stringify({ auth: `${key}:${hash}` }), {
-          headers: { "Content-Type": "application/json" }
+          headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       } catch (err) {
-        // This will spit the exact crash reason back to the browser console!
-        return new Response(JSON.stringify({ error: err.message, stack: err.stack }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
     }
@@ -69,7 +62,7 @@ export default {
       const apiKey = env.RAWG_API_KEY;
 
       try {
-        const res = await fetch(`https://api.rawg.io/api/games?search=${encodeURIComponent(title)}&key=${apiKey}&page_size=1`);
+        const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodeURIComponent(gameTitle)}`);
         const data = await res.json();
 
         let thumb = '';

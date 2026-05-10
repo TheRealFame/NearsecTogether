@@ -48,6 +48,11 @@ async function createPC() {
     };
 
     pc.ontrack = (e) => {
+        // KILL THE JITTER BUFFER: Forces 0ms display latency for fighting/FPS games
+        try {
+            if (e.receiver) e.receiver.playoutDelayHint = 0;
+        } catch (err) {}
+
         const track = e.track;
 
         // Apply your codec priorities
