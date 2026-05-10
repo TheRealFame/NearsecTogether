@@ -62,7 +62,7 @@ export default {
       const apiKey = env.RAWG_API_KEY;
 
       try {
-        const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodeURIComponent(gameTitle)}`);
+        const res = await fetch(`https://api.rawg.io/api/games?search=${encodeURIComponent(title)}&key=${apiKey}&page_size=1`);
         const data = await res.json();
 
         let thumb = '';
