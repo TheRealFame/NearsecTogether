@@ -28,6 +28,9 @@ SUBSYSTEM=="input", ATTRS{idVendor}=="045e", ATTRS{idProduct}=="0b12", TAG+="uac
 SUBSYSTEM=="input", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="09cc", TAG+="uaccess"
 # PS5 DualSense Virtual Pad
 SUBSYSTEM=="input", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ce6", TAG+="uaccess"
+# Xbox One Virtual Pad (Bonus)
+SUBSYSTEM=="input", ATTRS{name}=="Microsoft Xbox*", \
+  ENV{ID_INPUT_JOYSTICK}="1", ENV{ID_INPUT_MOUSE}="0", ENV{ID_INPUT_KEY}="0"
 EOF
 
 udevadm control --reload-rules && udevadm trigger

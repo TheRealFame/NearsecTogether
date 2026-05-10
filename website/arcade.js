@@ -57,7 +57,7 @@ window.closeGamepadTester = function() {
 
 // --- Pusher Connection & State ---
 Pusher.logToConsole = true;
-const pusher = new Pusher('PUSHER_KEY', {
+const pusher = new Pusher('a93f5405058cd9fc7967', {
     cluster: 'us2',
     authEndpoint: '/api/pusher-auth'
 });
