@@ -129,7 +129,7 @@ document.getElementById('fpsSelect').addEventListener('change', (e) => localStor
 async function fetchGameThumbnail(gameTitle) {
     try {
         // Notice there is no API key here! We just ask our own server.
-        cconst res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodedTitle}`);
+        const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodedTitle}`);
         const data = await res.json();
 
         return data.thumbnail || '';
