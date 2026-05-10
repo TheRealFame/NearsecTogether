@@ -3,6 +3,14 @@ let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCou
 let audioCtx, analyser, animFrame;
 let pinEnabled = true, currentPin = '----';
 
+// ── Audio Settings (Hidden from UI) ──────────────────────────────────────
+// forceAudioEnabled: Always attempt to capture audio, defaulted to true
+// Users don't see this in the UI — it's for reliability on PipeWire systems
+let audioSettings = {
+    forceAudioEnabled: localStorage.getItem('ns_force_audio_enabled') !== 'false',  // default true
+        defaultDevice: localStorage.getItem('ns_audio_device') || 'default'
+};
+
 // --- Pusher Arcade Integration ---
 Pusher.logToConsole = true;
 const pusher = new Pusher('a93f5405058cd9fc7967', {
@@ -544,16 +552,18 @@ async function startCapture() {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
             video: { frameRate: { ideal: 60, max: 60 } },
             // PIPEWIRE AUDIO: systemAudio:'include' (Chrome 105+) explicitly requests system/window audio
-            // via the PipeWire portal on Wayland. Users MUST tick "Share audio" in the capture dialog.
-            // If no audio shows up: make sure you pick a Window (not entire screen) and check the audio checkbox.
-            audio: {
+            // via the PipeWire portal on Wayland. Audio capture preference is controlled by audioSettings.forceAudioEnabled.
+            // Even if disabled by user, we still show the dialog — the OS will handle whether to include audio.
+            // PIPEWIRE NOTE: Do NOT pass deviceId here. PipeWire's portal picks the
+            // device itself; specifying deviceId:'default' silently breaks audio on Wayland.
+            audio: audioSettings.forceAudioEnabled ? {
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
                 sampleRate: 48000,
                 channelCount: 2,
-                latency: 0,
-            },
+                latency: 0
+            } : false,
             systemAudio: 'include',          // Chrome 105+: shows audio share option in the dialog
             selfBrowserSurface: 'exclude',   // Don't offer the Nearsec tab itself
             surfaceSwitching: 'include',     // Allow switching to another window mid-stream
@@ -574,7 +584,25 @@ async function startCapture() {
         if (aTrack) {
             log('System Audio Track Found: ' + (aTrack.label || 'default'), 'ok');
         } else {
-            log('No audio track selected in capture prompt', 'warn');
+            // PipeWire fallback: some setups expose system audio via getUserMedia loopback.
+            // Try it silently — if it fails, we just proceed without audio.
+            log('No audio track in capture — trying PipeWire loopback fallback...', 'warn');
+            try {
+                const loopback = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        sampleRate: 48000,
+                        channelCount: 2
+                    },
+                    video: false
+                });
+                aTrack = loopback.getAudioTracks()[0] || null;
+                if (aTrack) log('PipeWire loopback audio: ' + (aTrack.label || 'default'), 'ok');
+            } catch (e) {
+                log('PipeWire loopback unavailable: ' + e.message, 'warn');
+            }
         }
 
         const combined = new MediaStream();

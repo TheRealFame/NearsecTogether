@@ -9,7 +9,16 @@ fi
 apt-get update
 apt-get install -y python3-pip libudev-dev libasound2-dev libpipewire-0.3-dev
 pip3 install python-uinput --break-system-packages
-modprobe uinput
+if ! modprobe uinput 2>/dev/null; then
+  if [ -e /dev/uinput ]; then
+    echo "✓ uinput is built into this kernel (modprobe not needed)"
+  else
+    echo "✗ uinput not available — controller input will not work"
+    echo "  Try: sudo modprobe uinput  or check your kernel config"
+  fi
+else
+  echo "✓ uinput module loaded"
+fi
 
 echo "--- Creating udev rules for virtual controllers ---"
 RULE_FILE="/etc/udev/rules.d/99-nearsec-input.rules"

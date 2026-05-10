@@ -5,6 +5,7 @@ let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random
 document.getElementById('nameInput').value = myName;
 const CLIENT_VERSION = "1.0.0";
 let enteredPin = '', audioMuted = false;
+let kbEnabled = false; // true when host grants KBM mode — gates pointer lock requests
 
 // ── Controller guide logic ───────────────────────────────────────────────────
 const CONTROLLER_GUIDE_STORAGE_KEY = 'ns_controller_guide_ack';
@@ -181,8 +182,10 @@ function sendKbm(data) {
 }
 
 function requestPointerLock() {
+    // Only lock pointer when KBM mode is active — prevents jarring capture
+    // when viewers click to tab back into the window without KBM enabled.
+    if (!kbEnabled) return;
     if (!document.pointerLockElement) {
-        // Use the common parent container so the lock is stable
         const container = document.getElementById('video-container') || document.body;
         container.requestPointerLock().catch(() => {});
     }
@@ -191,7 +194,6 @@ frameCanvas.addEventListener('click', requestPointerLock);
 video.addEventListener('click', requestPointerLock);
 
 document.addEventListener('click', (e) => {
-    // Only trigger if clicking on the video or canvas areas
     if (e.target === frameCanvas || e.target === video) {
         requestPointerLock();
     }
@@ -334,6 +336,36 @@ if (jBase) {
         touchState.axes[1] = 0;
     }, {passive: false});
 }
+
+// ── Fullscreen button auto-hide after 2.7s, ignores small jitter ─────────
+(function () {
+    const fsBtn = document.getElementById('fsOverlayBtn');
+    if (!fsBtn) return;
+    let hideTimer = null;
+    let lastX = 0, lastY = 0;
+    const MOVE_THRESHOLD = 8; // px — must move at least this far to reset timer
+
+    function showBtn() {
+        fsBtn.style.opacity = '1';
+        fsBtn.style.pointerEvents = 'auto';
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+            fsBtn.style.opacity = '0';
+            fsBtn.style.pointerEvents = 'none';
+        }, 2700);
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        if (Math.sqrt(dx * dx + dy * dy) < MOVE_THRESHOLD) return;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        showBtn();
+    }, { passive: true });
+
+    showBtn();
+})();
 
 // ── WebHID Gyro Engine (Sony + Nintendo) ─────────────────────────────────────
 let hidDevice = null;
@@ -593,6 +625,17 @@ function connect() {
             if(hBtn) hBtn.style.display = hostMotionEnabled ? 'block' : 'none';
         }
 
+        // Track KBM permission — gates pointer lock so normal clicks don't capture the mouse
+        if (msg.type === 'input-state') {
+            kbEnabled = !!msg.kb;
+            // If KBM was revoked while pointer is locked, release it immediately
+            if (!kbEnabled && document.pointerLockElement) {
+                document.exitPointerLock();
+            }
+            const hint = document.getElementById('kbmHint');
+            if (hint) hint.style.display = kbEnabled ? 'inline' : 'none';
+        }
+
         if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
     };
 
@@ -733,12 +776,10 @@ function toggleFS() {
         document.getElementById('fsBtn').textContent = '[ ] Full';
     }
 }
-document.addEventListener('touchstart', () => {
-    if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().then(landscape).catch(() => { });
-        document.getElementById('fsBtn').textContent = '[x] Full';
-    }
-}, { once: true });
+// Removed auto-fullscreen on first touch to prevent accidental fullscreen triggers.
+// Fullscreen is now only accessible via:
+// 1. The fullscreen button (fsBtn)
+// 2. KBM fullscreen shortcut (if KBM is enabled and connected)
 document.addEventListener('fullscreenchange', () => {
     if (document.fullscreenElement) landscape();
     document.getElementById('fsBtn').textContent = document.fullscreenElement ? '[x] Full' : '[ ] Full';

@@ -6,62 +6,109 @@
 ## Screenshots
 
 <div align="center">
-  <img src="assets/screenshots/nearsec-host" alt="Nearsec Host" width="45%">
+  <img src="assets/screenshots/nearsec-host.png" alt="Nearsec Host" width="45%">
   <img src="assets/screenshots/nearsec-viewer.png" alt="Nearsec Viewer" width="45%">
   <img src="assets/screenshots/nearsec-arcade.png" alt="Nearsec Arcade" width="45%">
 </div>
 
-
 # NearsecTogether
 
 ## Project Description
-NearsecTogether is a low-latency, open-source platform that allows you to play local co-op games over the internet with your friends. By leveraging the power of standard WebRTC for UDP-first streaming and built-in browser hardware encoders, NearsecTogether provides an imperceptible latency experience that rivals commercial cloud gaming platforms, tailored specifically for self-hosted instances.
+NearsecTogether is a low-latency, open-source platform that allows you to play local co-op games over the internet with your friends. By leveraging WebRTC for UDP-first streaming and built-in browser hardware encoders, NearsecTogether provides near-imperceptible latency that rivals commercial cloud gaming platforms — tailored specifically for self-hosted instances.
 
 Unlike traditional cloud gaming solutions that relied on massive data center pipes and custom QUIC/VP9 hardware encoders, NearsecTogether is optimized to work elegantly over a standard home internet connection.
 
 ## Technology Stack
-- **The Transport**: WebRTC handles the jitter buffer and NAT traversal automatically.
-- **The Distributor**: To prevent overloading your home network upload bandwidth when streaming to multiple people, you can pair this with an SFU (Selective Forwarding Unit) or utilize the direct Port Forwarding and tunneling options built right into the app.
-- **The Encoder**: The software seamlessly accesses your system's hardware encoding (like NVENC and VAAPI) via the WebRTC API to deliver optimized H.264 or VP8/VP9 streams based on your connection quality.
+- **The Transport**: WebRTC handles jitter buffering and NAT traversal automatically.
+- **The Distributor**: To prevent overloading your home network upload bandwidth when streaming to multiple people, you can pair this with an SFU (Selective Forwarding Unit) or use the built-in port forwarding and tunneling options.
+- **The Encoder**: The software accesses your system's hardware encoding (NVENC, VAAPI) via the WebRTC API to deliver optimized H.264 or VP8/VP9 streams based on your connection quality.
 
-## Getting Started & Project TaskBoard
-### Requirements
-- Node.js installed on your host system.
-- Linux with `uinput` kernel module loaded.
-- Python 3 and `python-uinput` library.
+---
 
-### Getting Started
-1. Clone the repository.
-2. Launch the server script: `./start`. This will automatically install any missing dependencies like Electron and `python-uinput`.
-3. Open your router and set up port forwarding for TCP 3000, or choose one of the free tunneling options provided directly in the host interface.
-4. Share the provided link and PIN with your friends!
+## Getting Started
 
-### Security Enhancements
-- **PIN Rate Limiting**: The built-in WebSocket server defends against PIN brute-forcing by automatically rate-limiting failed connection attempts.
-- **Version Parity Checks**: The client will detect if the host is running a divergent version and alert the user immediately to prevent compatibility issues.
-- **Input Boundaries**: Strict isolation prevents clients from sending arbitrary keyboard inputs or overriding unauthorized gamepad slots.
+### What `./start` handles automatically
+- Runs `npm install` if `node_modules` is missing — including Electron.
+- Loads the `uinput` kernel module on Linux (via `sudo modprobe uinput`).
+- Falls back to headless `node server.js` mode if Electron isn't installed.
 
-## Troubleshooting & Compilation
-### WebRTC Handshake Failing / GPU Errors
-If the app is stuck and you're seeing `vulkan_swap_chain.cc Swapchain is suboptimal` or similar GPU crashes in the terminal, it means your system's graphics drivers are rejecting Electron's hardware acceleration flags.
+### What you must set up yourself
 
-**To fix this**:
+| Dependency | Required for | Install |
+|---|---|---|
+| **Node.js** (v18+) | Everything | [nodejs.org](https://nodejs.org) or `nvm` |
+| **Python 3** + `python-uinput` | Controller input virtualization | `sudo ./linux_setup.sh` (Linux only, one-time) |
+| **uinput kernel module** | Controller input virtualization | Included in `linux_setup.sh` |
+
+> **Controllers won't work without the Python setup.** The app will still launch and stream fine — viewers just won't be able to send gamepad or keyboard input to the host. Run `sudo ./linux_setup.sh` once after cloning to enable it.
+
+### Step-by-step
+
+**Linux (recommended)**
+```bash
+# 1. One-time system setup (installs python-uinput, udev rules, uinput)
+sudo ./linux_setup.sh
+
+# 2. Every subsequent launch
+./start
+```
+
+**Windows / macOS** *(experimental — streaming only, no controller virtualization)*
+```bash
+./start
+```
+
+Node.js must already be installed. The script will exit with `Node.js missing` if it isn't found.
+
+### Sharing with friends
+1. Click **Start Sharing** in the host interface to begin capture.
+2. Choose a tunnel provider (cloudflared recommended — free, no account needed) or set up port forwarding on TCP 3000.
+3. Share the provided link and PIN with your friends. That's it.
+
+---
+
+## Security
+- **PIN rate limiting** — the WebSocket server locks out IPs after repeated failed PIN attempts.
+- **Version parity checks** — viewers are warned immediately if their client version differs from the host.
+- **Input isolation** — strict per-viewer permissions prevent clients from sending unauthorized keyboard inputs or overriding gamepad slots they don't own.
+
+---
+
+## Troubleshooting
+
+### Controllers not working
+Run `sudo ./linux_setup.sh` if you haven't already. Check that `/dev/uinput` exists and is writable. The terminal will log `[uinput] sidecar started` on a successful launch.
+
+### No audio in the stream
+On Wayland/PipeWire, audio capture is handled through the screen-share portal dialog. When the share dialog appears, make sure **"Share audio"** is ticked. If audio still doesn't appear after sharing, the app will automatically attempt a PipeWire loopback fallback and log the result.
+
+### WebRTC handshake failing / GPU errors
+If you see `vulkan_swap_chain.cc Swapchain is suboptimal` or similar GPU crashes in the terminal, your graphics drivers are rejecting Electron's hardware acceleration flags.
+
 1. Open `electron-main.js`.
 2. Find the `app.commandLine.appendSwitch('enable-features', ...)` block.
-3. Remove flags one by one (such as `VaapiVideoEncoder,VaapiVideoDecoder`) until the stream stabilizes. 
-4. If you had to remove them, your system may fall back to software encoding (VP8/VP9) which will increase CPU usage but guarantee a stable WebRTC handshake.
+3. Remove flags one by one (e.g. `VaapiVideoEncoder`, `VaapiVideoDecoder`) until the stream stabilizes.
+4. If you had to remove them, the app falls back to software encoding (VP8/VP9) — higher CPU usage but stable.
 
-### Building Electron from scratch (if the pre-built binary fails)
-If `npm install` fails to pull down the correct Electron binary for your architecture:
-1. Delete the node modules: `rm -rf node_modules package-lock.json`
-2. Clear npm cache: `npm cache clean --force`
-3. Re-install: `npm install`
-(Electron relies on pre-compiled binaries; if you are on an unusual architecture, you may need to build it from source via `electron/build-tools`, but this is very rarely needed).
+### Rebuilding Electron from scratch
+If `npm install` fails to pull the correct Electron binary for your architecture:
+```bash
+rm -rf node_modules package-lock.json
+npm cache clean --force
+npm install
+```
+On unusual architectures you may need to build Electron from source via `electron/build-tools`, but this is very rarely needed.
+
+---
 
 ## Current Progress
 - Core Host UI with integrated WebRTC capture controls.
-- Port Forwarding, Cloudflared, and automatic tunneling integration.
-- Controller input virtualization using `uinput` for seamless Steam Input bypassing.
+- Port forwarding, Cloudflared, and automatic tunneling integration.
+- Controller input virtualization via `uinput` for seamless Steam Input bypassing.
 - Dynamic bitrate scaling with user-selectable degradation preference.
+- Mobile touch UI with virtual joystick and optional gyro aiming.
+- Arcade Mode — list your session publicly on Nearsec Arcade for others to discover and join.
 
-# Disclaimer, This project used llm's for code generation.
+---
+
+*This project used LLMs for code generation.*

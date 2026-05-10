@@ -115,7 +115,11 @@ async function createWindow() {
   win.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
       if (sources && sources.length > 0) {
-        callback({ video: sources[0], audio: 'loopback' });
+        // Try to find PipeWire audio source first (preferred on Linux)
+        // Otherwise use 'loopback' or system default audio
+        let audioSource = sources.find(s => s.name && s.name.toLowerCase().includes('pipewire'));
+        let audioConfig = audioSource ? { id: audioSource.id } : 'loopback';
+        callback({ video: sources[0], audio: audioConfig });
       } else {
         console.error('[electron] No screen sources found. Wayland Portal may be failing.');
         callback({});
