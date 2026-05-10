@@ -221,9 +221,3 @@ pip install -r requirements-mac.txt
 - `requirements-mac.txt`
 
 ---
-
-## Rollback Notes
-
-- Linux behavior is **100% preserved** via linux_uinput.py
-- All original input_driver.py code is now in input_backends/linux_uinput.py
-- If Windows/macOS support causes issues, simply revert input_driver.py to old version and it will work as before

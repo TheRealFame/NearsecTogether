@@ -21,6 +21,6 @@
         "KEY_3": { "axis": "ABS_HAT0X", "val": -1 },
         "KEY_4": { "axis": "ABS_HAT0X", "val": 1 }
     },
-    "right_stick_mouse": true,
+    "right_stick_mouse": false,
     "right_stick_multiplier": 1800
 }

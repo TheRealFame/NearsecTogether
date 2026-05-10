@@ -16,13 +16,10 @@ const hostSessionId = 'ns-' + Math.random().toString(36).substr(2, 9);
 // ── DYNAMIC BITRATE CONGESTION CONTROL ─────────────────────────────────────
 const congestionControl = {
     enabled: true,
-    minRttMs: 20,
-    maxRttMs: 60,
-    packetLossThreshold: 3,
-    recoveryTimeout: 5000,
-    baselineRtt: null,
-    lastAdjustment: {},
-    statsPollInterval: 1000
+    minRttMs: 40,
+    maxRttMs: 120, // Bump this up! 100-150 is a good threshold before panicking
+    packetLossThreshold: 5, // Bumping this from 3 to 5 gives it a bit more breathing room
+    // ...
 };
 
 async function monitorCongestion(pc, viewerId) {
@@ -129,7 +126,7 @@ document.getElementById('fpsSelect').addEventListener('change', (e) => localStor
 async function fetchGameThumbnail(gameTitle) {
     try {
         // Notice there is no API key here! We just ask our own server.
-        cconst res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodedTitle}`);
+        const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodedTitle}`);
         const data = await res.json();
 
         return data.thumbnail || '';
@@ -528,11 +525,6 @@ async function sendOfferToViewer(viewerId) {
 
     let modifiedSdp = offer.sdp;
     const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
-
-    // LOW LATENCY TWEAK: Force H.264 Baseline Profile (42e01f) if H.264 is used. Disables B-frames.
-    if (modifiedSdp.includes('profile-level-id=')) {
-        modifiedSdp = modifiedSdp.replace(/profile-level-id=[0-9a-fA-F]+/g, 'profile-level-id=42e01f');
-    }
 
     await pc.setLocalDescription({ type: offer.type, sdp: modifiedSdp });
     ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));
