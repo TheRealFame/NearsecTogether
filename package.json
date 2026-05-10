@@ -4,7 +4,7 @@
   "description": "Browser-based game streaming host",
   "main": "electron-main.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node src/scripts/server.js",
     "electron": "electron .",
     "dev": "electron . --dev",
     "deploy": "wrangler deploy",
@@ -12,7 +12,12 @@
   },
   "dependencies": {
     "express": "^4.18.0",
-    "ws": "^8.0.0"
+    "pusher-js": "^8.5.0",
+    "ws": "^8.0.0",
+    "open": "latest",
+    "play-sound": "latest",
+    "kill-port": "latest",
+    "which": "latest"
   },
   "devDependencies": {
     "electron": "^28.0.0",

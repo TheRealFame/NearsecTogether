@@ -7,6 +7,9 @@ const net = require("net");
 const fs = require("fs");
 const path = require("path");
 const { exec, spawn } = require("child_process");
+const open = (...args) => import('open').then(({default: open}) => open(...args));
+const which = require("which");
+const killPort = require("kill-port");
 let hostWS = null;
 let tunnelUrl = null;
 let activeTunnelProc = null;
@@ -17,19 +20,46 @@ const inputPerms = new Map();
 const pinAttempts = new Map();
 const crypto = require("crypto");
 
-if (!fs.existsSync(path.join(__dirname, '..', '.env'))) {
-  fs.writeFileSync(path.join(__dirname, '..', '.env'), `CF_TOKEN=
-  CUSTOM_URL=
-  ZROK_RESERVED_NAME=
-  USE_VPS=false
-  VPS_HOST=
-  IS_VPS=false
-  `);
+const PusherRaw = require('pusher-js');
+
+// ── Bulletproof Electron/Node Module Extractor ──
+let Pusher;
+if (typeof PusherRaw === 'function') {
+  Pusher = PusherRaw;
+} else if (PusherRaw && typeof PusherRaw.Pusher === 'function') {
+  Pusher = PusherRaw.Pusher;
+} else if (PusherRaw && typeof PusherRaw.default === 'function') {
+  Pusher = PusherRaw.default;
+} else {
+  console.error("PUSHER DIAGNOSTIC:", PusherRaw);
+  // Fake the class so the Node server doesn't crash while we look at the logs
+  Pusher = class DummyPusher {
+    subscribe() { return { trigger: () => {} }; }
+  };
+}
+
+const pusher = new Pusher('a93f5405058cd9fc7967', {
+  cluster: 'us2',
+  authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth'
+});
+
+const globalArcadeChannel = pusher.subscribe('private-arcade-global');
+
+const projectRoot = path.join(__dirname, '..', '..');
+const envFile = path.join(projectRoot, '.env');
+if (!fs.existsSync(envFile)) {
+  fs.writeFileSync(envFile, `CF_TOKEN=
+CUSTOM_URL=
+ZROK_RESERVED_NAME=
+USE_VPS=false
+VPS_HOST=
+IS_VPS=false
+`);
 }
 
 // Parse optional .env file for secrets
 try {
-  fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').split('\n').forEach(line => {
+  fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
     const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
     if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
   });
@@ -75,7 +105,9 @@ function findFreePort(start) {
     s.on("error", () => findFreePort(start + 1).then(resolve));
   });
 }
-function openBrowser(url) { exec("xdg-open " + url, () => { }); }
+function openBrowser(url) {
+  open(url).catch(() => { });  // Cross-platform: works on Linux, Windows, macOS
+}
 function getPublicIP() {
   return new Promise(resolve => {
     https.get("https://api.ipify.org", res => {
@@ -89,16 +121,15 @@ function getPublicIP() {
 
 function startTunnelCloudflared(port) {
   return new Promise(resolve => {
-    exec("which cloudflared", err => {
-      if (err) return resolve(null);
-
+    which("cloudflared").then(cloudflaredPath => {
       // If the user provided a token in .env (Remotely Managed)
       if (process.env.CF_TOKEN) {
         console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Token)...");
         const proc = spawn("cloudflared", ["tunnel", "--no-autoupdate", "run", "--token", process.env.CF_TOKEN], { stdio: ["ignore", "pipe", "pipe"] });
         const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
-        return activeTunnelProc = proc; resolve({ url, proc });
+        activeTunnelProc = proc;
+        return resolve({ url, proc });
       }
 
       // If the user provided a tunnel name in .env (Locally Managed - "The old way")
@@ -107,7 +138,8 @@ function startTunnelCloudflared(port) {
         const proc = spawn("cloudflared", ["tunnel", "run", process.env.CF_TUNNEL_NAME], { stdio: ["ignore", "pipe", "pipe"] });
         const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
-        return activeTunnelProc = proc; resolve({ url, proc });
+        activeTunnelProc = proc;
+        return resolve({ url, proc });
       }
 
       console.log("  \x1b[33m~\x1b[0m Starting cloudflared tunnel...");
@@ -120,14 +152,15 @@ function startTunnelCloudflared(port) {
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", () => { if (!done) resolve(null); });
       setTimeout(() => { if (!done) { done = true; resolve(null); console.log("  \x1b[33m!\x1b[0m cloudflared timeout"); } }, 20000);
+    }).catch(err => {
+      resolve(null);
     });
   });
 }
 
 function startTunnelPlayit(port) {
   return new Promise(resolve => {
-    exec("which playit", err => {
-      if (err) return resolve(null);
+    which("playit").then(playitPath => {
       console.log("  \x1b[33m~\x1b[0m Starting playit tunnel...");
       const proc = spawn("playit", [], { stdio: ["ignore", "pipe", "pipe"] });
       let done = false;
@@ -144,14 +177,15 @@ function startTunnelPlayit(port) {
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", () => { if (!done) resolve(null); });
       setTimeout(() => { if (!done) { done = true; resolve(null); console.log("  \x1b[33m!\x1b[0m playit timeout"); } }, 45000);
+    }).catch(err => {
+      resolve(null);
     });
   });
 }
 
 function startTunnelLocalhostRun(port) {
   return new Promise(resolve => {
-    exec("which ssh", err => {
-      if (err) return resolve(null);
+    which("ssh").then(sshPath => {
       console.log("  \x1b[33m~\x1b[0m Starting localhost.run tunnel (SSH)...");
       const proc = spawn("ssh", [
         "-o", "StrictHostKeyChecking=no",
@@ -171,6 +205,8 @@ function startTunnelLocalhostRun(port) {
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", c => { if (!done) { resolve(null); console.log("  \x1b[33m!\x1b[0m localhost.run closed (code " + c + ")"); } });
       setTimeout(() => { if (!done) { done = true; proc.kill(); resolve(null); console.log("  \x1b[33m!\x1b[0m localhost.run timeout — port 22 may be blocked"); } }, 25000);
+    }).catch(err => {
+      resolve(null);
     });
   });
 }
@@ -178,8 +214,7 @@ function startTunnelLocalhostRun(port) {
 function startTunnelServeo(port) {
   // serveo.net — SSH-based like localhost.run, different server, often works when lr is blocked
   return new Promise(resolve => {
-    exec("which ssh", err => {
-      if (err) return resolve(null);
+    which("ssh").then(sshPath => {
       console.log("  \x1b[33m~\x1b[0m Starting serveo.net tunnel (SSH)...");
       const proc = spawn("ssh", [
         "-o", "StrictHostKeyChecking=no",
@@ -197,6 +232,8 @@ function startTunnelServeo(port) {
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", c => { if (!done) { resolve(null); console.log("  \x1b[33m!\x1b[0m serveo closed (code " + c + ")"); } });
       setTimeout(() => { if (!done) { done = true; proc.kill(); resolve(null); console.log("  \x1b[33m!\x1b[0m serveo timeout — port 22 may be blocked"); } }, 25000);
+    }).catch(err => {
+      resolve(null);
     });
   });
 }
@@ -334,7 +371,7 @@ function broadcastToArcade(msg) {
 }
 
 // ── Persistent config (tunnel preference) ────────────────────────────────────
-const CONFIG_FILE = path.join(__dirname, "..", "nearsectogether.config.json");
+const CONFIG_FILE = path.join(projectRoot, 'config', 'nearsectogether.config.json');
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")); } catch { return {}; }
 }
@@ -345,6 +382,15 @@ function saveConfig(updates) {
 }
 
 async function main() {
+  // ── Platform Detection & Warnings ──────────────────────────────────────────
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    console.warn('');
+    console.warn('⚠  WARNING: Running on an EXPERIMENTAL platform.');
+    console.warn('   Windows and macOS support is untested and incomplete.');
+    console.warn('   Linux is the only fully supported host OS.');
+    console.warn('');
+  }
+
   const PORT = await findFreePort(3000);
   const LAN_IP = getLanIP();
   const PUBLIC_IP = await getPublicIP();
@@ -392,11 +438,20 @@ async function main() {
   });
 
   const APP_VERSION = "1.0.0";
-  app.use(express.static(path.join(__dirname, "..", "public")));
-  app.use("/assets", express.static(path.join(__dirname, "..", "assets")));
 
-  app.get("/", (req, res) => res.sendFile(path.join(__dirname, "..", "public/index.html")));
-  app.get("/host", (req, res) => res.sendFile(path.join(__dirname, "..", "public/host.html")));
+  // Static folders at the project root
+  app.use("/js", express.static(path.join(__dirname, "..", "..", "src", "scripts")));
+  app.use(express.static(path.join(__dirname, "..", "..", "public")));
+  app.use("/assets", express.static(path.join(__dirname, "..", "..", "assets")));
+
+  // Pages folder at the project root
+  const pagesDir = path.join(__dirname, "..", "..", "src/pages");
+
+  app.get("/", (req, res) => res.sendFile(path.join(pagesDir, "index.html")));
+  app.get("/host", (req, res) => res.sendFile(path.join(pagesDir, "host.html")));
+  app.get("/gamepad-popup.html", (req, res) => res.sendFile(path.join(pagesDir, "gamepad-popup.html")));
+
+  // API Routes (Logic remains the same)
   app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
   app.get("/api/pin-required", (req, res) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
@@ -416,21 +471,6 @@ async function main() {
              version: APP_VERSION,
              uptime: process.uptime()
     });
-  });
-
-  // ── PUSHER AUTHENTICATION FOR HOST ───────────────────────────────────────
-  app.post('/api/pusher-auth', express.urlencoded({ extended: true }), (req, res) => {
-    const socketId = req.body.socket_id;
-    const channelName = req.body.channel_name;
-
-    // Update this if you reset your Pusher secret!
-    const secret = "ee208da1939a3b1cc025";
-    const key = "a3560ec7b7f5161460a1";
-
-    const stringToSign = `${socketId}:${channelName}`;
-    const signature = crypto.createHmac('sha256', secret).update(stringToSign).digest('hex');
-
-    res.json({ auth: `${key}:${signature}` });
   });
 
   // ── Arcade sessions REST (polled by arcade.js as fallback) ───────────────────
@@ -476,15 +516,23 @@ async function main() {
 
   // ── uinput sidecar ─────────────────────────────────────────────────────────
   let uinputProc = null;
-  const sidecar = path.join(__dirname, "..", "input_driver.py");
+  const sidecar = path.join(__dirname, "..", "sidecar", "input_driver.py");
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
   if (fs.existsSync(sidecar)) {
-    uinputProc = spawn(pythonCmd, [sidecar], { stdio: ["pipe", "inherit", "inherit"], detached: false });
-    uinputProc.stdin.on("error", () => { });
-    uinputProc.on("error", e => console.log("[uinput] spawn error:", e.message));
-    uinputProc.on("close", () => { uinputProc = null; console.log("[uinput] sidecar exited"); });
-    console.log("[uinput] sidecar started");
+    try {
+      uinputProc = spawn(pythonCmd, [sidecar], { stdio: ["pipe", "inherit", "inherit"], detached: false });
+      uinputProc.stdin.on("error", () => { });
+      uinputProc.on("error", e => console.log("[uinput] spawn error:", e.message));
+      uinputProc.on("close", () => { uinputProc = null; console.log("[uinput] sidecar exited"); });
+      console.log("[uinput] sidecar started");
+    } catch (err) {
+      console.warn("[uinput] Failed to start Python sidecar:", err.message);
+      console.warn("[uinput] Input handling will not be available");
+      uinputProc = null;
+    }
+  } else {
+    console.log("[uinput] sidecar not found at", sidecar);
   }
 
   function toUinput(msg) {
@@ -506,13 +554,14 @@ async function main() {
   // ── Join & Leave Sounds ────────────────────────────────────────────────────
   const JOIN_SOUND = __dirname + '/assets/joinsound.wav';
   const LEAVE_SOUND = __dirname + '/assets/leavesound.wav';
+  const player = require('play-sound')(opts = {});
 
   function playSound(file) {
     if (!fs.existsSync(file)) return;
-    // aplay is standard on any ALSA Linux system; -q = quiet (no banner)
-    const ap = spawn('aplay', ['-q', file], { stdio: 'ignore', detached: true });
-    ap.unref();
-    ap.on('error', () => { }); // ignore if aplay not present
+    // EXPERIMENTAL (Windows) and (macOS) use play-sound; stable on Linux
+    player.play(file, (err) => {
+      if (err && process.platform === 'linux') console.log("[audio] Could not play sound:", err.message);
+    });
   }
   function playJoinSound() { playSound(JOIN_SOUND); }
   function playLeaveSound() { playSound(LEAVE_SOUND); }
@@ -527,21 +576,29 @@ async function main() {
 
   function broadcastRoster() {
     const roster = [];
-    // Only include viewers who have an active controller
-    viewerHasController.forEach(id => {
-      if (!viewers.has(id)) return; // skip disconnected
-      const pads = viewerGamepads.get(id) || new Set([0]);
+    // Iterate over ALL viewers so no one disappears if they use KBM or get Disabled
+    viewers.forEach((vws, id) => {
+      const pads = viewerGamepads.get(id) || new Set([0]); // Everyone gets at least slot 0
       pads.forEach(padIdx => {
         const isExtra = padIdx > 0;
         const nameSuffix = isExtra ? ' ' + (padIdx + 1) : '';
         const rosterId = id + '_' + padIdx;
         const p = inputPerms.get(rosterId) || { gp: true, kb: false, slot: null };
+
+        // Determine actual input mode so host UI stays synced
+        let mode = 'gamepad';
+        if (!p.gp && p.kb) mode = 'kbm';
+        else if (p.gp && p.kb) mode = 'kbm_emulated';
+        else if (!p.gp && !p.kb) mode = 'disabled';
+
         roster.push({
           id: rosterId,
           name: (viewerNames.get(id) || id) + nameSuffix,
                     gp: !!p.gp,
-                    kb: isExtra ? false : !!p.kb,
-                    slot: p.slot ?? null
+                    kb: !!p.kb,
+                    slot: p.slot ?? null,
+                    locked: !!p.locked,
+                    inputMode: mode
         });
       });
     });
@@ -650,6 +707,7 @@ async function main() {
           // ── Arcade session management ─────────────────────────────────────────
           if (msg.type === "arcade-session-start") {
             const url = msg.tunnelUrl || tunnelUrl;
+
             if (!url) {
               if (hostWS && hostWS.readyState === 1)
                 hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'No tunnel URL active. Start a tunnel first.' }));
@@ -666,6 +724,7 @@ async function main() {
                 hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'No active stream. Start sharing your screen first.' }));
               return;
             }
+
             const sessionId = 'ns-' + Date.now() + '-' + (++arcadeHostId);
             const session = {
               id: sessionId,
@@ -678,20 +737,26 @@ async function main() {
             startedAt: Date.now(),
             isStreaming: true,
             };
+
             arcadeSessions.set(sessionId, session);
             console.log("[arcade] Session registered:", session.game, url);
             broadcastToArcade({ type: 'arcade-session-active', session });
             if (hostWS && hostWS.readyState === 1)
               hostWS.send(JSON.stringify({ type: 'arcade-session-active', session }));
+
+            // Broadcast this session to the Global Cloudflare Arcade!
+            globalArcadeChannel.trigger('client-session-active', { session });
             return;
           }
 
           if (msg.type === "arcade-session-stop") {
-            // Remove any session owned by this host connection
             for (const [id, s] of arcadeSessions) {
               arcadeSessions.delete(id);
               broadcastToArcade({ type: 'arcade-session-stopped', id });
               console.log("[arcade] Session stopped:", s.game);
+
+              // Tell the Global Arcade to remove this session
+              globalArcadeChannel.trigger('client-session-stopped', { id });
             }
             return;
           }
@@ -699,7 +764,6 @@ async function main() {
           if (msg.type === "host-stream-ready") hostStreaming = true;
           if (msg.type === "host-stream-stopped") {
             hostStreaming = false;
-            // Mark all arcade sessions as not streaming — stops them from appearing live
             for (const [id, s] of arcadeSessions) {
               arcadeSessions.delete(id);
               broadcastToArcade({ type: 'arcade-session-stopped', id });
@@ -708,7 +772,10 @@ async function main() {
 
           // Fallback broadcast (host-stream-stopped, host-stream-ready, etc.)
           broadcast(JSON.stringify(msg));
-        } catch { }
+
+        } catch (err) {
+          console.error("[host] Message parsing error:", err.message);
+        }
       });
 
       ws.on("close", () => {
@@ -900,8 +967,14 @@ async function main() {
             }
 
             const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
-            if (msg.type === "gamepad" && !perms.gp) return;
-            if (msg.type === "keyboard" && !perms.kb) return;
+            if (msg.type === "gamepad" && !perms.gp) {
+              console.log("[viewer]", id, "gamepad blocked (permissions disabled)");
+              return;
+            }
+            if (msg.type === "keyboard" && !perms.kb) {
+              console.log("[viewer]", id, "keyboard blocked (permissions disabled)");
+              return;
+            }
 
             msg.pad_id = rosterId;
             toUinput(msg);
@@ -912,31 +985,28 @@ async function main() {
 
       ws.on("close", () => {
         const hadController = viewerHasController.has(id);
-        viewers.delete(id);
-        viewerNames.delete(id);
-        viewerGamepads.delete(id);
-        viewerHasController.delete(id);
-        // We leave inputPerms intact in case they F5 refresh to reclaim their spot!
-        if (hadController) {
-          playLeaveSound();
-          // Send a zero/neutral flush before destroying — prevents stuck D-pad / joystick
-          toUinput({ type: 'flush_neutral', viewer_id: id });
-          // Then destroy all virtual controllers for this viewer
-          toUinput({ type: 'disconnect_viewer', viewer_id: id });
-        }
-
-        // Only delete if this specific connection is still the active one for this ID
-        if (viewers.get(id) === ws) {
+        const wasActive = viewers.get(id) === ws;
+        
+        // Only remove if this specific connection is the active one for this ID
+        if (wasActive) {
           viewers.delete(id);
           viewerNames.delete(id);
-          viewerHasController.delete(id);
           viewerGamepads.delete(id);
+          viewerHasController.delete(id);
+          
+          if (hadController) {
+            playLeaveSound();
+            // Send a zero/neutral flush before destroying — prevents stuck D-pad / joystick
+            toUinput({ type: 'flush_neutral', viewer_id: id });
+            // Then destroy all virtual controllers for this viewer
+            toUinput({ type: 'disconnect_viewer', viewer_id: id });
+          }
+
           broadcastRoster();
           if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
         }
 
         console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
-        broadcastRoster();
       });
 
       // ── ARCADE CLIENTS (arcade.js subscribers at nearsec.cutefame.net/arcade) ─
@@ -1036,8 +1106,10 @@ function cleanupAndExit() {
   if (activeTunnelProc) {
     try { activeTunnelProc.kill(); } catch (e) { }
   }
-  // Try to kill local port 3000 one last time
-  try { exec("fuser -k 3000/tcp"); } catch (e) { }
+  // Try to kill local port 3000 cross-platform
+  killPort(3000).catch(err => {
+    // Port might not have been in use, or already closed - that's OK
+  });
   process.exit();
 }
 process.on('SIGINT', cleanupAndExit);

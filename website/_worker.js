@@ -2,23 +2,22 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. Intercept the Pusher Route
+    // ==========================================
+    // ROUTE 1: Pusher Authentication (POST)
+    // ==========================================
     if (url.pathname === "/api/pusher-auth") {
-      
-      // If a browser visits (GET), reject it gracefully with a 405
       if (request.method !== "POST") {
         return new Response("Method Not Allowed. This endpoint requires POST.", { status: 405 });
       }
 
-      // If Pusher visits (POST), run the auth logic
       try {
         const formData = await request.formData();
         const socketId = formData.get("socket_id");
         const channelName = formData.get("channel_name");
-        
+
         const secret = env.PUSHER_SECRET;
         const key = env.PUSHER_KEY;
-        
+
         const stringToSign = `${socketId}:${channelName}`;
         const encoder = new TextEncoder();
         const cryptoKey = await crypto.subtle.importKey(
@@ -32,16 +31,56 @@ export default {
           headers: { "Content-Type": "application/json" }
         });
       } catch (err) {
-        // Catch any internal auth errors so it doesn't throw an 1101
-        return new Response("Auth Processing Error", { status: 500 });
+        // This will spit the exact crash reason back to the browser console!
+        return new Response(JSON.stringify({ error: err.message, stack: err.stack }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
       }
     }
 
-    // 2. Serve the Static Arcade site
+    // ==========================================
+    // ROUTE 2: RAWG Game Art API (GET)
+    // ==========================================
+    if (url.pathname === "/api/game-art") {
+      const title = url.searchParams.get('title');
+
+      if (!title) {
+        return new Response(JSON.stringify({ thumbnail: '' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const apiKey = env.RAWG_API_KEY;
+
+      try {
+        const res = await fetch(`https://api.rawg.io/api/games?search=${encodeURIComponent(title)}&key=${apiKey}&page_size=1`);
+        const data = await res.json();
+
+        let thumb = '';
+        if (data.results && data.results.length > 0) {
+          thumb = data.results[0].background_image;
+        }
+
+        return new Response(JSON.stringify({ thumbnail: thumb }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ thumbnail: '' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // ==========================================
+    // FALLBACK: Serve the Static Arcade site
+    // ==========================================
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
-    
+
     return new Response("Assets not bound correctly", { status: 500 });
   }
 };

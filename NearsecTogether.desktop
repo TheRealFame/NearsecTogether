@@ -2,7 +2,7 @@
 Categories=Game;Utility;
 Comment[en_US]=Browser-based game streaming host
 Comment=Browser-based game streaming host
-Exec=/home/fame/NearsecTogether/start
+Exec=/home/fame/NearsecTogether/bin/start.cmd
 GenericName[en_US]=
 GenericName=
 Icon=/home/fame/NearsecTogether/assets/NearsecTogether.png

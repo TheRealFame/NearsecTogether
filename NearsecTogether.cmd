@@ -1,0 +1,1 @@
+/home/fame/NearsecTogether/bin/start.cmd

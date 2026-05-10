@@ -5,9 +5,9 @@ let pinEnabled = true, currentPin = '----';
 
 // --- Pusher Arcade Integration ---
 Pusher.logToConsole = true;
-const pusher = new Pusher('a3560ec7b7f5161460a1', {
+const pusher = new Pusher('a93f5405058cd9fc7967', {
     cluster: 'us2',
-    authEndpoint: '/api/pusher-auth'
+    authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth'
 });
 const arcadeChannel = pusher.subscribe('private-arcade-global');
 let arcadePingInterval = null;
@@ -253,7 +253,8 @@ function renderRoster(list) {
     const c = document.getElementById('roster');
     const o = document.getElementById('rosterEmpty');
 
-    const controllers = list.filter(v => v.gp);
+    // Show ALL viewers so you can always change their input mode back
+    const controllers = list;
 
     if (controllers.length === 0) {
         c.innerHTML = '';
@@ -456,7 +457,7 @@ function connectWS() {
         }
         if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
         if (msg.type === 'viewer-gpid') log('Controller: ' + msg.id, 'ok');
-        if (msg.type === 'arcade-session-active') log('🎮 Arcade session is LIVE on Nearsec Arcade!', 'ok');
+        if (msg.type === 'arcade-session-active') log('Arcade session is LIVE on Nearsec Arcade!', 'ok');
         if (msg.type === 'arcade-session-error') log('Arcade error: ' + (msg.reason || 'unknown'), 'err');
         if (msg.type === 'regen-pin') {
             currentPin = msg.pin;
@@ -642,7 +643,7 @@ function stopCapture() {
         clearInterval(arcadePingInterval);
         arcadePingInterval = null;
         arcadeChannel.trigger('client-session-stop', { id: hostSessionId });
-        log('🎮 Arcade Mode: Session ended on Arcade', 'warn');
+        log('Arcade Mode: Session ended on Arcade', 'warn');
     }
 
     log('Capture stopped');
@@ -881,7 +882,7 @@ function _doArcadeRegister() {
             log('⚠ Arcade: No tunnel URL yet. Start a tunnel first, then launch Arcade.', 'warn');
             return;
         }
-        log(`🎮 Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
+        log(`Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
 
         const pingData = {
             id: hostSessionId,

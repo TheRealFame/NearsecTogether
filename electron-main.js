@@ -1,6 +1,13 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { powerSaveBlocker } = require('electron');
+powerSaveBlocker.start('prevent-app-suspension');
+
+
+if (process.platform === 'darwin') {
+  app.dock.setIcon(path.join(__dirname, 'assets/NearsecTogether.png'));
+}
 
 // ── Wayland / GPU flags ───────────────────────────────────────────────────────
 // Must be set before app is ready
@@ -45,7 +52,7 @@ function startServer() {
     const origLog = console.log;
     // Override openBrowser since Electron handles the window
     process.env.ELECTRON_MODE = '1';
-    require('./src/server.js');
+    require('./src/scripts/server.js');
     // server.js calls console.log("Listening on port N")
     // We hook it briefly to grab the port
     const _log = console.log.bind(console);
@@ -78,7 +85,8 @@ async function createWindow() {
     height: Math.max(settings.h, 500),
     minWidth: 600,
     minHeight: 500,
-    title: 'Stream Host',
+    title: 'NearsecTogether',
+    icon: path.join(__dirname, 'assets/NearsecTogether.png'),
     backgroundColor: '#111111',
     alwaysOnTop: settings.alwaysOnTop,
     show: false, // don't show until content loads

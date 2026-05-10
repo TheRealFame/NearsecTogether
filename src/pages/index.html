@@ -41,14 +41,13 @@
     }
 
     /* ── Video ─────────────────────────────────────── */
-    #video {
+    #video #frameCanvas {
       position: fixed;
       inset: 0;
       width: 100%;
       height: 100%;
       object-fit: contain;
       background: #000;
-      display: block;
     }
 
     /* ── PIN screen ────────────────────────────────── */
@@ -713,9 +712,10 @@
     <div id="pinErr"></div>
   </div>
 
-  <video id="video" autoplay playsinline disableRemotePlayback style="display:block"></video>
-  <canvas id="frameCanvas"
-    style="position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none"></canvas>
+  <div id="video-container" style="position: fixed; inset: 0; width: 100%; height: 100%; background: #000;">
+    <video id="video" autoplay playsinline disableRemotePlayback style="width: 100%; height: 100%; object-fit: contain;"></video>
+    <canvas id="frameCanvas" style="display: none; position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain;"></canvas>
+  </div>
 
   <div id="overlay">
     <div class="brand-wrap">
@@ -725,7 +725,7 @@
     <div class="spin" id="spinner"></div>
     <div id="overlayStatus" style="color: var(--accent); text-shadow: 0 0 10px var(--accent);">Connecting...</div>
     <div id="gpPrompt" onclick="activateGamepad()" style="border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 10px var(--accent-dim);">
-      🎮 Tap here to activate controller<br>
+      Tap here to activate controller<br>
       <span style="font-size:9px;color:#333">(Required by browser — once only)</span>
     </div>
   </div>
@@ -805,13 +805,13 @@
         <button id="controllerGuideClose" onclick="closeControllerGuide()">Close</button>
       </div>
 
-      <iframe id="controllerGuideFrame" src="gamepad-popup.html" scrolling="no"></iframe>
+      <iframe id="controllerGuideFrame" src="/gamepad-popup.html" scrolling="no"></iframe>
 
       <button id="controllerGuideConfirm" onclick="acknowledgeControllerGuide()">Alright</button>
     </div>
   </div>
 
-  <script src="viewer.js"></script>
+  <script src="/js/viewer.js"></script>
 </body>
 
 </html>

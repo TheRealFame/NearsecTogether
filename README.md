@@ -1,6 +1,6 @@
 <p align="left">
   <img src="assets/NearsecTogether.png" width="160" height="140"><br>
-  <hr width="15%">
+  <hr width="30%">
 </p>
 
 # NearsecTogether
@@ -54,3 +54,5 @@ If `npm install` fails to pull down the correct Electron binary for your archite
 - Port Forwarding, Cloudflared, and automatic tunneling integration.
 - Controller input virtualization using `uinput` for seamless Steam Input bypassing.
 - Dynamic bitrate scaling with user-selectable degradation preference.
+
+# Disclaimer, This project used llm's for code generation.

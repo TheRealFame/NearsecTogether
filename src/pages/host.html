@@ -1028,6 +1028,44 @@
     .ctrl-row-label { font-size: 12px; font-weight: 600; color: #f2f3f5; margin-bottom: 3px; }
     .ctrl-row-desc { font-size: 10px; color: #949ba4; line-height: 1.55; }
     .ctrl-row-warn { font-size: 9px; color: var(--warn); margin-top: 4px; }
+
+    /* ── Mobile Tweaks ─────────────────────────────────────── */
+    @media (max-width: 768px) {
+    /* Resize the right sidebar */
+    #bar:hover,
+    #bar.open {
+        width: 105px; /* Slightly narrower for mobile */
+    }
+
+    #bar-inner {
+        min-width: unset;
+        padding: 6px;
+    }
+
+    #bar button {
+        font-size: 10px;
+        padding: 6px 8px;
+    }
+
+    /* Resize the Gamepad / Controller Guide Popup */
+    #controllerGuideCard {
+        width: 92vw;
+        height: 75vh; /* Prevents it from spilling off-screen */
+    }
+
+    #controllerGuideTop {
+        height: 42px;
+    }
+
+    #controllerGuideConfirm {
+        height: 46px;
+    }
+
+    /* Ensure Portrait mode stays contained */
+    #video, #frameCanvas {
+        object-fit: contain;
+    }
+}
   </style>
 </head>
 
@@ -1499,7 +1537,7 @@
           <label for="rememberCheck">Remember this choice & don't ask again on startup</label>
         </div>
       </div>
-    </div> </div> <script src="host.js"></script>
+    </div> </div> <script src="/js/host.js"></script>
 </body>
 
 </html>

@@ -109,7 +109,9 @@ function startFrameProcessor(track) {
 
     processorRunning = true;
     frameCanvas.style.display = 'block';
-    video.style.display = 'none';
+    video.style.opacity = '0';
+    video.style.position = 'absolute';
+    video.style.pointerEvents = 'none';
 
     const processor = new MediaStreamTrackProcessor({ track });
     const reader = processor.readable.getReader();
@@ -149,7 +151,9 @@ function startFrameProcessor(track) {
     track.addEventListener('ended', () => {
         processorRunning = false;
         frameCanvas.style.display = 'none';
-        video.style.display = 'block';
+        video.style.opacity = '1';
+        video.style.position = 'static';
+        video.style.pointerEvents = 'auto';
     });
 }
 
@@ -166,19 +170,27 @@ const mouseMap = { 0: 'BTN_LEFT', 1: 'BTN_MIDDLE', 2: 'BTN_RIGHT' };
 
 function sendKbm(data) {
     if (ws && ws.readyState === 1 && document.pointerLockElement) {
-        data.type = 'kbm';
+        data.type = 'keyboard'; // Fix schema mismatch so the server enforces permissions
         ws.send(JSON.stringify(data));
     }
 }
 
 function requestPointerLock() {
     if (!document.pointerLockElement) {
-        const el = frameCanvas.style.display === 'block' ? frameCanvas : video;
-        el.requestPointerLock().catch(() => {});
+        // Use the common parent container so the lock is stable
+        const container = document.getElementById('video-container') || document.body;
+        container.requestPointerLock().catch(() => {});
     }
 }
 frameCanvas.addEventListener('click', requestPointerLock);
 video.addEventListener('click', requestPointerLock);
+
+document.addEventListener('click', (e) => {
+    // Only trigger if clicking on the video or canvas areas
+    if (e.target === frameCanvas || e.target === video) {
+        requestPointerLock();
+    }
+});
 
 document.addEventListener('keydown', e => {
     if (!document.pointerLockElement) return;
@@ -215,10 +227,19 @@ function toggleTouch() {
     document.getElementById('touchUI').classList.toggle('gone', !touchMode);
     document.getElementById('touchToggleBtn').style.color = touchMode ? 'var(--accent)' : '';
     document.getElementById('bar').classList.remove('open');
+    // Removed the auto-fullscreen here to respect default portrait mode
+}
 
-    if (touchMode && !document.fullscreenElement) {
-        document.documentElement.requestFullscreen().then(landscape).catch(() => {});
-    }
+// Auto-enable touch mode if the client is on a mobile device
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+if (isMobileDevice) {
+    touchMode = true;
+    document.addEventListener("DOMContentLoaded", () => {
+        const tUI = document.getElementById('touchUI');
+        const tBtn = document.getElementById('touchToggleBtn');
+        if (tUI) tUI.classList.remove('gone');
+        if (tBtn) tBtn.style.color = 'var(--accent)';
+    });
 }
 
 async function toggleGyro() {
@@ -336,7 +357,7 @@ async function requestHID() {
 
             const btn = document.getElementById('hidBtn');
             btn.style.color = 'var(--accent)';
-            btn.textContent = '🎮 Gyro: ON';
+            btn.textContent = 'Gyro: ON';
         }
     } catch (err) {
         console.error('HID Request failed:', err);
@@ -388,7 +409,7 @@ function activateGamepad() {
     const pmt = document.getElementById('gpPrompt');
     if(pmt) {
         pmt.classList.add('active');
-        pmt.textContent = '🎮 Controller active';
+        pmt.textContent = 'Controller active';
     }
     pollGamepad();
 }
@@ -516,16 +537,28 @@ function connect() {
             maybeShowControllerGuide();
         }
         if (msg.type === 'offer') {
-            if (!pc) await createPC();
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-            pc._remoteSet = true;
-            for (const c of (pc._iceBuf || [])) {
-                try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { }
+            // If PC exists and is not in stable state, it means we got a new offer mid-connection
+            // Close the old PC and create a new one to handle the re-offer properly
+            if (pc && pc.signalingState !== 'stable') {
+                try { pc.close(); } catch (e) {}
+                pc = null;
             }
-            pc._iceBuf = [];
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
+            if (!pc) await createPC();
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+                pc._remoteSet = true;
+                for (const c of (pc._iceBuf || [])) {
+                    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { }
+                }
+                pc._iceBuf = [];
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
+            } catch (e) {
+                console.error('[webrtc] offer error:', e.message);
+                try { pc.close(); } catch {}
+                pc = null;
+            }
         }
         if (msg.type === 'ice-host' && msg.candidate) {
             if (!pc) return;
