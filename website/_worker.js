@@ -3,6 +3,20 @@ export default {
     const url = new URL(request.url);
 
     // ==========================================
+    // ROUTE 0: DIAGNOSTIC (Delete this later!)
+    // ==========================================
+    if (url.pathname === "/api/debug-env") {
+      return new Response(JSON.stringify({
+        hasRawgKey: !!env.RAWG_API_KEY,
+        hasPusherSecret: !!env.PUSHER_SECRET,
+        hasPusherKey: !!env.PUSHER_KEY,
+        rawgLength: env.RAWG_API_KEY ? env.RAWG_API_KEY.length : 0
+      }, null, 2), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // ==========================================
     // ROUTE 1: Pusher Authentication (POST)
     // ==========================================
     if (url.pathname === "/api/pusher-auth") {

@@ -441,7 +441,6 @@ async function main() {
 
   // Static folders at the project root
   app.use("/js", express.static(path.join(__dirname, "..", "..", "src", "scripts")));
-  app.use(express.static(path.join(__dirname, "..", "..", "public")));
   app.use("/assets", express.static(path.join(__dirname, "..", "..", "assets")));
 
   // Pages folder at the project root
