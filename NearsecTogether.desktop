@@ -1,18 +1,10 @@
 [Desktop Entry]
 Categories=Game;Utility;
-Comment[en_US]=Browser-based game streaming host
 Comment=Browser-based game streaming host
-Exec=/home/fame/NearsecTogether/bin/start.cmd
-GenericName[en_US]=
-GenericName=
-Icon=/home/fame/NearsecTogether/assets/NearsecTogether.png
-MimeType=
-Name[en_US]=NearsecTogether
+Exec=bash -c 'cd "$(dirname "%k")" && ./bin/start.cmd'
+Icon=/usr/share/pixmaps/NearsecTogether.png
 Name=NearsecTogether
-Path=/home/fame/NearsecTogether
+Path=
 StartupNotify=true
 Terminal=true
-TerminalOptions=
 Type=Application
-X-KDE-SubstituteUID=false
-X-KDE-Username=

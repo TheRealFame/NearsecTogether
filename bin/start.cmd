@@ -36,7 +36,7 @@ fi
 
 # export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x045e/0x028e,0x054c/0x09cc,0x054c/0x0ce6"
 if [ -f node_modules/.bin/electron ]; then
-    exec ./node_modules/.bin/electron . "$@"
+    ./node_modules/.bin/electron . "$@"
 else
     exec node src/scripts/server.js "$@"
 fi

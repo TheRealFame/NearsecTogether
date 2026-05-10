@@ -6,6 +6,7 @@ if [[ "$EUID" -ne 0 ]]; then
   exit 1
 fi
 
+cp assets/NearsecTogether.png /usr/share/pixmaps/NearsecTogether.png
 apt-get update
 apt-get install -y python3-pip libudev-dev libasound2-dev libpipewire-0.3-dev
 pip3 install python-uinput --break-system-packages
