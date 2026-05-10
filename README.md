@@ -1,9 +1,8 @@
 <p align="left">
-  <img src="assets/NearsecTogether.png" width="160" height="140"><br>
-  <hr width="30%">
-</p>
+  <img src="assets/NearsecTogether.png" width="160" height="140">
+<h1>NearsecTogether</h1>
 
-## Screenshots
+## Screenshots -- Dashboard, Viewer Page, Arcade
 
 <div align="center">
   <img src="assets/screenshots/nearsec-host.png" alt="Nearsec Host" width="45%">
@@ -11,8 +10,11 @@
   <img src="assets/screenshots/nearsec-arcade.png" alt="Nearsec Arcade" width="45%">
 </div>
 
+<<<<<<< HEAD
 # NearsecTogether
 
+=======
+>>>>>>> ebedf5d74ebe5268054b729551f15ce280c0b80a
 ## Project Description
 NearsecTogether is a low-latency, open-source platform that allows you to play local co-op games over the internet with your friends. By leveraging WebRTC for UDP-first streaming and built-in browser hardware encoders, NearsecTogether provides near-imperceptible latency that rivals commercial cloud gaming platforms — tailored specifically for self-hosted instances.
 
