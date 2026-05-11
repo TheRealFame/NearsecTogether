@@ -8,7 +8,11 @@
     "electron": "electron .",
     "dev": "electron . --dev",
     "deploy": "wrangler deploy",
-    "preview": "wrangler dev"
+    "preview": "wrangler dev",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "express": "^4.18.0",
@@ -21,6 +25,40 @@
   },
   "devDependencies": {
     "electron": "^28.0.0",
+    "electron-builder": "^24.13.3",
     "wrangler": "^4.90.0"
+  },
+  "build": {
+    "appId": "com.nearsectogether.app",
+    "productName": "NearsecTogether",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "!/.env",
+      "**/*",
+      "!website",
+      "!src/docs",
+      "!**/*.md",
+      "!.github",
+      "!kbm_presets"
+    ],
+    "asarUnpack": [
+      "src/sidecar/**/*",
+      "bin/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "assets/NearsecTogether.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/NearsecTogether.png"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/NearsecTogether.png"
+    }
   }
 }

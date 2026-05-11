@@ -5,7 +5,10 @@ const WebSocket = require("ws");
 const os = require("os");
 const net = require("net");
 const fs = require("fs");
-const path = require("path");
+const path = require('path');
+const sidecarPath = __dirname.includes('app.asar')
+? path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'sidecar', 'input_driver.py')
+: path.join(__dirname, "..", "sidecar", "input_driver.py");
 const { exec, spawn } = require("child_process");
 const open = (...args) => import('open').then(({default: open}) => open(...args));
 const which = require("which");
@@ -13,6 +16,7 @@ const killPort = require("kill-port");
 let hostWS = null;
 let tunnelUrl = null;
 let activeTunnelProc = null;
+let uinputProc = null;
 let vidCount = 0;
 const viewers = new Map();
 const viewerNames = new Map();
@@ -531,7 +535,6 @@ async function main() {
   });
 
   // ── uinput sidecar ─────────────────────────────────────────────────────────
-  let uinputProc = null;
   const sidecar = path.join(__dirname, "..", "sidecar", "input_driver.py");
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
@@ -1155,16 +1158,38 @@ async function main() {
 
 main();
 
-function cleanupAndExit() {
-  console.log("\n  \x1b[33m!\x1b[0m Shutting down... cleaning up ports.");
+function cleanup(isElectron = false) {
+  console.log("\n  \x1b[33m!\x1b[0m Shutting down... cleaning up ports and processes.");
+
+  // Kill Tunnel (Cloudflared, Zrok, etc)
   if (activeTunnelProc) {
     try { activeTunnelProc.kill(); } catch (e) { }
   }
-  // Try to kill local port 3000 cross-platform
-  killPort(3000).catch(err => {
-    // Port might not have been in use, or already closed - that's OK
-  });
-  process.exit();
+
+  // Kill Python Sidecar (Releases the virtual controllers!)
+  if (uinputProc) {
+    try {
+      // Ask Python nicely to destroy devices before dying
+      if (uinputProc.stdin && uinputProc.stdin.writable) {
+        uinputProc.stdin.write(JSON.stringify({ type: 'destroy_all' }) + "\n");
+      }
+      uinputProc.kill();
+    } catch (e) { }
+  }
+
+  // Free up port 3000
+  if (!isElectron) {
+    // If running purely via Node (command line)
+    killPort(3000).catch(() => {}).finally(() => process.exit());
+  } else {
+    // If Electron is managing the lifecycle, don't force kill the process
+    killPort(3000).catch(() => {});
+  }
 }
-process.on('SIGINT', cleanupAndExit);
-process.on('SIGTERM', cleanupAndExit);
+
+// Hook normal terminal stops
+process.on('SIGINT', () => cleanup(false));
+process.on('SIGTERM', () => cleanup(false));
+
+// Export to electron-main.js
+module.exports = { cleanup };

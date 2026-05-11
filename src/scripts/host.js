@@ -716,6 +716,31 @@ function stopAudioMeter() {
 // ── TUNNEL PICKER MODAL ───────────────────────────────────────────────────────
 function showTunnelModal() {
     resetTunnelModal();
+
+    // Detect OS for tailored recommendations
+    const isWindows = navigator.userAgent.includes("Win");
+    const isMac = navigator.userAgent.includes("Mac");
+
+    // Grab the cards to modify them dynamically
+    const cloudflaredCard = document.querySelector('input[value="cloudflared"]').closest('.provider-card');
+    const zrokCard = document.querySelector('input[value="zrok"]').closest('.provider-card');
+    const lhrCard = document.querySelector('input[value="localhostrun"]').closest('.provider-card');
+
+    // Reset any previous modifications (important if the modal is opened multiple times)
+    document.querySelectorAll('.os-hint').forEach(el => el.remove());
+
+    if (isWindows) {
+        // Highlight best options for Windows
+        zrokCard.querySelector('.prov-desc').insertAdjacentHTML('beforeend', '<span class="os-hint" style="color:var(--accent); display:block; margin-top:4px;">✨ Recommended for Windows</span>');
+        cloudflaredCard.querySelector('.prov-desc').insertAdjacentHTML('beforeend', '<span class="os-hint" style="color:var(--accent); display:block; margin-top:4px;">✨ Recommended for Windows</span>');
+
+        // Warn about SSH tunnels on Windows
+        lhrCard.querySelector('.prov-desc').insertAdjacentHTML('beforeend', '<span class="os-hint" style="color:var(--warn); display:block; margin-top:4px;">⚠ May require OpenSSH Client installed</span>');
+    } else if (isMac) {
+        // Highlight best option for Mac
+        cloudflaredCard.querySelector('.prov-desc').insertAdjacentHTML('beforeend', '<span class="os-hint" style="color:var(--accent); display:block; margin-top:4px;">✨ Best for macOS</span>');
+    }
+
     document.getElementById('tunnelModal').classList.remove('gone');
 
     // Pre-populate modal from saved config so the user sees their current preference
