@@ -67,7 +67,97 @@ npm run electron
   - Run as Administrator and reboot
   - This provides virtual Xbox controller injection
 
-### Installation
+### Quick Start for Beginners
+
+If you're new to Windows development tools, follow this step-by-step guide:
+
+#### Step 1: Install Node.js
+
+1. Go to https://nodejs.org/
+2. Click the **"LTS"** button (green one - this is the stable version)
+3. Download will start automatically
+4. Open the downloaded `.msi` file
+5. Click **"Next"** through all the screens (keep defaults)
+6. Check **"Automatically install necessary tools"** if prompted
+7. Click **"Install"** and wait for completion
+8. Click **"Finish"** and restart your computer
+
+**Verify it worked:**
+- Press `Windows Key + R`
+- Type `cmd` and press Enter
+- In the black window, type: `node --version`
+- You should see a version number (like `v20.x.x`)
+
+#### Step 2: Install Python
+
+1. Go to https://www.python.org/downloads/
+2. Click the yellow **"Download Python"** button
+3. Open the downloaded `.exe` file
+4. ⚠️ **IMPORTANT**: Check the box that says **"Add Python to PATH"** at the bottom
+5. Click **"Install Now"**
+6. Wait for completion and click **"Close"**
+
+**Verify it worked:**
+- Press `Windows Key + R`
+- Type `cmd` and press Enter
+- In the black window, type: `python --version`
+- You should see a version number (like `Python 3.x.x`)
+
+#### Step 3: Extract NearsecTogether
+
+1. Download the NearsecTogether files as a `.zip` file
+2. Right-click the `.zip` file
+3. Select **"Extract All..."**
+4. Choose where you want to save it (e.g., `C:\Users\YourName\NearsecTogether`)
+5. Click **"Extract"**
+
+#### Step 4: Open PowerShell in the NearsecTogether Folder
+
+1. Navigate to your NearsecTogether folder
+2. Hold `Shift` and right-click in an empty area
+3. Select **"Open PowerShell window here"** (or **"Open Command Prompt window here"**)
+4. If you see a blue window with text at the bottom, you're ready!
+
+#### Step 5: Install Dependencies
+
+In the PowerShell window, copy and paste this command, then press Enter:
+
+```powershell
+pip install -r bin/requirements-windows.txt
+```
+
+Wait for it to finish (you'll see lots of downloading messages).
+
+Then run:
+
+```powershell
+npm install
+```
+
+Again, wait for it to finish. This can take a few minutes.
+
+#### Step 6: (Optional) Install ViGEmBus for Gamepad Support
+
+If you want to use a gamepad controller:
+
+1. Go to https://github.com/nefarius/ViGEmBus/releases
+2. Look for the latest release and download the `.exe` installer
+3. Right-click the downloaded `.exe`
+4. Select **"Run as Administrator"**
+5. Click **"Install"**
+6. When done, click **"Finish"** and **restart your computer**
+
+#### Step 7: Run the Application
+
+In PowerShell (in your NearsecTogether folder), run:
+
+```powershell
+npm run electron
+```
+
+A window should open with the NearsecTogether application!
+
+### Installation (Advanced/Command Reference)
 
 ```bash
 # 1. Extract NearsecTogether to a folder
@@ -106,6 +196,11 @@ npm run electron
 
 ### Troubleshooting
 
+**"Node is not recognized" or "Python is not recognized":**
+- You skipped the "Add to PATH" step during installation
+- Restart your computer after installing Node.js/Python
+- If still not working, reinstall with the **"Add to PATH"** option checked
+
 **"vgamepad not installed" error:**
 ```bash
 pip install vgamepad
@@ -116,12 +211,25 @@ pip install vgamepad
 - If not present, download and install from: https://github.com/nefarius/ViGEmBus/releases
 - Reboot after installation
 
+**PowerShell won't run my commands:**
+- Right-click PowerShell and select "Run as Administrator"
+- This gives the application the permissions it needs
+
 **Audio not playing:**
 - Check that PowerShell can execute: `powershell -Command "Write-Host 'test'"`
 - If disabled, enable scripts in PowerShell (run as admin):
   ```powershell
   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
   ```
+
+**"Permission Denied" when running commands:**
+- Right-click PowerShell and select "Run as Administrator"
+- You need admin rights for full functionality
+
+**Dependencies won't install (pip/npm errors):**
+- Make sure you're in the correct folder (should see files like `package.json` and `requirements-windows.txt`)
+- Try running PowerShell as Administrator
+- Check your internet connection
 
 ---
 
