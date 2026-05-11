@@ -73,12 +73,18 @@ arcadeChannel.bind('client-session-ping', (data) => {
     if (existing) {
         existing.lastSeen = Date.now(); // Update heartbeat
     } else {
+        // Normalize properties in case the host sends slightly different keys
+        data.game = data.game || data.gameTitle;
         data.lastSeen = Date.now();
+
         sessions.unshift(data);
 
-        // Trigger your UI updates (Make sure these match your actual function names!)
+        // Trigger your UI updates
         if (typeof updateLiveDot === 'function') updateLiveDot(true);
         if (typeof filterCards === 'function') filterCards();
+
+        // 🚀 Fetch the thumbnail dynamically if it's missing
+        fetchThumbnailForSession(data);
     }
 });
 
@@ -108,16 +114,22 @@ function addSessionToGrid(session) {
         return;
     }
     if (!sessions.find(s => s.id === session.id)) {
-        sessions.unshift({
+        const newSession = {
             id: session.id || ('arcade-' + Date.now()),
-                         game: session.game || session.gameTitle,
-                         thumbnail: session.thumbnail,
-                         region: 'Live Arcade',
-                         hasPin: session.hasPin || session.requirePin,
-                         url: session.url || session.tunnelUrl,
-                         viewers: session.viewers || session.viewerCount || 0,
-        });
+            game: session.game || session.gameTitle,
+            thumbnail: session.thumbnail,
+            region: 'Live Arcade',
+            hasPin: session.hasPin || session.requirePin,
+            url: session.url || session.tunnelUrl,
+            viewers: session.viewers || session.viewerCount || 0,
+            lastSeen: Date.now() // Ensure lastSeen is set for the pruning timer
+        };
+
+        sessions.unshift(newSession);
         filterCards();
+
+        // 🚀 Fetch the thumbnail dynamically if it's missing
+        fetchThumbnailForSession(newSession);
     }
 }
 
@@ -126,6 +138,30 @@ function removeSessionFromGrid(gameTitle) {
     filterCards();
 }
 
+async function fetchThumbnailForSession(session) {
+    // If a thumbnail was already provided by the host, skip fetching
+    if (session.thumbnail) return;
+
+    // We need a game name to search for
+    const title = session.game || session.gameTitle;
+    if (!title) return;
+
+    try {
+        const response = await fetch(`/api/game-art?title=${encodeURIComponent(title)}`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.thumbnail) {
+                // Update the session object with the new image URL
+                session.thumbnail = data.thumbnail;
+
+                // Re-render the grid so the new image appears
+                if (typeof filterCards === 'function') filterCards();
+            }
+        }
+    } catch (err) {
+        console.error('[Arcade] Failed to fetch game art for:', title, err);
+    }
+}
 
 function updateLiveDot(ok) {
     const dot = document.getElementById('liveDot');

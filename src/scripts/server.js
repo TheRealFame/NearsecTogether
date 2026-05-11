@@ -546,6 +546,7 @@ async function main() {
   // viewerNames moved to top
   const viewerGamepads = new Map(); // viewerId -> Set of padIndices
   const viewerHasController = new Set(); // viewerIds that have sent at least one gpid
+  const hwIdToViewer = new Map(); // 'hardwareId:padIdx' -> viewerId — prevents duplicate virtual controllers on reconnect
   // pinAttempts moved to top // ip -> { count, lockedUntil }
   // vidCount moved to top
 
@@ -900,9 +901,29 @@ async function main() {
             // Deduplicate: ignore if this padIndex is already registered for this viewer
             if (pads.has(padIdx)) return;
 
+            // Hardware deduplication: same physical controller reconnecting under a new viewer ID
+            // Evict the stale registration so no duplicate virtual controllers accumulate
+            const hwKey = (msg.id || 'unknown') + ':' + padIdx;
+            const staleViewerId = hwIdToViewer.get(hwKey);
+            if (staleViewerId && staleViewerId !== id) {
+              console.log("[viewer] evicting stale hw registration:", hwKey, "from", staleViewerId, "→", id);
+              const stalePads = viewerGamepads.get(staleViewerId);
+              if (stalePads) {
+                stalePads.delete(padIdx);
+                if (stalePads.size === 0) {
+                  viewerGamepads.delete(staleViewerId);
+                  viewerHasController.delete(staleViewerId);
+                }
+              }
+              inputPerms.delete(staleViewerId + '_' + padIdx);
+              toUinput({ type: 'disconnect_viewer', viewer_id: staleViewerId });
+            }
+            hwIdToViewer.set(hwKey, id);
+
             // Slot Cap: ignore if we already have 16 controllers total
-            if (controllerViewerCount() >= 16) {
-              console.log("[viewer] slot cap reached (16), ignoring controller from", id);
+            const totalPads = [...viewerGamepads.values()].reduce((sum, s) => sum + s.size, 0);
+            if (totalPads >= 16) {
+              console.log("[viewer] slot cap reached (16 total pads), ignoring controller from", id);
               return;
             }
 
@@ -991,6 +1012,10 @@ async function main() {
           viewerNames.delete(id);
           viewerGamepads.delete(id);
           viewerHasController.delete(id);
+          // Remove all hardware ID entries for this viewer so they don't block future reconnects
+          for (const [hwKey, vid] of hwIdToViewer) {
+            if (vid === id) hwIdToViewer.delete(hwKey);
+          }
           
           if (hadController) {
             playLeaveSound();
