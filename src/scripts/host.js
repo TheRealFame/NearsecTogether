@@ -7,8 +7,8 @@ let pinEnabled = true, currentPin = '----';
 // forceAudioEnabled: Always attempt to capture audio, defaulted to true
 // Users don't see this in the UI — it's for reliability on PipeWire systems
 let audioSettings = {
-    forceAudioEnabled: localStorage.getItem('ns_force_audio_enabled') !== 'false',  // default true
-        defaultDevice: localStorage.getItem('ns_audio_device') || 'default'
+  forceAudioEnabled: localStorage.getItem('ns_force_audio_enabled') !== 'false',  // default true
+  defaultDevice: localStorage.getItem('ns_audio_device') || 'default'
 };
 
 // --- Pusher Arcade Integration ---
@@ -19,6 +19,7 @@ const pusher = new Pusher('a93f5405058cd9fc7967', {
 });
 const arcadeChannel = pusher.subscribe('private-arcade-global');
 let arcadePingInterval = null;
+let arcadeOverrodePin = false; // true when arcade disabled PIN so we can restore it on stop
 const hostSessionId = 'ns-' + Math.random().toString(36).substr(2, 9);
 
 // ── DYNAMIC BITRATE CONGESTION CONTROL ─────────────────────────────────────
@@ -130,6 +131,27 @@ document.getElementById('resSelect').addEventListener('change', (e) => localStor
 const savedFps = localStorage.getItem('ns_fps');
 if (savedFps) document.getElementById('fpsSelect').value = savedFps;
 document.getElementById('fpsSelect').addEventListener('change', (e) => localStorage.setItem('ns_fps', e.target.value));
+// ── iGPU Detection — default H264 if integrated graphics detected ─────────────
+(function detectIGPU() {
+    try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) return;
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        if (!ext) return;
+        const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL).toLowerCase();
+        // Match known iGPU patterns; exclude discrete GPU markers
+        const isIGPU = /intel|iris|uhd|vega|radeon.*graphics|rdna.*u|apu|780m|680m|graphics \d+/.test(renderer)
+                    && !/rtx|gtx|rx \d{3,4}|arc a\d/.test(renderer);
+        if (isIGPU && !localStorage.getItem('ns_codec')) {
+            document.getElementById('codecSelect').value = 'H264';
+            localStorage.setItem('ns_codec', 'H264');
+            console.log('[codec] iGPU detected (' + renderer + ') — defaulting to H264');
+        }
+    } catch (e) {}
+})();
+
+
 
 async function fetchGameThumbnail(gameTitle) {
     try {
@@ -196,7 +218,10 @@ function log(msg, cls) {
     const d = document.createElement('div');
     d.className = 'll' + (cls ? ' ' + cls : '');
     d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-    el.appendChild(d); el.scrollTop = el.scrollHeight;
+    if (el) { el.appendChild(d); el.scrollTop = el.scrollHeight; }
+    // Mirror last line to sidebar mini indicator
+    const mini = document.getElementById('lastLogLine');
+    if (mini) { mini.textContent = msg; mini.style.color = cls === 'ok' ? 'var(--accent)' : cls === 'err' ? 'var(--danger)' : cls === 'warn' ? 'var(--warn)' : '#333'; }
 }
 
 function appendChat(name, text, isMe) {
@@ -306,8 +331,8 @@ function renderRoster(list) {
         </div>
         </div>
         <div class="rstat">${v.slot !== null ? '(Assigned)' : ''}</div>
-        <button class="rlock" onclick="toggleSlotLock('${v.id}')" title="Lock this slot" style="background:none; border:none; color:#555; cursor:pointer; padding:0 4px; font-size:14px;">
-        ${v.locked ? '🔒' : '🔓'}
+        <button class="rlock" onclick="toggleSlotLock('${v.id}')" title="Lock this slot" style="background:none; border:none; cursor:pointer; padding:0 4px; width:20px; height:20px; display:flex; align-items:center;">
+          <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;filter:invert(0.5);" />
         </button>
         <button class="rkick" onclick="killGp('${v.id}')" title="Revoke input">×</button>
         `;
@@ -379,7 +404,8 @@ function killGp(id) {
 function toggleSlotLock(rosterId) {
     if (ws && ws.readyState === 1) {
         const lockBtn = event.target;
-        const isCurrentlyLocked = lockBtn.textContent === '🔒';
+        const lockImg = lockBtn.querySelector('img');
+        const isCurrentlyLocked = lockImg && lockImg.src.includes('lock.svg') && !lockImg.src.includes('lock-open');
         ws.send(JSON.stringify({
             type: 'toggle-slot-lock',
             viewerId: rosterId,
@@ -554,15 +580,14 @@ async function startCapture() {
             // PIPEWIRE AUDIO: systemAudio:'include' (Chrome 105+) explicitly requests system/window audio
             // via the PipeWire portal on Wayland. Audio capture preference is controlled by audioSettings.forceAudioEnabled.
             // Even if disabled by user, we still show the dialog — the OS will handle whether to include audio.
-            // PIPEWIRE NOTE: Do NOT pass deviceId here. PipeWire's portal picks the
-            // device itself; specifying deviceId:'default' silently breaks audio on Wayland.
             audio: audioSettings.forceAudioEnabled ? {
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
                 sampleRate: 48000,
                 channelCount: 2,
-                latency: 0
+                latency: 0,
+                deviceId: audioSettings.defaultDevice
             } : false,
             systemAudio: 'include',          // Chrome 105+: shows audio share option in the dialog
             selfBrowserSurface: 'exclude',   // Don't offer the Nearsec tab itself
@@ -584,34 +609,42 @@ async function startCapture() {
         if (aTrack) {
             log('System Audio Track Found: ' + (aTrack.label || 'default'), 'ok');
         } else {
-            // PipeWire fallback: some setups expose system audio via getUserMedia loopback.
-            // Try it silently — if it fails, we just proceed without audio.
-            log('No audio track in capture — trying PipeWire loopback fallback...', 'warn');
-            try {
-                const loopback = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false,
-                        sampleRate: 48000,
-                        channelCount: 2
-                    },
-                    video: false
-                });
-                aTrack = loopback.getAudioTracks()[0] || null;
-                if (aTrack) log('PipeWire loopback audio: ' + (aTrack.label || 'default'), 'ok');
-            } catch (e) {
-                log('PipeWire loopback unavailable: ' + e.message, 'warn');
-            }
+            log('No audio track selected in capture prompt', 'warn');
         }
 
         const combined = new MediaStream();
         combined.addTrack(vTrack);
         if (aTrack) combined.addTrack(aTrack);
+
+        // Mic capture: mix host voice into stream if enabled in settings
+        if (appSettings.captureMic) {
+            try {
+                const micConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+                if (selectedMicDeviceId && selectedMicDeviceId !== 'default') {
+                    micConstraints.deviceId = { exact: selectedMicDeviceId };
+                }
+                const micStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints, video: false });
+                const micTrack = micStream.getAudioTracks()[0];
+                if (micTrack) {
+                    combined.addTrack(micTrack);
+                    log('Microphone added: ' + (micTrack.label || 'default'), 'ok');
+                }
+            } catch (e) {
+                log('Mic capture failed: ' + e.message, 'warn');
+            }
+        }
+
         currentStream = combined;
 
         const prev = document.getElementById('preview');
-        prev.srcObject = screenStream;
+        if (appSettings.hidePreviewOnStart) {
+            previewHidden = true;
+            prev.style.display = 'none';
+            const btn = document.getElementById('btnPreviewToggle');
+            if (btn) { btn.textContent = '▶ Show Preview'; btn.style.color = 'var(--warn)'; }
+        } else {
+            prev.srcObject = screenStream;
+        }
         if (settings.width && settings.height) prev.style.aspectRatio = settings.width + '/' + settings.height;
         document.getElementById('prevOverlay').classList.add('hidden');
         document.getElementById('trackInfo').innerHTML =
@@ -624,6 +657,7 @@ async function startCapture() {
         else setAudDot('warn', 'No audio — Check source');
 
         ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+        sysChat('Stream started.');
         [...knownViewers].forEach(id => sendOfferToViewer(id));
 
         vTrack.onended = () => { log('Capture ended by OS', 'warn'); stopCapture(); };
@@ -662,7 +696,18 @@ function stopCapture() {
         log('Arcade Mode: Session ended on Arcade', 'warn');
     }
 
+    // Restore PIN if arcade disabled it
+    if (arcadeOverrodePin) {
+        arcadeOverrodePin = false;
+        pinEnabled = true;
+        const btn = document.getElementById('pinToggle');
+        if (btn) { btn.textContent = 'ON'; btn.className = 'tog-btn on'; }
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: true }));
+        log('PIN re-enabled after Arcade session', 'ok');
+    }
+
     log('Capture stopped');
+    sysChat('Host stopped sharing.');
 }
 
 function startAudioMeter(stream) {
@@ -683,6 +728,31 @@ function stopAudioMeter() {
 function showTunnelModal() {
     resetTunnelModal();
     document.getElementById('tunnelModal').classList.remove('gone');
+
+    // Pre-populate modal from saved config so the user sees their current preference
+    fetch('/api/config').then(r => r.json()).then(cfg => {
+        if (!cfg || !cfg.tunnelProvider) return;
+
+        // Tick Remember if preference is already saved
+        const rememberBox = document.getElementById('rememberCheck');
+        if (rememberBox) rememberBox.checked = !!cfg.neverAsk;
+
+        // Select the saved provider radio
+        const radio = document.querySelector('input[name="provider"][value="' + cfg.tunnelProvider + '"]');
+        if (radio) {
+            radio.checked = true;
+            document.querySelectorAll('.provider-card').forEach(c => {
+                c.classList.toggle('selected', c.querySelector('input').checked);
+            });
+        }
+
+        // Pre-fill VPS host input if saved
+        if (cfg.tunnelProvider === 'vps' && cfg.vpsHost) {
+            const vpsInput = document.getElementById('vpsHostInput');
+            if (vpsInput) vpsInput.value = cfg.vpsHost;
+        }
+    }).catch(() => {});
+
     document.querySelectorAll('.provider-card').forEach(c => {
         c.classList.toggle('selected', c.querySelector('input').checked);
     });
@@ -909,8 +979,19 @@ function _doArcadeRegister() {
             region: 'Pusher Host' // Feel free to make this dynamic later!
         };
 
+        // If host chose no PIN for this arcade session, disable it via the same path the toggle uses
+        if (!arcadeConfig.requirePin && pinEnabled) {
+            pinEnabled = false;
+            arcadeOverrodePin = true;
+            const btn = document.getElementById('pinToggle');
+            if (btn) { btn.textContent = 'OFF'; btn.className = 'tog-btn'; }
+            if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: false }));
+            log('PIN disabled for Arcade session', 'ok');
+        }
+
         // Send an immediate ping to show up instantly
         arcadeChannel.trigger('client-session-ping', pingData);
+        sysChat('Arcade Mode started: ' + arcadeConfig.title);
 
         // Keep pinging every 10 seconds to stay alive on the Arcade
         if (arcadePingInterval) clearInterval(arcadePingInterval);
@@ -919,6 +1000,138 @@ function _doArcadeRegister() {
         }, 10000);
 
     }).catch(() => log('Arcade: Could not read server info', 'err'));
+}
+
+
+// ── Preview toggle — hides stream preview to save APU GPU cycles ─────────────
+let previewHidden = false;
+function togglePreview() {
+    previewHidden = !previewHidden;
+    const prev = document.getElementById('preview');
+    const btn = document.getElementById('btnPreviewToggle');
+    if (previewHidden) {
+        prev.srcObject = null;
+        prev.style.display = 'none';
+        document.getElementById('prevOverlay').classList.remove('hidden');
+        document.getElementById('prevOverlay').querySelector('span').textContent = 'Preview hidden — stream still active';
+        if (btn) { btn.textContent = '▶ Show Preview'; btn.style.color = 'var(--warn)'; }
+        log('Preview hidden — stream unaffected', 'ok');
+    } else {
+        prev.style.display = 'block';
+        if (currentStream) {
+            prev.srcObject = currentStream;
+            document.getElementById('prevOverlay').classList.add('hidden');
+        }
+        if (btn) { btn.textContent = '◼ Hide Preview'; btn.style.color = ''; }
+        log('Preview restored', 'ok');
+    }
+}
+
+
+// ── APP SETTINGS ──────────────────────────────────────────────────────────────
+const appSettings = {
+    tray:              localStorage.getItem('ns_app_tray') !== 'false',       // default on
+    alwaysOnTop:       localStorage.getItem('ns_app_alwaysOnTop') === 'true', // default off
+    hidePreviewOnStart:localStorage.getItem('ns_app_hidePreview') === 'true', // default off
+    captureMic:        localStorage.getItem('ns_app_captureMic') === 'true',  // default off
+};
+let selectedMicDeviceId   = localStorage.getItem('ns_audio_input')  || 'default';
+let selectedOutputDeviceId= localStorage.getItem('ns_audio_output') || 'default';
+
+function showAppSettings() {
+    applyAppSettingsUI();
+    enumerateAudioDevices();
+    document.getElementById('appSettingsModal').classList.remove('gone');
+}
+function closeAppSettings() {
+    document.getElementById('appSettingsModal').classList.add('gone');
+}
+
+function applyAppSettingsUI() {
+    const pairs = [
+        ['tray',              'settingTrackTray',        'settingRowTray'],
+        ['alwaysOnTop',       'settingTrackAlwaysOnTop', 'settingRowAlwaysOnTop'],
+        ['hidePreviewOnStart','settingTrackHidePreview', 'settingRowHidePreview'],
+        ['captureMic',        'settingTrackMic',         'settingRowMic'],
+    ];
+    pairs.forEach(([key, trackId, rowId]) => {
+        const track = document.getElementById(trackId);
+        const row   = document.getElementById(rowId);
+        if (track) track.classList.toggle('on', !!appSettings[key]);
+        if (row)   row.classList.toggle('active', !!appSettings[key]);
+    });
+    // Show/hide mic device row
+    const micRow = document.getElementById('micDeviceRow');
+    if (micRow) micRow.style.display = appSettings.captureMic ? 'block' : 'none';
+}
+
+function toggleAppSetting(key) {
+    appSettings[key] = !appSettings[key];
+    localStorage.setItem('ns_app_' + key, appSettings[key]);
+    applyAppSettingsUI();
+
+    // Sync Electron-side settings where applicable
+    if (key === 'alwaysOnTop' && window.electronAPI?.toggleAlwaysOnTop) {
+        window.electronAPI.toggleAlwaysOnTop();
+    }
+    log('Setting ' + key + ' = ' + appSettings[key], 'ok');
+}
+
+function saveAudioDevice(type, deviceId) {
+    if (type === 'input') {
+        selectedMicDeviceId = deviceId;
+        localStorage.setItem('ns_audio_input', deviceId);
+    } else {
+        selectedOutputDeviceId = deviceId;
+        localStorage.setItem('ns_audio_output', deviceId);
+    }
+}
+
+async function enumerateAudioDevices() {
+    try {
+        // Request brief getUserMedia to unlock device labels
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        tempStream.getTracks().forEach(t => t.stop());
+    } catch (e) { /* label enumeration fails gracefully */ }
+
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+
+        const inputSel  = document.getElementById('audioInputSelect');
+        const outputSel = document.getElementById('audioOutputSelect');
+        if (!inputSel || !outputSel) return;
+
+        const inputs  = devices.filter(d => d.kind === 'audioinput');
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+
+        inputSel.innerHTML  = '<option value="default">Default Microphone</option>';
+        outputSel.innerHTML = '<option value="default">Default (all system audio)</option>';
+
+        inputs.forEach(d => {
+            const o = document.createElement('option');
+            o.value = d.deviceId;
+            o.text  = d.label || ('Microphone ' + (inputs.indexOf(d) + 1));
+            if (d.deviceId === selectedMicDeviceId) o.selected = true;
+            inputSel.appendChild(o);
+        });
+        outputs.forEach(d => {
+            const o = document.createElement('option');
+            o.value = d.deviceId;
+            o.text  = d.label || ('Audio Device ' + (outputs.indexOf(d) + 1));
+            if (d.deviceId === selectedOutputDeviceId) o.selected = true;
+            outputSel.appendChild(o);
+        });
+    } catch (e) {
+        log('Audio device enumeration failed: ' + e.message, 'warn');
+    }
+}
+
+// ── SYSTEM CHAT ───────────────────────────────────────────────────────────────
+// Broadcasts a non-sensitive event message to all viewers as "Nearsec"
+function sysChat(text) {
+    if (!ws || ws.readyState !== 1) return;
+    ws.send(JSON.stringify({ type: 'chat', from: 'Nearsec', msg: text }));
+    appendChat('Nearsec', text, false);
 }
 
 // ── INITIALIZATION ────────────────────────────────────────────────────────

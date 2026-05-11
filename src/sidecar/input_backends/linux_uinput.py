@@ -79,7 +79,7 @@ KBM_EVENTS = [
 ]
 
 AXIS_DEADZONE = 1800
-force_xboxone = True
+force_xboxone = False  # Default off — host UI sends ctrl-settings on connect to sync
 enable_dualshock = False
 enable_motion = False
 
@@ -349,7 +349,7 @@ def run():
                 gp.syn()
 
             # ── HANDLE KBM ────────────────────────────────────────────────────
-            if msg.get("type") == "kbm":
+            if msg.get("type") in ("kbm", "keyboard"):  # viewer.js sends "keyboard"; server remaps, but accept both for safety
                 # Lazily create the KBM device the first time it's needed
                 if pad_id not in kbm_devices:
                     try:

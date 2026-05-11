@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { powerSaveBlocker } = require('electron');
@@ -75,6 +76,7 @@ function startServer() {
 
 // ── Window ────────────────────────────────────────────────────────────────────
 let win = null;
+let tray = null;
 
 async function createWindow() {
   const port = await startServer();
@@ -138,6 +140,32 @@ async function createWindow() {
 
   win.on('closed', () => { win = null; });
 
+  // ── Minimize to tray instead of quitting ─────────────────────────────────────
+  const trayIcon = nativeImage.createFromPath(path.join(__dirname, 'assets/NearsecTogether.png')).resize({ width: 22, height: 22 });
+  tray = new Tray(trayIcon);
+  tray.setToolTip('NearsecTogether');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show', click: () => { if (win) { win.show(); win.focus(); } else createWindow(); } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  ]));
+  tray.on('click', () => { if (win) { win.isVisible() ? win.hide() : win.show(); } });
+
+  win.on('close', (e) => {
+    if (!app.isQuiting) {
+      e.preventDefault();
+      win.hide();
+      tray.displayBalloon && tray.displayBalloon({ title: 'NearsecTogether', content: 'Still running in tray.' });
+    }
+  });
+
+  // ── Raise process priority for smoother streaming ────────────────────────────
+  try {
+    os.setPriority(process.pid, os.constants.priority.PRIORITY_HIGH);
+  } catch (e) {
+    console.warn('[electron] Could not set high priority:', e.message);
+  }
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url); return { action: 'deny' };
   });
@@ -174,4 +202,5 @@ async function createWindow() {
 }
 
 app.whenReady().then(createWindow);
+app.on('before-quit', () => { app.isQuiting = true; });
 app.on('window-all-closed', () => app.quit());

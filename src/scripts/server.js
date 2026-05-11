@@ -49,12 +49,12 @@ const projectRoot = path.join(__dirname, '..', '..');
 const envFile = path.join(projectRoot, '.env');
 if (!fs.existsSync(envFile)) {
   fs.writeFileSync(envFile, `CF_TOKEN=
-  CUSTOM_URL=
-  ZROK_RESERVED_NAME=
-  USE_VPS=false
-  VPS_HOST=
-  IS_VPS=false
-  `);
+CUSTOM_URL=
+ZROK_RESERVED_NAME=
+USE_VPS=false
+VPS_HOST=
+IS_VPS=false
+`);
 }
 
 // Parse optional .env file for secrets
@@ -424,9 +424,7 @@ async function main() {
 
   const app = express();
 
-  // Tunnel auto-start happens inside server.listen() so the WebSocket exists
-  // and can deliver the tunnel URL to the host UI. DO NOT start tunnels here.
-  // (VPS .env override is still handled in the listen callback below.)
+  // Tunnel auto-start is handled inside server.listen() so hostWS exists for URL delivery
 
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server });
@@ -486,8 +484,8 @@ async function main() {
       return res.json({ url: tunnelUrl }); // already running
     }
     const provider = (req.body && req.body.provider) || "cloudflared";
+    // Only save preference when user explicitly checks Remember
     if (req.body && req.body.remember) saveConfig({ tunnelProvider: provider, neverAsk: true });
-    if (req.body && req.body.remember === false) saveConfig({ neverAsk: false }); // clear preference
     res.json({ ok: true, starting: true });
     // Start asynchronously so the response returns immediately
     const fn = {
@@ -552,8 +550,8 @@ async function main() {
   // vidCount moved to top
 
   // ── Join & Leave Sounds ────────────────────────────────────────────────────
-  const JOIN_SOUND = __dirname + '/assets/joinsound.wav';
-  const LEAVE_SOUND = __dirname + '/assets/leavesound.wav';
+  const JOIN_SOUND = require('path').join(__dirname, '../../assets/joinsound.wav');
+  const LEAVE_SOUND = require('path').join(__dirname, '../../assets/leavesound.wav');
   const player = require('play-sound')(opts = {});
 
   function playSound(file) {
@@ -754,8 +752,6 @@ async function main() {
               arcadeSessions.delete(id);
               broadcastToArcade({ type: 'arcade-session-stopped', id });
               console.log("[arcade] Session stopped:", s.game);
-
-              // Tell the Global Arcade to remove this session
               globalArcadeChannel.trigger('client-session-stopped', { id });
             }
             return;
@@ -945,6 +941,8 @@ async function main() {
             return;
           }
           if (msg.type === "gamepad" || msg.type === "keyboard") {
+            // Remap: viewer sends type 'keyboard', Python sidecar expects type 'kbm'
+            if (msg.type === "keyboard") msg.type = "kbm";
             const padIdx = msg.padIndex || 0;
             const rosterId = msg.type === "gamepad" ? id + '_' + padIdx : id + '_0';
 
@@ -986,14 +984,14 @@ async function main() {
       ws.on("close", () => {
         const hadController = viewerHasController.has(id);
         const wasActive = viewers.get(id) === ws;
-
+        
         // Only remove if this specific connection is the active one for this ID
         if (wasActive) {
           viewers.delete(id);
           viewerNames.delete(id);
           viewerGamepads.delete(id);
           viewerHasController.delete(id);
-
+          
           if (hadController) {
             playLeaveSound();
             // Send a zero/neutral flush before destroying — prevents stuck D-pad / joystick
@@ -1070,13 +1068,11 @@ async function main() {
   server.listen(PORT, "0.0.0.0", async () => {
     console.log("Listening on port " + PORT);
     if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + PORT + "/host");
+    const cfg = loadConfig();
 
-      // ── Tunnel auto-start (all paths live here so hostWS exists for URL delivery) ──
-      const cfg = loadConfig();
-
-    // .env VPS override takes highest priority
+    // .env USE_VPS takes priority over saved config
     if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
-      console.log("  ~ Tunnel: VPS mode (from .env)");
+      console.log("  ~ Tunnel: VPS (from .env)");
       const tun = await startTunnelVps(PORT, process.env.VPS_HOST.trim());
       if (tun) {
         tunnelUrl = tun.url;
@@ -1084,7 +1080,8 @@ async function main() {
           hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
       }
     } else if (cfg.neverAsk && cfg.tunnelProvider === 'portforward') {
-      // Port-forward mode: no tunnel process needed.
+      // Port-forward mode: no tunnel process needed. Host shares their public IP directly.
+      // tunnelUrl stays null here; the host page reads neverAsk=true and skips the picker modal.
       console.log("  ~ Tunnel: port forward mode (saved). Share your Public IP URL with viewers.");
     } else if (cfg.neverAsk && cfg.tunnelProvider) {
       // Use saved preference without asking

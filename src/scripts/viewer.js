@@ -5,7 +5,7 @@ let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random
 document.getElementById('nameInput').value = myName;
 const CLIENT_VERSION = "1.0.0";
 let enteredPin = '', audioMuted = false;
-let kbEnabled = false; // true when host grants KBM mode — gates pointer lock requests
+let kbEnabled = false; // set true only when host grants KBM mode — gates pointer lock
 
 // ── Controller guide logic ───────────────────────────────────────────────────
 const CONTROLLER_GUIDE_STORAGE_KEY = 'ns_controller_guide_ack';
@@ -182,8 +182,7 @@ function sendKbm(data) {
 }
 
 function requestPointerLock() {
-    // Only lock pointer when KBM mode is active — prevents jarring capture
-    // when viewers click to tab back into the window without KBM enabled.
+    // Only lock when host has granted KBM mode — prevents accidental capture on tab-in clicks
     if (!kbEnabled) return;
     if (!document.pointerLockElement) {
         const container = document.getElementById('video-container') || document.body;
@@ -194,6 +193,7 @@ frameCanvas.addEventListener('click', requestPointerLock);
 video.addEventListener('click', requestPointerLock);
 
 document.addEventListener('click', (e) => {
+    // Only trigger if clicking on the video or canvas areas
     if (e.target === frameCanvas || e.target === video) {
         requestPointerLock();
     }
@@ -337,36 +337,6 @@ if (jBase) {
     }, {passive: false});
 }
 
-// ── Fullscreen button auto-hide after 2.7s, ignores small jitter ─────────
-(function () {
-    const fsBtn = document.getElementById('fsOverlayBtn');
-    if (!fsBtn) return;
-    let hideTimer = null;
-    let lastX = 0, lastY = 0;
-    const MOVE_THRESHOLD = 8; // px — must move at least this far to reset timer
-
-    function showBtn() {
-        fsBtn.style.opacity = '1';
-        fsBtn.style.pointerEvents = 'auto';
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => {
-            fsBtn.style.opacity = '0';
-            fsBtn.style.pointerEvents = 'none';
-        }, 2700);
-    }
-
-    document.addEventListener('mousemove', (e) => {
-        const dx = e.clientX - lastX;
-        const dy = e.clientY - lastY;
-        if (Math.sqrt(dx * dx + dy * dy) < MOVE_THRESHOLD) return;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        showBtn();
-    }, { passive: true });
-
-    showBtn();
-})();
-
 // ── WebHID Gyro Engine (Sony + Nintendo) ─────────────────────────────────────
 let hidDevice = null;
 let hostMotionEnabled = false;
@@ -436,6 +406,61 @@ function handleHIDReport(event) {
     }
 }
 
+// ── Calibration maps received from gamepad-popup.html via postMessage ───────────
+// key: hardware id string → { lt, rt, rsx, rsy } from brute-force calibration
+const calibMaps = {};
+
+// Load any saved maps from localStorage (same keys the popup uses)
+(function loadSavedCalibMaps() {
+    const PREFIX = 'nearsec_map_';
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(PREFIX)) {
+            try { calibMaps[k.slice(PREFIX.length)] = JSON.parse(localStorage.getItem(k)); } catch {}
+        }
+    }
+})();
+
+// Accept live updates from the popup iframe
+window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'NEARSEC_CONFIG_UPDATE' && e.data.hardwareId) {
+        calibMaps[e.data.hardwareId] = e.data.map;
+        console.log('[calib] map updated for', e.data.hardwareId);
+    }
+});
+
+function applyCalibration(gp, state) {
+    // Derive a safe key matching the popup's getSafeId()
+    const safeId = gp.id.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60);
+    const m = calibMaps[safeId];
+    if (!m) return; // no calibration for this controller
+
+    // Right stick remapping
+    if (m.rsx != null) state.axes[2] = Math.round((gp.axes[m.rsx] || 0) * 32767);
+    if (m.rsy != null) state.axes[3] = Math.round((gp.axes[m.rsy] || 0) * 32767);
+
+    // Trigger remapping — normalise to 0-255 for buttons[6/7]
+    function readTrigger(mapping) {
+        if (!mapping) return 0;
+        if (mapping.type === 'btn') {
+            return Math.round((gp.buttons[mapping.idx]?.value || 0) * 255);
+        }
+        // axis: raw range is typically -1→1, normalise to 0→255
+        const raw = gp.axes[mapping.idx] ?? -1;
+        const norm = Math.max(0, (raw + 1) / 2);
+        return norm < 0.05 ? 0 : Math.round(norm * 255);
+    }
+
+    const ltVal = readTrigger(m.lt);
+    const rtVal = readTrigger(m.rt);
+    if (ltVal > 0 || m.lt) {
+        state.buttons[6] = { pressed: ltVal > 10, value: ltVal };
+    }
+    if (rtVal > 0 || m.rt) {
+        state.buttons[7] = { pressed: rtVal > 10, value: rtVal };
+    }
+}
+
 // ── Gamepad polling + heartbeat ───────────────────────────────────────────────
 let gpPolling = false, gpRaf = null, lastGpStr = {}, lastGpSend = {};
 let sentGpid = new Set();
@@ -476,6 +501,9 @@ function pollGamepad() {
             axes: Array.from(gp.axes).map(v => Math.round(v * 32767)),
             buttons: gp.buttons.map(b => ({ pressed: b.pressed, value: Math.round(b.value * 255) }))
         };
+
+        // Apply brute-force calibration map (remaps right stick + triggers to standard slots)
+        applyCalibration(gp, state);
 
         // INJECT PHYSICAL GYRO INTO RIGHT STICK IF ENABLED
         if (hidDevice && hostMotionEnabled) {
@@ -625,10 +653,9 @@ function connect() {
             if(hBtn) hBtn.style.display = hostMotionEnabled ? 'block' : 'none';
         }
 
-        // Track KBM permission — gates pointer lock so normal clicks don't capture the mouse
+        // Track KBM permission — gates pointer lock so normal clicks never capture mouse
         if (msg.type === 'input-state') {
             kbEnabled = !!msg.kb;
-            // If KBM was revoked while pointer is locked, release it immediately
             if (!kbEnabled && document.pointerLockElement) {
                 document.exitPointerLock();
             }
@@ -784,3 +811,35 @@ document.addEventListener('fullscreenchange', () => {
     if (document.fullscreenElement) landscape();
     document.getElementById('fsBtn').textContent = document.fullscreenElement ? '[x] Full' : '[ ] Full';
 });
+
+// ── Fullscreen button auto-hide after 2.7s, ignores jitter, hides cursor ─────
+(function () {
+    const fsBtn = document.getElementById('fsOverlayBtn');
+    if (!fsBtn) return;
+    let hideTimer = null;
+    let lastX = 0, lastY = 0;
+    const MOVE_THRESHOLD = 14; // px — filters optical sensor jitter & slight hand tremor
+
+    function showBtn() {
+        fsBtn.style.opacity = '1';
+        fsBtn.style.pointerEvents = 'auto';
+        document.body.style.cursor = ''; // restore cursor on movement
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+            fsBtn.style.opacity = '0';
+            fsBtn.style.pointerEvents = 'none';
+            document.body.style.cursor = 'none'; // hide cursor during idle
+        }, 2700);
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        if (Math.sqrt(dx * dx + dy * dy) < MOVE_THRESHOLD) return;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        showBtn();
+    }, { passive: true });
+
+    showBtn(); // start the timer immediately on load
+})();
