@@ -68,10 +68,23 @@ def run():
     """
     EXPERIMENTAL (Windows): Main input loop for vgamepad backend.
     Handles Xbox and DualShock 4 via ViGEmBus virtual controllers.
+    
+    REQUIREMENTS:
+    - ViGEmBus driver: https://github.com/nefarius/ViGEmBus/releases
+    - vgamepad Python package: pip install vgamepad
+    
+    PLATFORM NOTES:
+    - KBM input forwarding is NOT supported on Windows vgamepad backend
+    - Motion controls are NOT supported (XInput limitation)
+    - All gamepads default to Xbox 360 profile via XInput
     """
     global force_xboxone, enable_dualshock, enable_motion
 
+    print("[input] ========================================", flush=True)
     print("[input] Windows vgamepad backend initialized", flush=True)
+    print("[input] REQUIRES: ViGEmBus driver installed", flush=True)
+    print("[input] https://github.com/nefarius/ViGEmBus/releases", flush=True)
+    print("[input] ========================================", flush=True)
 
     for line in sys.stdin:
         line = line.strip()
@@ -236,3 +249,14 @@ def run():
             pass
         except Exception as e:
             print(f"[input] Unexpected error: {e}", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except KeyboardInterrupt:
+        print("[input] Windows vgamepad backend shutting down", flush=True)
+        sys.exit(0)
+    except Exception as e:
+        print(f"[input] Fatal error: {e}", flush=True)
+        sys.exit(1)

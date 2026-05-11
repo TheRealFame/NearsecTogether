@@ -401,13 +401,31 @@ function saveConfig(updates) {
 
 async function main() {
   // ── Platform Detection & Warnings ──────────────────────────────────────────
-  if (process.platform === 'win32' || process.platform === 'darwin') {
-    console.warn('');
-    console.warn('⚠  WARNING: Running on an EXPERIMENTAL platform.');
-    console.warn('   Windows and macOS support is untested and incomplete.');
-    console.warn('   Linux is the only fully supported host OS.');
-    console.warn('');
+  console.log("");
+  if (process.platform === 'win32') {
+    console.log("╔════════════════════════════════════════════════════════════╗");
+    console.log("║           WINDOWS - EXPERIMENTAL MODE                      ║");
+    console.log("╠════════════════════════════════════════════════════════════╣");
+    console.log("║ GAMEPAD:  Requires ViGEmBus driver                          ║");
+    console.log("║           https://github.com/nefarius/ViGEmBus/releases    ║");
+    console.log("║ INPUT:    KBM (keyboard/mouse) working                      ║");
+    console.log("║ AUDIO:    Using Windows Media Player (via PowerShell)       ║");
+    console.log("║ NOTES:    Process priority may be limited without admin    ║");
+    console.log("╚════════════════════════════════════════════════════════════╝");
+  } else if (process.platform === 'darwin') {
+    console.log("╔════════════════════════════════════════════════════════════╗");
+    console.log("║           macOS - EXPERIMENTAL MODE                        ║");
+    console.log("╠════════════════════════════════════════════════════════════╣");
+    console.log("║ GAMEPAD:  NOT SUPPORTED (no injection API on macOS)         ║");
+    console.log("║ INPUT:    KBM only (keyboard/mouse via pyautogui)           ║");
+    console.log("║ AUDIO:    Using afplay (native)                             ║");
+    console.log("║ SETUP:    pip3 install pyautogui                            ║");
+    console.log("║ NOTES:    Alternative: users can use native gamepad support║");
+    console.log("╚════════════════════════════════════════════════════════════╝");
+  } else if (process.platform === 'linux') {
+    console.log("✓ Linux - Fully supported (stable)");
   }
+  console.log("");
 
   const PORT = await findFreePort(3000);
   const LAN_IP = getLanIP();
@@ -553,13 +571,16 @@ async function main() {
   // ── Join & Leave Sounds ────────────────────────────────────────────────────
   const JOIN_SOUND = require('path').join(__dirname, '../../assets/joinsound.wav');
   const LEAVE_SOUND = require('path').join(__dirname, '../../assets/leavesound.wav');
-  const player = require('play-sound')(opts = {});
+  
+  // Use cross-platform audio utility instead of direct play-sound
+  const { playSound: playSoundUtil } = require('./audio-util');
 
   function playSound(file) {
     if (!fs.existsSync(file)) return;
-    // EXPERIMENTAL (Windows) and (macOS) use play-sound; stable on Linux
-    player.play(file, (err) => {
-      if (err && process.platform === 'linux') console.log("[audio] Could not play sound:", err.message);
+    playSoundUtil(file, (err) => {
+      if (err) {
+        console.log("[audio] Could not play sound on " + process.platform + ":", err.message);
+      }
     });
   }
   function playJoinSound() { playSound(JOIN_SOUND); }

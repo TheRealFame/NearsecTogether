@@ -5,6 +5,27 @@ const fs = require('fs');
 const { powerSaveBlocker } = require('electron');
 powerSaveBlocker.start('prevent-app-suspension');
 
+// ── Platform Detection & Startup Warnings ─────────────────────────────────────
+if (process.platform === 'win32') {
+  console.log('\n' + '='.repeat(60));
+  console.log('  ⚠ WINDOWS - EXPERIMENTAL MODE');
+  console.log('='.repeat(60));
+  console.log('  Gamepad Support: Requires ViGEmBus driver');
+  console.log('  URL: https://github.com/nefarius/ViGEmBus/releases');
+  console.log('  KBM Input: Supported (keyboard/mouse)');
+  console.log('  Audio: Using Windows Media Player');
+  console.log('='.repeat(60) + '\n');
+} else if (process.platform === 'darwin') {
+  console.log('\n' + '='.repeat(60));
+  console.log('  ⚠ macOS - EXPERIMENTAL MODE');
+  console.log('='.repeat(60));
+  console.log('  Gamepad Support: NOT available (no injection API)');
+  console.log('  KBM Input: Supported (keyboard/mouse via pyautogui)');
+  console.log('  Install: pip3 install pyautogui');
+  console.log('='.repeat(60) + '\n');
+} else if (process.platform === 'linux') {
+  console.log('[electron] Linux - Fully supported');
+}
 
 if (process.platform === 'darwin') {
   app.dock.setIcon(path.join(__dirname, 'assets/NearsecTogether.png'));
@@ -160,10 +181,21 @@ async function createWindow() {
   });
 
   // ── Raise process priority for smoother streaming ────────────────────────────
+  // PLATFORM NOTES:
+  // - Linux: Works without root if process already running as normal user
+  // - Windows: Requires admin rights to go above NORMAL_PRIORITY_CLASS
+  // - macOS: Works but may not grant significant boost without privileged helper
   try {
     os.setPriority(process.pid, os.constants.priority.PRIORITY_HIGH);
+    console.log('[electron] Process priority set to HIGH');
   } catch (e) {
-    console.warn('[electron] Could not set high priority:', e.message);
+    // Gracefully handle EACCES on Linux or insufficient privileges on Windows
+    if (e.code === 'EACCES') {
+      console.warn('[electron] Cannot set high priority (EACCES) - no admin rights on', process.platform);
+      console.warn('[electron] Continuing with normal priority. For optimal performance, run as administrator (Windows) or via sudo (Linux)');
+    } else {
+      console.warn('[electron] Could not set high priority:', e.message);
+    }
   }
 
   win.webContents.setWindowOpenHandler(({ url }) => {

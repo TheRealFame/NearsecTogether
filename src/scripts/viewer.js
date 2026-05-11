@@ -51,7 +51,7 @@ async function createPC() {
     pc.ontrack = (e) => {
         // KILL THE JITTER BUFFER: Forces 0ms display latency for fighting/FPS games
         try {
-            if (e.receiver) e.receiver.playoutDelayHint = 0.06;
+            if (e.receiver) e.receiver.playoutDelayHint = 0.035;
         } catch (err) {}
 
         const track = e.track;
@@ -473,12 +473,12 @@ function activateGamepad() {
         pmt.classList.add('active');
         pmt.textContent = 'Controller active';
     }
-    pollGamepad();
+    // 250Hz polling — rAF is capped at ~60Hz which loses rapid button presses
+    setInterval(pollGamepad, 4);
 }
 
 function pollGamepad() {
     if (!gpPolling) return;
-    gpRaf = requestAnimationFrame(pollGamepad);
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const now = Date.now();
 

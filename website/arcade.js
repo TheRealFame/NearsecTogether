@@ -93,6 +93,17 @@ arcadeChannel.bind('client-session-stop', (data) => {
     if (typeof filterCards === 'function') filterCards();
 });
 
+// Scan for 2 seconds, then hide loader and show empty state if nothing is found
+setTimeout(() => {
+    const loader = document.getElementById('arcadeLoader');
+    if (loader) loader.classList.add('hidden');
+
+    // Only show the empty state if we still haven't caught any sessions
+    if (sessions.length === 0) {
+        const empty = document.getElementById('emptyState');
+        if (empty) empty.style.display = 'flex';
+    }
+}, 2000);
 // --- Heartbeat Pruning Timer ---
 // Check every 5 seconds. If a host hasn't pinged in 25 seconds, remove it.
 setInterval(() => {
@@ -211,7 +222,10 @@ function filterCards() {
 function renderGrid() {
     const grid = document.getElementById('clientGrid');
     const empty = document.getElementById('emptyState');
+    const loader = document.getElementById('arcadeLoader');
     const countEl = document.getElementById('liveCount');
+
+    if (loader) loader.classList.add('hidden');
 
     if (countEl) {
         countEl.textContent = sessions.length === 0 ? 'No sessions' :
@@ -262,14 +276,30 @@ function buildCard(s, index) {
     <div class="latency-tag ${latClass}" id="lat-${s.id}">${latLabel}</div>
     </div>`;
 
+    // --- NEW TAG VALIDATION LOGIC ---
+    const ALLOWED_TAGS = [
+        "Platform Fighter", "Co-op", "Survival", "Modded",
+        "Retro", "RPG", "Anime", "Fighting", "Casual", "Tournament", "Story-Rich"
+    ];
+
+    // Filter out anything not on the whitelist and cap it at 3 tags so the UI doesn't break
+    const safeTags = (s.customTags || [])
+    .filter(tag => ALLOWED_TAGS.includes(tag))
+    .slice(0, 3);
+
+    const customTagsHtml = safeTags.map(t => `<span class="tag">${escHtml(t)}</span>`).join('');
+    // --------------------------------
+
     card.innerHTML = thumbHtml + `
     <div class="card-body">
     <div class="card-title">${escHtml(s.game)}</div>
     <div class="card-info">
     ${s.region ? `<span class="tag">${escHtml(s.region)}</span>` : ''}
     <span class="tag">${s.hasPin ? 'PIN Required' : 'Public'}</span>
+    ${customTagsHtml}
     </div>
     </div>`;
+
     return card;
 }
 

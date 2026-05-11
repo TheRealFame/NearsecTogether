@@ -25,6 +25,25 @@ Unlike traditional cloud gaming solutions that relied on massive data center pip
 
 ---
 
+## Platform Support
+
+| Feature | Linux | Windows | macOS |
+|---------|:-----:|:-------:|:-----:|
+| **WebRTC Streaming** | ✅ | ✅ | ✅ |
+| **Gamepad Support** | ✅ Full | ⚠️ Conditional¹ | ❌ None |
+| **Keyboard/Mouse Input** | ✅ Full | ⚠️ Limited | ✅ Full |
+| **Motion Controls** | ✅ | ❌ | ❌ |
+| **Multi-Controller** | ✅ | ⚠️ Limited | ❌ |
+| **Audio Playback** | ✅ | ✅ | ✅ |
+| **Display Capture** | ✅ | ✅ | ✅ |
+| **Stability** | **Production** | **Experimental** | **Experimental** |
+
+¹ Windows gamepad requires [ViGEmBus driver](https://github.com/nefarius/ViGEmBus/releases)
+
+📖 **[→ Detailed Platform Setup Guide](PLATFORM_SETUP.md)** — Step-by-step instructions, troubleshooting, and workarounds for each platform.
+
+---
+
 ## Getting Started
 
 ### What `./start` handles automatically
@@ -42,9 +61,11 @@ Unlike traditional cloud gaming solutions that relied on massive data center pip
 
 > **Controllers won't work without the Python setup.** The app will still launch and stream fine — viewers just won't be able to send gamepad or keyboard input to the host. Run `sudo ./linux_setup.sh` once after cloning to enable it.
 
+> **For Windows/macOS setup**, see [PLATFORM_SETUP.md](PLATFORM_SETUP.md) for detailed instructions, requirements, and known limitations for each platform.
+
 ### Step-by-step
 
-**Linux (recommended)**
+**Linux (recommended — fully supported)**
 ```bash
 # 1. One-time system setup (installs python-uinput, udev rules, uinput)
 sudo ./linux_setup.sh
@@ -53,8 +74,11 @@ sudo ./linux_setup.sh
 ./start
 ```
 
-**Windows / macOS** *(experimental — streaming only, no controller virtualization)*
+**Windows / macOS** *(experimental — see [PLATFORM_SETUP.md](PLATFORM_SETUP.md))*
 ```bash
+# For detailed setup instructions, troubleshooting, and known limitations:
+# → Read: PLATFORM_SETUP.md
+
 ./start
 ```
 

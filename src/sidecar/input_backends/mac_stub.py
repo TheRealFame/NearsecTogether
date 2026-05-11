@@ -90,11 +90,26 @@ def run():
     EXPERIMENTAL (macOS): Main input loop for pyautogui stub backend.
     Supports only keyboard and mouse input via pyautogui.
     Gamepad injection is not supported.
+    
+    PLATFORM NOTES:
+    - Gamepad injection is NOT supported on macOS (no Quartz/IOKit equivalent)
+    - Only keyboard and mouse passthrough available (via pyautogui)
+    - Motion controls are NOT supported
+    
+    ALTERNATIVE FOR GAMEPAD:
+    - macOS users can use third-party tools like Karabiner or ControllerMate
+    - Or use native macOS Bluetooth/USB gamepad support in games directly
     """
     global force_xboxone, enable_dualshock, enable_motion
 
-    print("[input] macOS pyautogui stub backend initialized (KBM only)", flush=True)
-    print("[input] WARNING: Gamepad injection is NOT supported on macOS", flush=True)
+    print("[input] ========================================", flush=True)
+    print("[input] macOS pyautogui stub backend initialized", flush=True)
+    print("[input] KBM only - Gamepad injection NOT supported", flush=True)
+    print("[input] ========================================", flush=True)
+    print("[input] WARNING: macOS has no gamepad injection API", flush=True)
+    print("[input] Viewers will NOT be able to use controllers", flush=True)
+    print("[input] Install pyautogui for KBM support: pip install pyautogui", flush=True)
+    print("[input] ========================================", flush=True)
 
     for line in sys.stdin:
         line = line.strip()
@@ -193,3 +208,14 @@ def run():
             pass
         except Exception as e:
             print(f"[input] Unexpected error: {e}", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except KeyboardInterrupt:
+        print("[input] macOS pyautogui backend shutting down", flush=True)
+        sys.exit(0)
+    except Exception as e:
+        print(f"[input] Fatal error: {e}", flush=True)
+        sys.exit(1)

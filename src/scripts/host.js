@@ -153,18 +153,7 @@ document.getElementById('fpsSelect').addEventListener('change', (e) => localStor
 
 
 
-async function fetchGameThumbnail(gameTitle) {
-    try {
-        // Notice there is no API key here! We just ask our own server.
-        const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodedTitle}`);
-        const data = await res.json();
-
-        return data.thumbnail || '';
-    } catch (e) {
-        console.warn('Could not fetch official thumbnail:', e);
-        return '';
-    }
-}
+// fetchGameThumbnail defined below
 
 function preferVideoCodec(pc) {
     const caps = RTCRtpSender.getCapabilities?.('video');
@@ -962,6 +951,15 @@ async function startArcadeSession() {
     }
 }
 
+// Helper to detect the host's operating system
+const getHostOS = () => {
+    const ua = navigator.userAgent;
+    if (ua.includes("Win")) return "Windows";
+    if (ua.includes("Mac")) return "macOS";
+    if (ua.includes("Linux")) return "Linux";
+    return "Unknown OS";
+};
+
 function _doArcadeRegister() {
     fetch('/api/info').then(r => r.json()).then(info => {
         if (!info.tunnelUrl) {
@@ -969,15 +967,6 @@ function _doArcadeRegister() {
             return;
         }
         log(`Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
-
-        const pingData = {
-            id: hostSessionId,
-            game: arcadeConfig.title,
-            thumbnail: arcadeConfig.thumbnail,
-            hasPin: arcadeConfig.requirePin,
-            url: info.tunnelUrl,
-            region: 'Pusher Host' // Feel free to make this dynamic later!
-        };
 
         // If host chose no PIN for this arcade session, disable it via the same path the toggle uses
         if (!arcadeConfig.requirePin && pinEnabled) {
@@ -989,14 +978,24 @@ function _doArcadeRegister() {
             log('PIN disabled for Arcade session', 'ok');
         }
 
+        // Helper to build the ping data dynamically so it updates on every heartbeat
+        const getPingData = () => ({
+            id: hostSessionId,
+            game: arcadeConfig.title,
+            thumbnail: arcadeConfig.thumbnail,
+            hasPin: arcadeConfig.requirePin,
+            url: info.tunnelUrl,
+            region: `${knownViewers.size}/${arcadeConfig.maxPlayers} Players • ${getHostOS()}`
+        });
+
         // Send an immediate ping to show up instantly
-        arcadeChannel.trigger('client-session-ping', pingData);
+        arcadeChannel.trigger('client-session-ping', getPingData());
         sysChat('Arcade Mode started: ' + arcadeConfig.title);
 
         // Keep pinging every 10 seconds to stay alive on the Arcade
         if (arcadePingInterval) clearInterval(arcadePingInterval);
         arcadePingInterval = setInterval(() => {
-            arcadeChannel.trigger('client-session-ping', pingData);
+            arcadeChannel.trigger('client-session-ping', getPingData());
         }, 10000);
 
     }).catch(() => log('Arcade: Could not read server info', 'err'));

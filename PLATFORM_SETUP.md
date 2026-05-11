@@ -1,0 +1,329 @@
+# NearsecTogether - Platform-Specific Setup Guide
+
+## Overview
+
+NearsecTogether is a cross-platform game streaming application with three levels of support:
+
+- **✓ Linux**: Fully supported and stable (primary target)
+- **⚠ Windows**: Experimental - mostly working with some limitations
+- **⚠ macOS**: Experimental - KBM only, no gamepad injection
+
+---
+
+## Linux Setup (Stable)
+
+### Prerequisites
+- Node.js v18+
+- Python 3.8+
+- uinput kernel module
+
+### Installation
+
+```bash
+# Clone/extract the repository
+cd NearsecTogether
+
+# Install Python dependencies
+pip3 install -r bin/requirements-linux.txt
+
+# Install Node.js dependencies
+npm install
+
+# Run the application (handles uinput permissions automatically)
+./bin/start.cmd
+# OR
+npm run electron
+```
+
+### What Works
+✓ Full gamepad support (buttons, analog sticks, triggers, D-Pad)
+✓ Keyboard and mouse input passthrough
+✓ Motion controls (6DOF)
+✓ Multiple concurrent controllers
+✓ Native uinput driver (no external tools needed)
+
+### Notes
+- The `start.cmd` script automatically loads the `uinput` kernel module
+- You may be prompted for `sudo` password for uinput permissions
+- To avoid sudo, add your user to the input group:
+  ```bash
+  sudo usermod -a -G input $USER
+  # Logout and login for changes to take effect
+  ```
+
+---
+
+## Windows Setup (Experimental)
+
+### Prerequisites
+
+**Mandatory:**
+- Node.js v18+ (https://nodejs.org/)
+- Python 3.8+ (https://www.python.org/downloads/)
+
+**For Full Gamepad Support:**
+- ViGEmBus driver (https://github.com/nefarius/ViGEmBus/releases)
+  - Download the latest `.exe` installer
+  - Run as Administrator and reboot
+  - This provides virtual Xbox controller injection
+
+### Installation
+
+```bash
+# 1. Extract NearsecTogether to a folder
+# 2. Open PowerShell/Command Prompt (right-click "Run as administrator" for better performance)
+
+# 3. Navigate to the folder
+cd C:\path\to\NearsecTogether
+
+# 4. Install Python dependencies
+pip install -r bin/requirements-windows.txt
+
+# 5. Install Node.js dependencies
+npm install
+
+# 6. (Optional but recommended) Install ViGEmBus driver
+#    Download from: https://github.com/nefarius/ViGEmBus/releases
+#    Run installer and reboot
+
+# 7. Run the application
+node bin/start.cmd
+# OR for Electron UI:
+npm run electron
+```
+
+### What Works
+✓ WebRTC streaming (core feature)
+✓ Keyboard and mouse input forwarding
+✓ Audio playback (via Windows Media Player)
+✓ Gamepad injection (if ViGEmBus installed)
+
+### Known Limitations
+✗ Gamepad will NOT work without ViGEmBus driver
+✗ KBM input forwarding has limited key coverage (basic WASD/arrows/mouse)
+✗ Process priority may be limited without admin rights
+⚠ First connection may show system permission dialogs
+
+### Troubleshooting
+
+**"vgamepad not installed" error:**
+```bash
+pip install vgamepad
+```
+
+**Gamepad not working:**
+- Verify ViGEmBus is installed: Device Manager → Other devices → ViGEmBus Device
+- If not present, download and install from: https://github.com/nefarius/ViGEmBus/releases
+- Reboot after installation
+
+**Audio not playing:**
+- Check that PowerShell can execute: `powershell -Command "Write-Host 'test'"`
+- If disabled, enable scripts in PowerShell (run as admin):
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
+
+---
+
+## macOS Setup (Experimental)
+
+### Prerequisites
+
+**Mandatory:**
+- Node.js v18+ (https://nodejs.org/ or `brew install node`)
+- Python 3.8+ (usually pre-installed, or `brew install python@3.11`)
+
+### Installation
+
+```bash
+# 1. Extract NearsecTogether to a folder
+# 2. Open Terminal
+
+# 3. Navigate to the folder
+cd /path/to/NearsecTogether
+
+# 4. Install Python dependencies
+pip3 install -r bin/requirements-mac.txt
+
+# 5. Install Node.js dependencies
+npm install
+
+# 6. Run the application
+./bin/start.cmd
+# OR for Electron UI:
+npm run electron
+```
+
+### What Works
+✓ WebRTC streaming (core feature)
+✓ Keyboard and mouse input passthrough (via pyautogui)
+✓ Audio playback (native afplay)
+✓ Screen capture and display
+
+### Known Limitations
+✗ **NO GAMEPAD SUPPORT** - macOS has no equivalent API to Linux uinput or Windows ViGEmBus
+✗ KBM input only (keyboard/mouse passthrough)
+✗ Motion controls not supported
+
+### Workarounds for Gamepad
+
+Since macOS doesn't support virtual controller injection, users have these options:
+
+1. **Native gamepad support in games**: Many games support native macOS GameKit or native gamepad support
+2. **Third-party tools**:
+   - Karabiner-Elements (open source keyboard mapper)
+   - ControllerMate (paid, more features)
+   - Joystick Doctor (free, limited)
+3. **Game-specific workarounds**: Some games have built-in keyboard remapping
+
+### Troubleshooting
+
+**"pyautogui not installed" error:**
+```bash
+pip3 install pyautogui
+```
+
+**KBM input not working:**
+- Check Terminal has accessibility permissions:
+  - System Settings → Privacy & Security → Accessibility
+  - Add Terminal or iTerm2 to the list
+
+**Audio not playing:**
+- Check afplay is available: `which afplay`
+- Should be present on all modern macOS versions
+
+---
+
+## Platform Comparison
+
+| Feature | Linux | Windows | macOS |
+|---------|-------|---------|-------|
+| **WebRTC Streaming** | ✓ | ✓ | ✓ |
+| **Gamepad Support** | ✓ Full | ⚠ Conditional* | ✗ None |
+| **Keyboard/Mouse** | ✓ Full | ⚠ Limited | ✓ Full |
+| **Motion Controls** | ✓ | ✗ | ✗ |
+| **Multiple Controllers** | ✓ | ⚠ Limited | ✗ |
+| **Audio Playback** | ✓ | ⚠ PowerShell | ✓ afplay |
+| **Display Capture** | ✓ | ✓ | ✓ |
+| **Admin Required** | Optional | Recommended | Optional |
+| **Stability** | Production | Experimental | Experimental |
+
+*Windows gamepad requires ViGEmBus driver
+
+---
+
+## Common Issues Across Platforms
+
+### Port 3000 Already in Use
+```bash
+# Linux/macOS: Kill the process
+lsof -ti:3000 | xargs kill -9
+
+# Windows (PowerShell as Admin):
+netstat -ano | findstr :3000
+taskkill /PID <PID> /F
+```
+
+### Node.js/npm Not Found
+```bash
+# Verify installation
+node --version
+npm --version
+
+# Install Node.js from https://nodejs.org/
+# Or use package manager:
+# Ubuntu: sudo apt install nodejs npm
+# Fedora: sudo dnf install nodejs npm
+# macOS: brew install node
+# Windows: Download installer
+```
+
+### Python Not Found
+```bash
+# Verify installation
+python3 --version
+
+# Install Python 3 from https://www.python.org/
+# Or use package manager:
+# Ubuntu: sudo apt install python3 python3-pip
+# Fedora: sudo dnf install python3
+# macOS: brew install python@3.11
+# Windows: Download installer
+```
+
+### Socket/Permission Errors
+- **Linux**: Run with sudo or fix uinput permissions (see Linux setup)
+- **Windows**: Run PowerShell as Administrator
+- **macOS**: Grant Terminal accessibility permissions (System Settings → Privacy & Security)
+
+---
+
+## Environment Variables
+
+Optional configuration via `.env` file:
+
+```bash
+CF_TOKEN=<your-cloudflare-token>    # For persistent tunnels
+CUSTOM_URL=<custom-domain>           # Your tunnel URL
+USE_VPS=false                        # Enable VPS tunnel mode
+TUNNEL=cloudflared                   # Force specific tunnel provider
+```
+
+---
+
+## Performance Tips
+
+### Linux
+- Run with admin rights for full process priority
+- Use native GPU drivers for better encoding
+- Check GPU is being used: `vgpu_device -l`
+
+### Windows
+- Run as Administrator for better performance
+- Disable Windows Game Bar to reduce interference
+- Check GPU is working: Device Manager → Display adapters
+
+### macOS
+- Disable system screen effects for better performance
+- Close other bandwidth-heavy applications
+- Use 5GHz WiFi for wireless streaming
+
+---
+
+## Getting Help
+
+If you encounter issues:
+1. Check the console output for specific error messages
+2. Verify all prerequisites are installed
+3. Review the platform-specific troubleshooting section above
+4. Check .env configuration
+5. Try on Linux if possible to confirm it's a platform-specific issue
+
+For bugs and feature requests, see the main README.md
+
+---
+
+## Quick Reference Commands
+
+### Linux
+```bash
+./bin/start.cmd
+# OR
+npm run electron
+```
+
+### Windows (PowerShell)
+```powershell
+npm run electron
+# OR
+node bin/start.cmd
+```
+
+### macOS
+```bash
+./bin/start.cmd
+# OR
+npm run electron
+```
+
+All platforms will start an Electron window (if available) or terminal-based server on http://localhost:3000/host

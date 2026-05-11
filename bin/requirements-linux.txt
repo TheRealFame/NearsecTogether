@@ -1,1 +1,42 @@
+# NearsecTogether Linux Requirements (STABLE & PRIMARY TARGET)
+#
+# MANDATORY:
+#   - Node.js (v18+): https://nodejs.org/
+#   - Python 3.8+: usually pre-installed
+#   - npm: comes with Node.js
+#
+# FOR GAMEPAD & KBM SUPPORT:
+#   - python-uinput package: virtual input device driver (see below)
+#   - uinput kernel module: sudo modprobe uinput
+#   - Access to /dev/uinput (may require chmod or sudo)
+#
+# SETUP INSTRUCTIONS:
+#   1. Install Node.js (if not present)
+#      sudo apt install nodejs npm  # Debian/Ubuntu
+#      sudo dnf install nodejs npm  # Fedora/RHEL
+#   2. Extract NearsecTogether to a folder
+#   3. cd NearsecTogether
+#   4. pip3 install -r bin/requirements-linux.txt
+#   5. npm install
+#   6. ./bin/start.cmd  # Will auto-load uinput module and set permissions
+#      OR: npm run electron
+#
+# PERMISSION NOTES:
+#   - start.cmd script automatically handles:
+#     * Loading uinput kernel module (sudo modprobe uinput)
+#     * Setting /dev/uinput permissions (sudo chmod 666 /dev/uinput)
+#   - If you want to avoid sudo entirely:
+#     1. Run once with sudo to load uinput
+#     2. Add your user to input group: sudo usermod -a -G input $USER
+#     3. Logout/login for group to take effect
+#
+# SUPPORTED FEATURES:
+#   ✓ Full gamepad support (all W3C GamePad API buttons/axes)
+#   ✓ Keyboard and mouse passthrough
+#   ✓ Motion controls (6DOF)
+#   ✓ Multiple concurrent controllers
+#   ✓ DualShock 4 / PS5 / Xbox profiles
+#
+# Python package for virtual input device injection
 python-uinput
+

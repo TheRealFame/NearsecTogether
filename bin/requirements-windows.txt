@@ -1,2 +1,34 @@
+# NearsecTogether Windows Requirements
+# 
+# MANDATORY:
+#   - Node.js (v18+): https://nodejs.org/
+#   - Python 3.8+: https://www.python.org/downloads/
+#   - npm: comes with Node.js
+#
+# FOR GAMEPAD SUPPORT:
+#   - ViGEmBus driver: https://github.com/nefarius/ViGEmBus/releases
+#     (Required for virtual Xbox controller injection)
+#   - vgamepad Python package: installed by pip (see below)
+#
+# FOR KBM SUPPORT (Keyboard/Mouse):
+#   - pyautogui Python package: installed by pip (see below)
+#
+# SETUP INSTRUCTIONS:
+#   1. Install Node.js and Python
+#   2. Extract NearsecTogether to a folder
+#   3. Open PowerShell/Command Prompt in the NearsecTogether folder
+#   4. Run: pip install -r bin/requirements-windows.txt
+#   5. Run: npm install
+#   6. (Optional) Install ViGEmBus driver for full gamepad support
+#   7. Run: node bin/start.cmd  OR  npm run electron
+#
+# KNOWN ISSUES:
+#   - Gamepad will NOT work without ViGEmBus driver installed
+#   - KBM forwarding works but has limited input filtering on Windows
+#   - Audio playback uses Windows Media Player via PowerShell
+#   - Process priority may be limited without admin privileges
+#
+# Python packages for virtual controller injection
 vgamepad
 pyautogui
+

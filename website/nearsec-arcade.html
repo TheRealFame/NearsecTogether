@@ -77,6 +77,35 @@
     }
     .search-wrap input::placeholder { color: var(--muted); }
 
+    /* ── Arcade Loader ── */
+    .arcade-loader {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 80px 20px;
+      gap: 16px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .arcade-loader.hidden {
+      display: none !important;
+    }
+    .arcade-loader .spinner {
+      width: 42px;
+      height: 42px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     /* ── Floating Gamepad Button ── */
     .gamepad-btn {
       position: fixed;
@@ -455,6 +484,13 @@
   </nav>
 
   <div class="main-grid" id="clientGrid">
+
+    <div class="arcade-loader" id="arcadeLoader">
+      <div class="spinner"></div>
+      <div>Scanning for sessions...</div>
+    </div>
+
+    <div class="empty-state" id="emptyState" style="display:none;">
     <div class="empty-state" id="emptyState" style="display:none;">
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
