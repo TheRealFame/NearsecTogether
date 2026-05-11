@@ -916,7 +916,8 @@ function closeArcadeModal() {
 // Function to securely fetch official game art via our Cloudflare proxy
 async function fetchGameThumbnail(gameTitle) {
     try {
-        const res = await fetch(`/api/game-art?title=${encodeURIComponent(gameTitle)}`);
+        // Must use the absolute URL to hit your Cloudflare Worker, not the local Node server
+        const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodeURIComponent(gameTitle)}`);
         const data = await res.json();
         return data.thumbnail || '';
     } catch (e) {
