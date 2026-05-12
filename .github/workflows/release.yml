@@ -2,8 +2,8 @@ name: Build & Release NearsecTogether
 
 on:
   push:
-    tags:
-      - 'v*' # Triggers only when you push a version tag like v1.0.1
+    branches:
+      - main
 
 jobs:
   release:
