@@ -213,8 +213,20 @@ function log(msg, cls) {
     if (mini) { mini.textContent = msg; mini.style.color = cls === 'ok' ? 'var(--accent)' : cls === 'err' ? 'var(--danger)' : cls === 'warn' ? 'var(--warn)' : '#333'; }
 }
 
+let lastChatMsg = '';  // Track last message to prevent duplicates
+let lastChatTime = 0;  // Track timestamp to allow same message after delay
+
 function appendChat(name, text, isMe) {
     const el = document.getElementById('chatLog');
+    // Prevent duplicate messages within same second (sender-side deduplication)
+    if (isMe) {
+        const now = Date.now();
+        if (text === lastChatMsg && now - lastChatTime < 1000) {
+            return;  // Ignore duplicate
+        }
+        lastChatMsg = text;
+        lastChatTime = now;
+    }
     const d = document.createElement('div');
     d.className = 'cmsg';
     d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;

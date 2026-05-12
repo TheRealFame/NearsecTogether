@@ -6,7 +6,7 @@ NearsecTogether is a cross-platform game streaming application with three levels
 
 - **✓ Linux**: Fully supported and stable (primary target)
 - **⚠ Windows**: Experimental - mostly working with some limitations
-- **⚠ macOS**: Experimental - KBM only, no gamepad injection
+- **⚠ macOS**: Experimental - Gamepad emulation via keyboard/mouse, KBM passthrough
 
 ---
 
@@ -161,10 +161,12 @@ A window should open with the NearsecTogether application!
 
 ```bash
 # 1. Extract NearsecTogether to a folder
+
 # 2. Open PowerShell/Command Prompt (right-click "Run as administrator" for better performance)
 
 # 3. Navigate to the folder
 cd C:\path\to\NearsecTogether
+And run with "PowerShell.exe -ExecutionPolicy Bypass -File .\windows_setup.ps1"
 
 # 4. Install Python dependencies
 pip install -r bin/requirements-windows.txt
@@ -241,6 +243,10 @@ pip install vgamepad
 - Node.js v18+ (https://nodejs.org/ or `brew install node`)
 - Python 3.8+ (usually pre-installed, or `brew install python@3.11`)
 
+**For Gamepad Emulation (Optional but Recommended):**
+- **Accessibility Permission** required for pynput to work
+  - See "Permissions" section below
+
 ### Installation
 
 ```bash
@@ -250,13 +256,17 @@ pip install vgamepad
 # 3. Navigate to the folder
 cd /path/to/NearsecTogether
 
-# 4. Install Python dependencies
+# 4. Install Python dependencies (includes pynput for gamepad emulation)
 pip3 install -r bin/requirements-mac.txt
 
 # 5. Install Node.js dependencies
 npm install
 
-# 6. Run the application
+# 6. Grant Accessibility permission (required for gamepad emulation)
+#    → System Settings → Security & Privacy → Accessibility
+#    → Add NearsecTogether to the allowed apps list
+
+# 7. Run the application
 ./bin/start.cmd
 # OR for Electron UI:
 npm run electron
@@ -265,26 +275,55 @@ npm run electron
 ### What Works
 ✓ WebRTC streaming (core feature)
 ✓ Keyboard and mouse input passthrough (via pyautogui)
+✓ **NEW: Gamepad emulation** - translates controller input to keyboard/mouse events
 ✓ Audio playback (native afplay)
 ✓ Screen capture and display
+✓ Steam Input remapping (works with emulated keys/mouse)
+
+### Gamepad Emulation Details
+
+**How it works:**
+- Gamepad input is translated to keyboard and mouse events
+- Left stick → WASD keys (movement)
+- Right stick → Mouse movement (camera)
+- A button → Space (action/jump)
+- B button → Escape (menu)
+- X button → R (reload/interact)
+- Y button → E (equipment/ability)
+- LB/RB → Shift/Cmd modifiers
+- Triggers → Mouse clicks
+
+**Compatibility:**
+- Works with any game that accepts keyboard/mouse input
+- Compatible with Steam Input for additional remapping
+- Cross-architecture: Works on Intel and Apple Silicon (M1/M2/M3)
+
+### Permissions Required
+
+**Accessibility Permission** (for pynput gamepad emulation):
+1. Open System Settings
+2. Go to **Security & Privacy** → **Accessibility**
+3. Click the lock to unlock it
+4. Add your Terminal or iTerm2 application to the list
+5. Or add the NearsecTogether application if running as standalone Electron app
 
 ### Known Limitations
-✗ **NO GAMEPAD SUPPORT** - macOS has no equivalent API to Linux uinput or Windows ViGEmBus
-✗ KBM input only (keyboard/mouse passthrough)
+✗ No direct gamepad injection (macOS system limitation)
+✗ Gamepad input emulated via keyboard/mouse (not native controller API)
 ✗ Motion controls not supported
-
-### Workarounds for Gamepad
-
-Since macOS doesn't support virtual controller injection, users have these options:
-
-1. **Native gamepad support in games**: Many games support native macOS GameKit or native gamepad support
-2. **Third-party tools**:
-   - Karabiner-Elements (open source keyboard mapper)
-   - ControllerMate (paid, more features)
-   - Joystick Doctor (free, limited)
-3. **Game-specific workarounds**: Some games have built-in keyboard remapping
+✗ One viewer/gamepad at a time (not multiple concurrent controllers)
 
 ### Troubleshooting
+
+**"pynput not installed" error:**
+```bash
+pip3 install pynput
+```
+
+**Gamepad emulation not working:**
+- Verify Accessibility permission is granted (see Permissions section)
+- Try restarting the application after granting permission
+- Check console for permission error messages
 
 **"pyautogui not installed" error:**
 ```bash
@@ -307,7 +346,7 @@ pip3 install pyautogui
 | Feature | Linux | Windows | macOS |
 |---------|-------|---------|-------|
 | **WebRTC Streaming** | ✓ | ✓ | ✓ |
-| **Gamepad Support** | ✓ Full | ⚠ Conditional* | ✗ None |
+| **Gamepad Support** | ✓ Full | ⚠ Conditional* | ⚠ Emulated** |
 | **Keyboard/Mouse** | ✓ Full | ⚠ Limited | ✓ Full |
 | **Motion Controls** | ✓ | ✗ | ✗ |
 | **Multiple Controllers** | ✓ | ⚠ Limited | ✗ |
@@ -315,6 +354,9 @@ pip3 install pyautogui
 | **Display Capture** | ✓ | ✓ | ✓ |
 | **Admin Required** | Optional | Recommended | Optional |
 | **Stability** | Production | Experimental | Experimental |
+
+*Windows: Requires ViGEmBus driver for gamepad injection
+**macOS: Gamepad input translated to keyboard/mouse events (works with most games)
 
 *Windows gamepad requires ViGEmBus driver
 

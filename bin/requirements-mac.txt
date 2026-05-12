@@ -5,14 +5,14 @@
 #   - Python 3.8+: https://www.python.org/
 #   - npm: comes with Node.js
 #
-# FOR KBM SUPPORT (Keyboard/Mouse only):
+# FOR KBM SUPPORT (Keyboard/Mouse):
 #   - pyautogui Python package: installed by pip (see below)
 #
-# FOR GAMEPAD SUPPORT:
-#   - NOT SUPPORTED on macOS via NearsecTogether
-#   - macOS has no equivalent to Linux uinput or Windows ViGEmBus
-#   - Workaround: Use native macOS gamepad support in games directly
-#   - Alternative: Install third-party tools like Karabiner or ControllerMate
+# FOR GAMEPAD SUPPORT (Experimental - KBM Emulation):
+#   - pynput Python package: translates gamepad input to keyboard/mouse
+#   - Requires Accessibility permission (System Settings → Security & Privacy)
+#   - Supports gamepad through emulated keyboard/mouse events
+#   - Works with Steam Input for remapping
 #
 # SETUP INSTRUCTIONS:
 #   1. Install Node.js and Python 3 (e.g., via Homebrew or direct download)
@@ -21,14 +21,18 @@
 #   3. Open Terminal in the NearsecTogether folder
 #   4. Run: pip3 install -r bin/requirements-mac.txt
 #   5. Run: npm install
-#   6. Run: ./bin/start.cmd  OR  npm run electron
+#   6. Grant Accessibility permission:
+#      → System Settings → Security & Privacy → Accessibility
+#      → Add the NearsecTogether app to the list
+#   7. Run: ./bin/start.cmd  OR  npm run electron
 #
 # KNOWN LIMITATIONS:
-#   - Gamepad injection is NOT supported on macOS (no system API)
-#   - Only keyboard/mouse passthrough available (via pyautogui)
+#   - No direct gamepad injection (macOS system limitation)
+#   - Gamepad input is emulated via keyboard/mouse events (works with games)
 #   - Motion controls not supported
 #   - Audio playback uses native afplay command
 #
-# Python packages for KBM-only operation
+# Python packages
 pyautogui
+pynput
 

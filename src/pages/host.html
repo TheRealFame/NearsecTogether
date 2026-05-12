@@ -570,30 +570,46 @@
 
     /* Chat */
     .chat {
-      height: 180px;
+      height: clamp(150px, 25vh, 220px);
       border-top: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      min-height: 120px;
     }
 
     .chat-log {
       flex: 1;
       overflow-y: auto;
-      padding: 6px 10px;
-      font-size: 10px;
+      padding: 8px 10px;
+      font-size: clamp(10px, 1vmin, 13px);
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 3px;
+    }
+
+    .chat-log::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .chat-log::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .chat-log::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
     }
 
     .cmsg {
       line-height: 1.5;
       color: #888;
+      word-break: break-word;
     }
 
     .cname {
       color: var(--accent);
+      font-weight: 600;
       margin-right: 4px;
     }
 
@@ -605,31 +621,50 @@
       display: flex;
       border-top: 1px solid var(--border);
       flex-shrink: 0;
+      gap: 4px;
+      padding: 4px;
     }
 
     .chat-input input {
       flex: 1;
-      background: #111;
-      border: none;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
       color: var(--text);
       font-family: inherit;
-      font-size: 10px;
+      font-size: clamp(10px, 1vmin, 13px);
       padding: 6px 8px;
       outline: none;
+      transition: all .15s;
+      min-width: 0;
+    }
+
+    .chat-input input:focus {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
     }
 
     .chat-input button {
-      background: none;
+      background: linear-gradient(135deg, var(--accent), rgba(255, 100, 80, 0.8));
       border: none;
-      border-left: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 10px;
-      padding: 0 10px;
+      border-radius: 4px;
+      color: white;
+      padding: clamp(4px, 0.8vh, 8px) clamp(8px, 1.5vw, 12px);
       cursor: pointer;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
     }
 
     .chat-input button:hover {
-      color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(255, 100, 80, 0.2);
+    }
+
+    .chat-input button:active {
+      transform: translateY(0);
     }
 
     /* ── Gear button ────────────────────────────────────────────────── */
@@ -863,6 +898,73 @@
       font-size: 11px;
       font-weight: 700;
       cursor: pointer;
+      transition: all .15s;
+      background: #2c2f33;
+      border: 1px solid #444;
+      color: #ddd;
+    }
+
+    .modal-footer button:hover { background: #404249; }
+    .modal-footer button.primary { background: var(--accent); color: #000; border: 1px solid var(--accent); }
+    .modal-footer button.primary:hover { background: #d495ff; }
+
+    /* ── Source/Window Selection Modal ───────────────────────────────── */
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      padding: 16px;
+      max-height: 60vh;
+      overflow-y: auto;
+      background: #1e1f22;
+    }
+
+    .source-card {
+      background: #2b2d31;
+      border: 2px solid #404249;
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+      transition: all .15s;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .source-card:hover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .source-card.selected {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      box-shadow: 0 0 12px var(--accent-dim);
+    }
+
+    .source-thumbnail {
+      width: 100%;
+      height: 120px;
+      background: #000;
+      border-radius: 4px;
+      object-fit: cover;
+      border: 1px solid #404249;
+    }
+
+    .source-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .source-type {
+      font-size: 10px;
+      color: #888;
+    }
       border: none;
       transition: all 0.2s;
     }
@@ -1252,7 +1354,7 @@
       <div class="chat">
         <div class="chat-log" id="chatLog"></div>
         <div class="chat-input">
-          <input id="chatMsg" placeholder="Message..." maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
+          <input id="chatMsg" placeholder="Message..." maxlength="300" onkeydown="if(event.key==='Enter'){event.preventDefault();sendChat()}">
           <button onclick="sendChat()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
               <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />

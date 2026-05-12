@@ -709,13 +709,26 @@ function submitPin() {
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
+let lastChatMsg = '';  // Track last message to prevent duplicates
+let lastChatTime = 0;  // Track timestamp to allow same message after delay
+
 function appendChat(name, text, isMe) {
     const el = document.getElementById('chatLog');
+    // Prevent duplicate messages within same second (sender-side deduplication)
+    if (isMe) {
+        const now = Date.now();
+        if (text === lastChatMsg && now - lastChatTime < 1000) {
+            return;  // Ignore duplicate
+        }
+        lastChatMsg = text;
+        lastChatTime = now;
+    }
     const d = document.createElement('div');
     d.className = 'cmsg';
     d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
     el.appendChild(d); el.scrollTop = el.scrollHeight;
 }
+
 function sendChat() {
     const inp = document.getElementById('chatMsg');
     const msg = inp.value.trim();
