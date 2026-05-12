@@ -13,11 +13,12 @@ const CONTROLLER_GUIDE_STORAGE_KEY = 'ns_controller_guide_ack';
 function openControllerGuide() { document.getElementById('controllerGuideModal').classList.remove('hidden'); }
 function closeControllerGuide() { document.getElementById('controllerGuideModal').classList.add('hidden'); }
 function acknowledgeControllerGuide() {
-    localStorage.setItem(CONTROLLER_GUIDE_STORAGE_KEY, 'true');
+    // Removed localStorage - guide now shows every time to ensure people see it
     closeControllerGuide();
 }
 function maybeShowControllerGuide() {
-    if (!localStorage.getItem(CONTROLLER_GUIDE_STORAGE_KEY)) setTimeout(() => { openControllerGuide(); }, 700);
+    // Always show guide on first connect (no localStorage check)
+    setTimeout(() => { openControllerGuide(); }, 700);
 }
 
 // ── WebRTC Peer Connection (Restored) ─────────────────────────────────────────
@@ -471,7 +472,7 @@ function activateGamepad() {
     const pmt = document.getElementById('gpPrompt');
     if(pmt) {
         pmt.classList.add('active');
-        pmt.textContent = 'Controller active';
+        pmt.textContent = 'Grab A Gamepad!';
     }
     // 250Hz polling — rAF is capped at ~60Hz which loses rapid button presses
     setInterval(pollGamepad, 4);
@@ -741,7 +742,7 @@ function toggleChat() { document.getElementById('chatPanel').classList.toggle('o
 function toggleAudio() {
     audioMuted = !audioMuted;
     if (video.srcObject) video.srcObject.getAudioTracks().forEach(t => { t.enabled = !audioMuted; });
-    document.getElementById('audBtn').textContent = audioMuted ? '♪ Muted' : '♪ Audio';
+    document.getElementById('audBtn').textContent = audioMuted ? 'Muted' : 'Audio';
 }
 
 // ── Screen wake lock — prevent phone sleeping during stream ──────────────────

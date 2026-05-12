@@ -239,10 +239,155 @@ kbm_devices = {}   # pad_id → KBM uinput.Device (only exists in kbm/kbm_emulat
 device_profiles = {}
 viewer_modes    = {}
 
+# ── Raw KBM State & Panic Mode ─────────────────────────────────────────────────
+kbm_pressed_keys = {}  # viewer_id → set of currently pressed key codes
+panic_mode = False     # Global panic toggle to freeze all KBM input
+
+# ── JS-to-Uinput Mapping Dictionary ────────────────────────────────────────────
+JS_TO_UINPUT_MAP = {
+    # Letters (A-Z)
+    'KeyA': 'KEY_A', 'KeyB': 'KEY_B', 'KeyC': 'KEY_C', 'KeyD': 'KEY_D',
+    'KeyE': 'KEY_E', 'KeyF': 'KEY_F', 'KeyG': 'KEY_G', 'KeyH': 'KEY_H',
+    'KeyI': 'KEY_I', 'KeyJ': 'KEY_J', 'KeyK': 'KEY_K', 'KeyL': 'KEY_L',
+    'KeyM': 'KEY_M', 'KeyN': 'KEY_N', 'KeyO': 'KEY_O', 'KeyP': 'KEY_P',
+    'KeyQ': 'KEY_Q', 'KeyR': 'KEY_R', 'KeyS': 'KEY_S', 'KeyT': 'KEY_T',
+    'KeyU': 'KEY_U', 'KeyV': 'KEY_V', 'KeyW': 'KEY_W', 'KeyX': 'KEY_X',
+    'KeyY': 'KEY_Y', 'KeyZ': 'KEY_Z',
+    
+    # Numbers (0-9)
+    'Digit0': 'KEY_0', 'Digit1': 'KEY_1', 'Digit2': 'KEY_2', 'Digit3': 'KEY_3',
+    'Digit4': 'KEY_4', 'Digit5': 'KEY_5', 'Digit6': 'KEY_6', 'Digit7': 'KEY_7',
+    'Digit8': 'KEY_8', 'Digit9': 'KEY_9',
+    
+    # Function Keys (F1-F12)
+    'F1': 'KEY_F1', 'F2': 'KEY_F2', 'F3': 'KEY_F3', 'F4': 'KEY_F4',
+    'F5': 'KEY_F5', 'F6': 'KEY_F6', 'F7': 'KEY_F7', 'F8': 'KEY_F8',
+    'F9': 'KEY_F9', 'F10': 'KEY_F10', 'F11': 'KEY_F11', 'F12': 'KEY_F12',
+    
+    # Control Keys
+    'Space': 'KEY_SPACE',
+    'Enter': 'KEY_ENTER',
+    'Escape': 'KEY_ESC',
+    'Tab': 'KEY_TAB',
+    'Backspace': 'KEY_BACKSPACE',
+    'Delete': 'KEY_DELETE',
+    'Insert': 'KEY_INSERT',
+    'Home': 'KEY_HOME',
+    'End': 'KEY_END',
+    'PageUp': 'KEY_PAGEUP',
+    'PageDown': 'KEY_PAGEDOWN',
+    
+    # Arrow Keys
+    'ArrowUp': 'KEY_UP',
+    'ArrowDown': 'KEY_DOWN',
+    'ArrowLeft': 'KEY_LEFT',
+    'ArrowRight': 'KEY_RIGHT',
+    
+    # Modifiers
+    'ShiftLeft': 'KEY_LEFTSHIFT',
+    'ShiftRight': 'KEY_RIGHTSHIFT',
+    'ControlLeft': 'KEY_LEFTCTRL',
+    'ControlRight': 'KEY_RIGHTCTRL',
+    'AltLeft': 'KEY_LEFTALT',
+    'AltRight': 'KEY_RIGHTALT',
+    'MetaLeft': 'KEY_LEFTMETA',
+    'MetaRight': 'KEY_RIGHTMETA',
+    
+    # Already mapped uinput strings (in case viewer sends these directly)
+    'KEY_A': 'KEY_A', 'KEY_B': 'KEY_B', 'KEY_C': 'KEY_C', 'KEY_D': 'KEY_D',
+    'KEY_W': 'KEY_W', 'KEY_S': 'KEY_S', 'KEY_E': 'KEY_E', 'KEY_R': 'KEY_R',
+    'KEY_Q': 'KEY_Q', 'KEY_F': 'KEY_F', 'KEY_Z': 'KEY_Z', 'KEY_X': 'KEY_X',
+    'KEY_V': 'KEY_V', 'KEY_SPACE': 'KEY_SPACE', 'KEY_ENTER': 'KEY_ENTER', 'KEY_ESC': 'KEY_ESC',
+    'KEY_LEFTSHIFT': 'KEY_LEFTSHIFT', 'KEY_LEFTCTRL': 'KEY_LEFTCTRL', 'KEY_TAB': 'KEY_TAB',
+    
+    # Mouse Buttons
+    'BTN_LEFT': 'BTN_LEFT',
+    'BTN_RIGHT': 'BTN_RIGHT',
+    'BTN_MIDDLE': 'BTN_MIDDLE',
+}
+
+
+def flush_kbm_device(kbm, viewer_id):
+    """
+    Release all currently pressed keys/buttons for a viewer.
+    Called on disconnect or panic toggle to prevent stuck keys.
+    """
+    if viewer_id not in kbm_pressed_keys:
+        return
+    
+    pressed = kbm_pressed_keys[viewer_id]
+    if not pressed:
+        return
+    
+    try:
+        for key_code in list(pressed):
+            try:
+                if hasattr(uinput, key_code):
+                    kbm.emit(getattr(uinput, key_code), 0, syn=False)
+            except Exception as e:
+                print(f"[input] Error releasing {key_code} for {viewer_id}: {e}", flush=True)
+        
+        kbm.syn()
+    except Exception as e:
+        print(f"[input] Error flushing KBM for {viewer_id}: {e}", flush=True)
+    finally:
+        kbm_pressed_keys[viewer_id] = set()
+        print(f"[input] Flushed all KBM keys for {viewer_id}", flush=True)
+
+
+def handle_kbm_raw(kbm, viewer_id, msg):
+    """
+    Handle Raw KBM mode with robust key mapping, panic support, and stuck-key prevention.
+    """
+    global panic_mode
+
+    if panic_mode:
+        return
+
+    event_type = msg.get("event")
+
+    if event_type == "mousemove":
+        dx = msg.get("dx", 0)
+        dy = msg.get("dy", 0)
+        if dx != 0 or dy != 0:
+            try:
+                kbm.emit(uinput.REL_X, dx, syn=False)
+                kbm.emit(uinput.REL_Y, dy, syn=False)
+                kbm.syn()
+            except Exception as e:
+                print(f"[input] Mouse move error for {viewer_id}: {e}", flush=True)
+        return
+
+    if event_type not in ["keydown", "keyup"]:
+        return
+
+    key_code_input = msg.get("key", "")
+    key_code = JS_TO_UINPUT_MAP.get(key_code_input, key_code_input)
+
+    if not hasattr(uinput, key_code):
+        print(f"[input] Unknown key code: {key_code_input} (no uinput mapping) for {viewer_id}", flush=True)
+        return
+
+    if viewer_id not in kbm_pressed_keys:
+        kbm_pressed_keys[viewer_id] = set()
+
+    try:
+        if event_type == "keydown":
+            value = 1
+            kbm_pressed_keys[viewer_id].add(key_code)
+        else:
+            value = 0
+            kbm_pressed_keys[viewer_id].discard(key_code)
+
+        kbm.emit(getattr(uinput, key_code), value, syn=False)
+        kbm.syn()
+    except Exception as e:
+        print(f"[input] KBM emit error for {viewer_id} key {key_code}: {e}", flush=True)
+
 
 def run():
     """Main input loop for Linux uinput backend."""
-    global force_xboxone, enable_dualshock, enable_motion
+    global force_xboxone, enable_dualshock, enable_motion, panic_mode
 
     for line in sys.stdin:
         line = line.strip()
@@ -250,6 +395,16 @@ def run():
             continue
         try:
             msg = json.loads(line)
+
+            if msg.get("type") == "panic_toggle":
+                panic_mode = msg.get("enabled", False)
+                if panic_mode:
+                    print("[input] PANIC MODE ENABLED - All KBM input frozen", flush=True)
+                    for viewer_id, kbm in list(kbm_devices.items()):
+                        flush_kbm_device(kbm, viewer_id)
+                else:
+                    print("[input] Panic mode disabled", flush=True)
+                continue
 
             if msg.get("type") == "set_force_xboxone":
                 force_xboxone = bool(msg.get("value", True))
@@ -264,7 +419,8 @@ def run():
                 continue
 
             if msg.get("type") == "set-input-mode":
-                vid = str(msg.get("viewerId", ""))
+                full_id = str(msg.get("viewerId", ""))
+                vid = full_id.split("_")[0]
                 mode = msg.get("mode", "gamepad")
                 viewer_modes[vid] = mode
                 print(f"[input] Viewer {vid} mode set to: {mode}", flush=True)
@@ -274,6 +430,7 @@ def run():
                             flush_neutral_for_device(gp)
                     for k, kbm in list(kbm_devices.items()):
                         if str(k).startswith(vid + "_") or str(k) == vid:
+                            flush_kbm_device(kbm, vid)
                             flush_neutral_for_device(kbm, is_kbm=True)
                 continue
 
@@ -289,8 +446,10 @@ def run():
                 kbm_keys = [k for k in kbm_devices.keys() if str(k).startswith(vid + "_") or str(k) == vid]
                 for k in kbm_keys:
                     if msg.get("type") == "flush_neutral":
+                        flush_kbm_device(kbm_devices[k], k)
                         flush_neutral_for_device(kbm_devices[k], is_kbm=True)
                     else:
+                        flush_kbm_device(kbm_devices[k], k)
                         del kbm_devices[k]
                 continue
 
@@ -312,7 +471,6 @@ def run():
                         print(f"[input] Device error: {e}", flush=True)
                 continue
 
-            # ── HANDLE GAMEPAD ────────────────────────────────────────────────
             if msg.get("type") == "gamepad" and current_mode == "gamepad":
                 if pad_id not in devices:
                     fallback = "xboxone" if force_xboxone else "xbox"
@@ -348,9 +506,7 @@ def run():
                     gp.emit(uinput.ABS_HAT0Y, hat_y, syn=False)
                 gp.syn()
 
-            # ── HANDLE KBM ────────────────────────────────────────────────────
-            if msg.get("type") in ("kbm", "keyboard"):  # viewer.js sends "keyboard"; server remaps, but accept both for safety
-                # Lazily create the KBM device the first time it's needed
+            if msg.get("type") in ("kbm", "keyboard"):
                 if pad_id not in kbm_devices:
                     try:
                         kbm_devices[pad_id] = make_kbm(pad_id)
@@ -362,23 +518,10 @@ def run():
                 kbm = kbm_devices[pad_id]
                 event_type = msg.get("event")
 
-                # --- RAW KBM MODE ---
                 if current_mode == "kbm":
-                    key_code = msg.get("key")
-                    if hasattr(uinput, str(key_code)) and getattr(uinput, str(key_code)) in KBM_EVENTS:
-                        if event_type == "keydown":
-                            kbm.emit(getattr(uinput, key_code), 1)
-                        elif event_type == "keyup":
-                            kbm.emit(getattr(uinput, key_code), 0)
+                    handle_kbm_raw(kbm, vid, msg)
 
-                    if event_type == "mousemove":
-                        kbm.emit(uinput.REL_X, msg.get("dx", 0), syn=False)
-                        kbm.emit(uinput.REL_Y, msg.get("dy", 0), syn=False)
-                        kbm.syn()
-
-                # --- EMULATED KBM MODE (maps keyboard/mouse to gamepad axes) ---
                 elif current_mode == "kbm_emulated":
-                    # Mouse → right stick on the GAMEPAD device
                     if event_type == "mousemove" and kbm_binds.get("right_stick_mouse", True):
                         if pad_id not in devices:
                             fallback = "xboxone" if force_xboxone else "xbox"

@@ -7,7 +7,7 @@ this bridge converts incoming gamepad packets to keyboard and mouse events using
 This allows Steam Input and other applications to work with remapped gamepad inputs.
 
 DEPENDENCIES: pip install pynput
-PERMISSIONS: Requires Accessibility permission (System Settings → Security & Privacy → Accessibility)
+PERMISSIONS: Requires Accessibility permission (System Settings > Security & Privacy > Accessibility)
 
 BUTTON MAPPING:
   A → Space (action/jump)
@@ -24,11 +24,11 @@ STICK MAPPING:
   Triggers → Mouse scroll / modifier keys
 
 FEATURES:
-  ✓ Cross-architecture (Intel & Apple Silicon M1/M2/M3)
-  ✓ Deadzone handling (0.1) to prevent stick drift
-  ✓ Smooth mouse acceleration
-  ✓ Graceful shutdown on stream disconnect
-  ✓ Permission warnings if Accessibility not granted
+  [OK] Cross-architecture (Intel & Apple Silicon M1/M2/M3)
+  [OK] Deadzone handling (0.1) to prevent stick drift
+  [OK] Smooth mouse acceleration
+  [OK] Graceful shutdown on stream disconnect
+  [OK] Permission warnings if Accessibility not granted
 """
 
 import sys

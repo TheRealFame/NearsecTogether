@@ -36,7 +36,6 @@ if (typeof PusherRaw === 'function') {
   Pusher = PusherRaw.default;
 } else {
   console.error("PUSHER DIAGNOSTIC:", PusherRaw);
-  // Fake the class so the Node server doesn't crash while we look at the logs
   Pusher = class DummyPusher {
     subscribe() { return { trigger: () => {} }; }
   };
@@ -49,19 +48,17 @@ const pusher = new Pusher('a93f5405058cd9fc7967', {
 
 const globalArcadeChannel = pusher.subscribe('private-arcade-global');
 
+function toUinput(msg) {
+  if (!uinputProc || !uinputProc.stdin.writable) return;
+  setImmediate(() => { try { uinputProc.stdin.write(JSON.stringify(msg) + "\n"); } catch { } });
+}
+
 const projectRoot = path.join(__dirname, '..', '..');
 const envFile = path.join(projectRoot, '.env');
 if (!fs.existsSync(envFile)) {
-  fs.writeFileSync(envFile, `CF_TOKEN=
-CUSTOM_URL=
-ZROK_RESERVED_NAME=
-USE_VPS=false
-VPS_HOST=
-IS_VPS=false
-`);
+  fs.writeFileSync(envFile, `CF_TOKEN=\nCUSTOM_URL=\nZROK_RESERVED_NAME=\nUSE_VPS=false\nVPS_HOST=\nIS_VPS=false\n`);
 }
 
-// Parse optional .env file for secrets
 try {
   fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
     const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
@@ -73,34 +70,24 @@ function getLanIP() {
   for (const iface of Object.values(os.networkInterfaces()))
     for (const n of iface)
       if (n.family === "IPv4" && !n.internal) return n.address;
-      return "127.0.0.1";
+  return "127.0.0.1";
 }
 function shouldRequirePin(ip, hasTunnelHeader = false) {
-  return true; // Security: everyone requires PIN
+  return true;
   if (!ip) return true;
-  // 1. If it's a 192.168.x.x address, it's someone physically in the house.
-  if (ip.startsWith('192.168.') || ip.startsWith('::ffff:192.168.')) {
-    return false; // Safe to bypass
-  }
-  // 2. Localhost check
+  if (ip.startsWith('192.168.') || ip.startsWith('::ffff:192.168.')) return false;
   if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
-    // If we have a tunnel header OR USING_TUNNEL is explicitly true, treat as remote
-    if (hasTunnelHeader || process.env.USING_TUNNEL === 'true') {
-      return true; // Require PIN
-    }
-    return false; // Safe if just testing locally
+    if (hasTunnelHeader || process.env.USING_TUNNEL === 'true') return true;
+    return false;
   }
-  // 3. Tailscale range (100.x.x.x) - treat as semi-trusted if needed, but safer to require PIN
   if (ip.startsWith('100.')) return false;
-
-  return true; // Everyone else requires a PIN
+  return true;
 }
 function getTailscaleIP() {
-  // Tailscale assigns 100.64.0.0/10 addresses (CGNAT range)
   for (const iface of Object.values(os.networkInterfaces()))
     for (const n of iface)
       if (n.family === "IPv4" && n.address.startsWith("100.")) return n.address;
-      return null;
+  return null;
 }
 function findFreePort(start) {
   return new Promise(resolve => {
@@ -110,7 +97,7 @@ function findFreePort(start) {
   });
 }
 function openBrowser(url) {
-  open(url).catch(() => { });  // Cross-platform: works on Linux, Windows, macOS
+  open(url).catch(() => { });
 }
 function getPublicIP() {
   return new Promise(resolve => {
@@ -119,27 +106,70 @@ function getPublicIP() {
     }).on("error", () => resolve(null));
   });
 }
-// ── Tunnel providers ─────────────────────────────────────────────────────────
-// Set TUNNEL=cloudflared|playit|localhostrun env var to force a provider.
-// Default: tries cloudflared → playit → localhost.run automatically.
 
+// ── Windows binary path resolver ─────────────────────────────────────────────
+// windows_setup.ps1 installs tunnel binaries to $HOME:
+//   cloudflared  → $HOME\cloudflared.exe
+//   zrok         → $HOME\zrok\zrok.exe   (zip extracted into $HOME\zrok\)
+//   playit       → $HOME\playit.exe
+// We check PATH first (via which), then these fallback locations on Windows.
+const WIN_BINARY_PATHS = {
+  cloudflared: [
+    path.join(os.homedir(), 'cloudflared.exe'),
+    path.join(os.homedir(), 'bin', 'cloudflared.exe'),
+    'C:\\Program Files\\cloudflared\\cloudflared.exe',
+  ],
+  zrok: [
+    path.join(os.homedir(), 'zrok', 'zrok.exe'),
+    path.join(os.homedir(), 'bin', 'zrok.exe'),
+  ],
+  playit: [
+    path.join(os.homedir(), 'playit.exe'),
+    path.join(os.homedir(), 'bin', 'playit.exe'),
+  ],
+  ssh: [
+    'C:\\Windows\\System32\\OpenSSH\\ssh.exe',
+    'C:\\Program Files\\Git\\usr\\bin\\ssh.exe',
+  ],
+};
+
+/**
+ * Resolves the full path to a binary.
+ * Checks PATH first (cross-platform), then Windows-specific fallback paths.
+ * Returns the resolved path string, or null if not found.
+ */
+function findBinaryPath(name) {
+  return which(name).then(p => p).catch(() => {
+    if (process.platform !== 'win32') return null;
+    const fallbacks = WIN_BINARY_PATHS[name] || [];
+    for (const p of fallbacks) {
+      if (fs.existsSync(p)) {
+        console.log(`  [tunnel] Found ${name} at fallback path: ${p}`);
+        return p;
+      }
+    }
+    return null;
+  });
+}
+
+// ── Tunnel providers ─────────────────────────────────────────────────────────
 function startTunnelCloudflared(port) {
   return new Promise(resolve => {
-    which("cloudflared").then(cloudflaredPath => {
-      // If the user provided a token in .env (Remotely Managed)
+    findBinaryPath('cloudflared').then(cloudflaredPath => {
+      if (!cloudflaredPath) { resolve(null); return; }
+
       if (process.env.CF_TOKEN) {
         console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Token)...");
-        const proc = spawn("cloudflared", ["tunnel", "--no-autoupdate", "run", "--token", process.env.CF_TOKEN], { stdio: ["ignore", "pipe", "pipe"] });
+        const proc = spawn(cloudflaredPath, ["tunnel", "--no-autoupdate", "run", "--token", process.env.CF_TOKEN], { stdio: ["ignore", "pipe", "pipe"] });
         const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
         activeTunnelProc = proc;
         return resolve({ url, proc });
       }
 
-      // If the user provided a tunnel name in .env (Locally Managed - "The old way")
       if (process.env.CF_TUNNEL_NAME) {
         console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Locally Managed)...");
-        const proc = spawn("cloudflared", ["tunnel", "run", process.env.CF_TUNNEL_NAME], { stdio: ["ignore", "pipe", "pipe"] });
+        const proc = spawn(cloudflaredPath, ["tunnel", "run", process.env.CF_TUNNEL_NAME], { stdio: ["ignore", "pipe", "pipe"] });
         const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
         activeTunnelProc = proc;
@@ -147,7 +177,7 @@ function startTunnelCloudflared(port) {
       }
 
       console.log("  \x1b[33m~\x1b[0m Starting cloudflared tunnel...");
-      const proc = spawn("cloudflared", ["tunnel", "--url", "http://localhost:" + port], { stdio: ["ignore", "pipe", "pipe"] });
+      const proc = spawn(cloudflaredPath, ["tunnel", "--url", "http://localhost:" + port], { stdio: ["ignore", "pipe", "pipe"] });
       let done = false;
       const check = data => {
         const m = data.toString().match(/https:\/\/[a-z0-9\-]+\.trycloudflare\.com/);
@@ -156,71 +186,66 @@ function startTunnelCloudflared(port) {
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", () => { if (!done) resolve(null); });
       setTimeout(() => { if (!done) { done = true; resolve(null); console.log("  \x1b[33m!\x1b[0m cloudflared timeout"); } }, 20000);
-    }).catch(err => {
-      resolve(null);
-    });
+    }).catch(() => resolve(null));
   });
 }
 
 function startTunnelPlayit(port) {
   return new Promise(resolve => {
-    which("playit").then(playitPath => {
+    findBinaryPath('playit').then(playitPath => {
+      if (!playitPath) { resolve(null); return; }
+
       console.log("  \x1b[33m~\x1b[0m Starting playit tunnel...");
-      const proc = spawn("playit", [], { stdio: ["ignore", "pipe", "pipe"] });
+      const proc = spawn(playitPath, [], { stdio: ["ignore", "pipe", "pipe"] });
       let done = false;
       const check = data => {
         const str = data.toString();
-        // First run: print claim URL and open browser
         const claim = str.match(/https:\/\/playit\.gg\/claim\/[a-z0-9\-]+/i);
         if (claim) { console.log("  \x1b[33m!\x1b[0m playit first-run — visit: \x1b[1m" + claim[0] + "\x1b[0m"); openBrowser(claim[0]); }
-        // Assigned tunnel URL
         const url = str.match(/https?:\/\/[a-z0-9\-]+\.at\.playit\.gg(?::\d+)?/i)
-        || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
+          || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
         if (url && !done) { done = true; resolve({ url: url[0], proc }); console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url[0] + "\x1b[0m"); }
       };
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", () => { if (!done) resolve(null); });
       setTimeout(() => { if (!done) { done = true; resolve(null); console.log("  \x1b[33m!\x1b[0m playit timeout"); } }, 45000);
-    }).catch(err => {
-      resolve(null);
-    });
+    }).catch(() => resolve(null));
   });
 }
 
 function startTunnelLocalhostRun(port) {
   return new Promise(resolve => {
-    which("ssh").then(sshPath => {
+    findBinaryPath('ssh').then(sshPath => {
+      if (!sshPath) { resolve(null); return; }
+
       console.log("  \x1b[33m~\x1b[0m Starting localhost.run tunnel (SSH)...");
-      const proc = spawn("ssh", [
+      const proc = spawn(sshPath, [
         "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",  // never prompt for host key
-        "-o", "LogLevel=ERROR",               // suppress SSH banners
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "LogLevel=ERROR",
         "-o", "ServerAliveInterval=30",
         "-R", "80:localhost:" + port,
         "nokey@localhost.run"
       ], { stdio: ["ignore", "pipe", "pipe"] });
       let done = false;
       const check = data => {
-        const str = data.toString();
-        // localhost.run changed URL format a few times — catch all variants
-        const m = str.match(/https:\/\/[a-z0-9\-]+\.(?:lhr\.life|localhost\.run)/);
+        const m = data.toString().match(/https:\/\/[a-z0-9\-]+\.(?:lhr\.life|localhost\.run)/);
         if (m && !done) { done = true; resolve({ url: m[0], proc }); console.log("  \x1b[32m\u2713\x1b[0m Tunnel URL: \x1b[1m" + m[0] + "\x1b[0m"); }
       };
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", c => { if (!done) { resolve(null); console.log("  \x1b[33m!\x1b[0m localhost.run closed (code " + c + ")"); } });
       setTimeout(() => { if (!done) { done = true; proc.kill(); resolve(null); console.log("  \x1b[33m!\x1b[0m localhost.run timeout — port 22 may be blocked"); } }, 25000);
-    }).catch(err => {
-      resolve(null);
-    });
+    }).catch(() => resolve(null));
   });
 }
 
 function startTunnelServeo(port) {
-  // serveo.net — SSH-based like localhost.run, different server, often works when lr is blocked
   return new Promise(resolve => {
-    which("ssh").then(sshPath => {
+    findBinaryPath('ssh').then(sshPath => {
+      if (!sshPath) { resolve(null); return; }
+
       console.log("  \x1b[33m~\x1b[0m Starting serveo.net tunnel (SSH)...");
-      const proc = spawn("ssh", [
+      const proc = spawn(sshPath, [
         "-o", "StrictHostKeyChecking=no",
         "-o", "UserKnownHostsFile=/dev/null",
         "-o", "LogLevel=ERROR",
@@ -236,62 +261,71 @@ function startTunnelServeo(port) {
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", c => { if (!done) { resolve(null); console.log("  \x1b[33m!\x1b[0m serveo closed (code " + c + ")"); } });
       setTimeout(() => { if (!done) { done = true; proc.kill(); resolve(null); console.log("  \x1b[33m!\x1b[0m serveo timeout — port 22 may be blocked"); } }, 25000);
-    }).catch(err => {
-      resolve(null);
-    });
+    }).catch(() => resolve(null));
   });
 }
 
-
 function startTunnelVps(port, vpsHost) {
   return new Promise((resolve) => {
-    console.log(`  \x1b[33m~\x1b[0m Starting VPS Reverse SSH Tunnel to ${vpsHost}...`);
-    const proc = spawn("ssh", [
-      "-v", "-N", "-T",
-      "-o", "ExitOnForwardFailure=yes",
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "UserKnownHostsFile=/dev/null",
-      "-R", `0.0.0.0:${port}:localhost:${port}`, vpsHost
-    ], { stdio: ["ignore", "pipe", "pipe"] });
+    findBinaryPath('ssh').then(sshPath => {
+      if (!sshPath) { resolve(null); return; }
 
-    const url = process.env.CUSTOM_URL || `http://${vpsHost.split('@').pop().trim()}:${port}`;
-    let done = false;
+      console.log(`  \x1b[33m~\x1b[0m Starting VPS Reverse SSH Tunnel to ${vpsHost}...`);
+      const proc = spawn(sshPath, [
+        "-v", "-N", "-T",
+        "-o", "ExitOnForwardFailure=yes",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-R", `0.0.0.0:${port}:localhost:${port}`, vpsHost
+      ], { stdio: ["ignore", "pipe", "pipe"] });
 
-    proc.stderr.on("data", data => {
-      const out = data.toString();
-      // Print to terminal console as requested
-      process.stderr.write(out);
-      // Logs removed from GUI as requested
+      const url = process.env.CUSTOM_URL || `http://${vpsHost.split('@').pop().trim()}:${port}`;
+      let done = false;
 
-      // Check for success markers in verbose output
-      if ((out.includes("remote forward success") || out.includes("Forwarding address")) && !done) {
-        done = true;
-        process.env.USING_TUNNEL = "true";
-        activeTunnelProc = proc; resolve({ url, proc });
-      }
-    });
-    proc.on("close", () => { if (!done) resolve(null); });
-    setTimeout(() => {
-      if (!done) {
-        done = true;
-        process.env.USING_TUNNEL = "true";
-        activeTunnelProc = proc; resolve({ url, proc });
-      }
-    }, 5000);
+      proc.stderr.on("data", data => {
+        const out = data.toString();
+        process.stderr.write(out);
+        if ((out.includes("remote forward success") || out.includes("Forwarding address")) && !done) {
+          done = true;
+          process.env.USING_TUNNEL = "true";
+          activeTunnelProc = proc; resolve({ url, proc });
+        }
+      });
+      proc.on("close", () => { if (!done) resolve(null); });
+      setTimeout(() => {
+        if (!done) {
+          done = true;
+          process.env.USING_TUNNEL = "true";
+          activeTunnelProc = proc; resolve({ url, proc });
+        }
+      }, 5000);
+    }).catch(() => resolve(null));
   });
 }
 
 function startTunnelZrok(port) {
   return new Promise(async (resolve) => {
-    const findZrok = () => {
-      const paths = ['zrok2', 'zrok', '/usr/bin/zrok2', '/usr/bin/zrok', '/usr/local/bin/zrok', path.join(process.env.HOME || '', 'bin/zrok'), './zrok'];
-      for (const p of paths) if (fs.existsSync(p)) return p;
-      return 'zrok2';
-    };
-    const bin = findZrok();
-    console.log(`  \x1b[33m~\x1b[0m Starting ${bin} public share...`);
+    // Check PATH and Windows home-dir fallbacks
+    const zrokPath = await findBinaryPath('zrok').then(p => p).catch(() => null)
+      || await findBinaryPath('zrok2').then(p => p).catch(() => null)
+      || (function() {
+        // Manual scan of known Linux/Windows locations
+        const candidates = [
+          '/usr/bin/zrok2', '/usr/bin/zrok', '/usr/local/bin/zrok',
+          path.join(os.homedir(), 'bin/zrok'),
+          './zrok',
+          // Windows paths (already covered by findBinaryPath fallback, but belt-and-suspenders)
+          path.join(os.homedir(), 'zrok', 'zrok.exe'),
+        ];
+        for (const c of candidates) if (fs.existsSync(c)) return c;
+        return null;
+      })();
+
+    if (!zrokPath) { resolve(null); return; }
+
+    console.log(`  \x1b[33m~\x1b[0m Starting zrok public share (${zrokPath})...`);
     const args = ["share", "public", "http://localhost:" + port, "--backend-mode", "proxy", "--headless"];
-    const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const proc = spawn(zrokPath, args, { stdio: ["ignore", "pipe", "pipe"] });
     let done = false;
     const check = data => {
       const out = data.toString();
@@ -310,7 +344,6 @@ function startTunnelZrok(port) {
   });
 }
 
-
 async function startTunnel(port) {
   const forced = (process.env.TUNNEL || "").toLowerCase();
   if (forced === "zrok") return startTunnelZrok(port);
@@ -319,18 +352,17 @@ async function startTunnel(port) {
   if (forced === "playit") return startTunnelPlayit(port);
   if (forced === "localhostrun") return startTunnelLocalhostRun(port);
   if (forced === "serveo") return startTunnelServeo(port);
-  // Auto: try cloudflared -> zrok -> playit
+  // Auto: try cloudflared → zrok → playit → SSH providers
   const cf = await startTunnelCloudflared(port);
   if (cf) return cf;
   const z = await startTunnelZrok(port);
   if (z) return z;
   const pl = await startTunnelPlayit(port);
   if (pl) return pl;
-  // Try both SSH providers in parallel — whichever answers first wins
   console.log("  \x1b[33m~\x1b[0m Trying localhost.run and serveo in parallel...");
   const ssh = await Promise.any([
     startTunnelLocalhostRun(port),
-                                startTunnelServeo(port)
+    startTunnelServeo(port)
   ].map(p => p.then(r => r || Promise.reject()))).catch(() => null);
   if (ssh) return ssh;
   console.log("  \x1b[33m!\x1b[0m All tunnels failed. Options:");
@@ -347,25 +379,22 @@ function sanitize(str) {
 function makePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
 
 // ── Arcade session registry ───────────────────────────────────────────────────
-const arcadeSessions = new Map(); // hostWS-id → session object
-const arcadeClients  = new Set(); // /ws/arcade subscriber connections
-let   arcadeHostId   = 0;         // simple counter for host identity key
+const arcadeSessions = new Map();
+const arcadeClients  = new Set();
+let   arcadeHostId   = 0;
 
-// Only sessions originating from known tunnel providers are listed.
-// This prevents malicious redirects to attacker-controlled domains.
 const ARCADE_ALLOWED_DOMAINS = [
   'trycloudflare.com',
-'zrok.io',
-'localhost.run',
-'serveo.net',
+  'zrok.io',
+  'localhost.run',
+  'serveo.net',
 ];
 function isAllowedArcadeUrl(rawUrl) {
   try {
     const u = new URL(rawUrl);
-    // Must be HTTPS
     if (u.protocol !== 'https:') return false;
     return ARCADE_ALLOWED_DOMAINS.some(d =>
-    u.hostname === d || u.hostname.endsWith('.' + d)
+      u.hostname === d || u.hostname.endsWith('.' + d)
     );
   } catch { return false; }
 }
@@ -374,26 +403,19 @@ function broadcastToArcade(msg) {
   arcadeClients.forEach(c => { if (c.readyState === 1) c.send(data); });
 }
 
-// ── Persistent config (tunnel preference) ────────────────────────────────────
+// ── Persistent config ────────────────────────────────────────────────────────
 const CONFIG_FILE = path.join(projectRoot, 'config', 'nearsectogether.config.json');
 function loadConfig() {
   try {
     const data = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
-    // Validate config structure
     return data && typeof data === 'object' ? data : {};
-  } catch (e) {
-    // If file doesn't exist or is invalid, return empty config
-    return {};
-  }
+  } catch (e) { return {}; }
 }
 function saveConfig(updates) {
   try {
     const cfg = { ...loadConfig(), ...updates };
-    // Ensure config directory exists
     const configDir = path.dirname(CONFIG_FILE);
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
+    if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), { encoding: 'utf8', flag: 'w' });
     console.log("[config] Saved tunnel preference:", cfg);
     return cfg;
@@ -436,22 +458,17 @@ async function main() {
   const PUBLIC_IP = await getPublicIP();
   let PIN = makePin();
   let pinEnabled = true;
-  // tunnelUrl moved to top
 
   console.log("\n  \x1b[1mNearsecTogether\x1b[0m");
   console.log("  Host page : http://localhost:" + PORT + "/host");
   console.log("  LAN URL   : http://" + LAN_IP + ":" + PORT + "/");
   if (PUBLIC_IP) console.log("  Public IP : http://" + PUBLIC_IP + ":" + PORT + "/ (needs port forward)");
-    console.log("  PIN       : \x1b[1;32m" + PIN + "\x1b[0m\n");
+  console.log("  PIN       : \x1b[1;32m" + PIN + "\x1b[0m\n");
 
   const app = express();
-
-  // Tunnel auto-start is handled inside server.listen() so hostWS exists for URL delivery
-
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server });
 
-  // Security headers — required for Gamepad API + display-capture over HTTPS/Cloudflare
   app.use((req, res, next) => {
     res.setHeader("Permissions-Policy", "gamepad=*, display-capture=(self)");
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -460,18 +477,15 @@ async function main() {
 
   const APP_VERSION = "1.0.0";
 
-  // Static folders at the project root
   app.use("/js", express.static(path.join(__dirname, "..", "..", "src", "scripts")));
   app.use("/assets", express.static(path.join(__dirname, "..", "..", "assets")));
 
-  // Pages folder at the project root
   const pagesDir = path.join(__dirname, "..", "..", "src/pages");
 
   app.get("/", (req, res) => res.sendFile(path.join(pagesDir, "index.html")));
   app.get("/host", (req, res) => res.sendFile(path.join(pagesDir, "host.html")));
   app.get("/gamepad-popup.html", (req, res) => res.sendFile(path.join(pagesDir, "gamepad-popup.html")));
 
-  // API Routes (Logic remains the same)
   app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
   app.get("/api/pin-required", (req, res) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
@@ -487,36 +501,43 @@ async function main() {
       streaming: hostStreaming,
       viewers: viewers.size,
       controllers: controllerViewerCount(),
-             tunnel: tunnelUrl,
-             version: APP_VERSION,
-             uptime: process.uptime()
+      tunnel: tunnelUrl,
+      version: APP_VERSION,
+      uptime: process.uptime()
     });
   });
 
-  // ── Arcade sessions REST (polled by arcade.js as fallback) ───────────────────
+  app.post("/api/create-virtual-audio", (req, res) => {
+    if (process.platform !== 'linux') return res.json({ success: false, error: "Linux only feature" });
+
+    // pactl load-module module-null-sink is the universal command for BOTH PulseAudio and PipeWire.
+    exec('pactl load-module module-null-sink sink_name=NearsecAppAudio sink_properties=device.description="Nearsec_App_Audio"', (err) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true });
+    });
+  });
+
   app.get("/api/arcade/sessions", (req, res) => {
     res.json([...arcadeSessions.values()]);
   });
 
-  // Trigger a tunnel start from the host UI picker
   app.post("/api/start-tunnel", express.json(), async (req, res) => {
     if (tunnelUrl) {
       const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
       if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
-      return res.json({ url: tunnelUrl }); // already running
+      return res.json({ url: tunnelUrl });
     }
     const provider = (req.body && req.body.provider) || "cloudflared";
-    // Only save preference when user explicitly checks Remember
     if (req.body && req.body.remember) saveConfig({ tunnelProvider: provider, neverAsk: true });
     res.json({ ok: true, starting: true });
-    // Start asynchronously so the response returns immediately
+
     const fn = {
       zrok: startTunnelZrok,
       cloudflared: startTunnelCloudflared,
       playit: startTunnelPlayit,
       localhostrun: startTunnelLocalhostRun,
       vps: (p) => startTunnelVps(p, ((req.body && req.body.vpsHost) || process.env.VPS_HOST || '').trim()),
-           portforward: async () => null
+      portforward: async () => null
     }[provider] || startTunnel;
 
     if (provider === 'vps' && req.body && req.body.vpsHost) {
@@ -547,43 +568,26 @@ async function main() {
       console.log("[uinput] sidecar started");
     } catch (err) {
       console.warn("[uinput] Failed to start Python sidecar:", err.message);
-      console.warn("[uinput] Input handling will not be available");
       uinputProc = null;
     }
   } else {
     console.log("[uinput] sidecar not found at", sidecar);
   }
 
-  function toUinput(msg) {
-    if (!uinputProc || !uinputProc.stdin.writable) return;
-    setImmediate(() => { try { uinputProc.stdin.write(JSON.stringify(msg) + "\n"); } catch { } });
-  }
-
-  // hostWS moved to top
   let hostStreaming = false;
-  // viewers moved to top
   const audioViewers = new Set();
-  // inputPerms moved to top
-  // viewerNames moved to top
-  const viewerGamepads = new Map(); // viewerId -> Set of padIndices
-  const viewerHasController = new Set(); // viewerIds that have sent at least one gpid
-  const hwIdToViewer = new Map(); // 'hardwareId:padIdx' -> viewerId — prevents duplicate virtual controllers on reconnect
-  // pinAttempts moved to top // ip -> { count, lockedUntil }
-  // vidCount moved to top
+  const viewerGamepads = new Map();
+  const viewerHasController = new Set();
+  const hwIdToViewer = new Map();
 
-  // ── Join & Leave Sounds ────────────────────────────────────────────────────
   const JOIN_SOUND = require('path').join(__dirname, '../../assets/joinsound.wav');
   const LEAVE_SOUND = require('path').join(__dirname, '../../assets/leavesound.wav');
-  
-  // Use cross-platform audio utility instead of direct play-sound
   const { playSound: playSoundUtil } = require('./audio-util');
 
   function playSound(file) {
     if (!fs.existsSync(file)) return;
     playSoundUtil(file, (err) => {
-      if (err) {
-        console.log("[audio] Could not play sound on " + process.platform + ":", err.message);
-      }
+      if (err) console.log("[audio] Could not play sound on " + process.platform + ":", err.message);
     });
   }
   function playJoinSound() { playSound(JOIN_SOUND); }
@@ -599,16 +603,14 @@ async function main() {
 
   function broadcastRoster() {
     const roster = [];
-    // Iterate over ALL viewers so no one disappears if they use KBM or get Disabled
     viewers.forEach((vws, id) => {
-      const pads = viewerGamepads.get(id) || new Set([0]); // Everyone gets at least slot 0
+      const pads = viewerGamepads.get(id) || new Set([0]);
       pads.forEach(padIdx => {
         const isExtra = padIdx > 0;
         const nameSuffix = isExtra ? ' ' + (padIdx + 1) : '';
         const rosterId = id + '_' + padIdx;
         const p = inputPerms.get(rosterId) || { gp: true, kb: false, slot: null };
 
-        // Determine actual input mode so host UI stays synced
         let mode = 'gamepad';
         if (!p.gp && p.kb) mode = 'kbm';
         else if (p.gp && p.kb) mode = 'kbm_emulated';
@@ -617,11 +619,11 @@ async function main() {
         roster.push({
           id: rosterId,
           name: (viewerNames.get(id) || id) + nameSuffix,
-                    gp: !!p.gp,
-                    kb: !!p.kb,
-                    slot: p.slot ?? null,
-                    locked: !!p.locked,
-                    inputMode: mode
+          gp: !!p.gp,
+          kb: !!p.kb,
+          slot: p.slot ?? null,
+          locked: !!p.locked,
+          inputMode: mode
         });
       });
     });
@@ -636,16 +638,14 @@ async function main() {
     ws.on('pong', () => { ws.isAlive = true; });
 
     const url = new URL(req.url, "http://x");
-    const path = url.pathname;
+    const wsPath = url.pathname;
     const pin = url.searchParams.get("pin") || "";
 
     // ── HOST ─────────────────────────────────────────────────────────────────
-    if (path === "/ws/host") {
+    if (wsPath === "/ws/host") {
       console.log("[host] connected");
       hostWS = ws;
-      // Broadcast to all viewers that a host is now online
       broadcast(JSON.stringify({ type: "host-connected" }));
-      // Replay existing viewers so host can re-offer on reconnect
       viewers.forEach((_, id) => ws.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id })));
       if (tunnelUrl) ws.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
 
@@ -653,7 +653,6 @@ async function main() {
         try {
           const msg = JSON.parse(raw);
 
-          // ── WebRTC signaling relay: offer / ice-host → specific viewer ──
           if ((msg.type === "offer" || msg.type === "ice-host") && msg._viewerId) {
             const vws = viewers.get(msg._viewerId);
             if (vws && vws.readyState === 1) vws.send(JSON.stringify(msg));
@@ -661,11 +660,10 @@ async function main() {
           }
 
           if (msg.type === "set-pin") { pinEnabled = !!msg.enabled; return; }
+
           if (msg.type === "set-input") {
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { gp: !!msg.gp, kb: !!msg.kb, slot: cur.slot });
-
-            // If host disabled them, and they are pad 0, notify the client.
             const realId = msg.viewerId.split('_')[0];
             const vws = viewers.get(realId);
             if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
@@ -674,10 +672,10 @@ async function main() {
             broadcastRoster();
             return;
           }
+
           if (msg.type === "assign-slot") {
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { ...cur, slot: msg.slot });
-
             const realId = msg.viewerId.split('_')[0];
             const vws = viewers.get(realId);
             if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
@@ -686,32 +684,48 @@ async function main() {
             broadcastRoster();
             return;
           }
+
           if (msg.type === "chat") { broadcast(JSON.stringify(msg)); return; }
 
-          // ── Controller settings — forwarded to Python sidecar, NOT broadcast ──
           if (msg.type === "ctrl-settings") {
             toUinput({ type: 'set_force_xboxone',    value: !!msg.forceXboxOne });
             toUinput({ type: 'set_enable_dualshock', value: !!msg.enableDualShock });
             toUinput({ type: 'set_enable_motion',    value: !!msg.enableMotion });
             console.log("[host] ctrl-settings: forceXboxOne=%s enableDualShock=%s enableMotion=%s",
-                        !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion);
+              !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion);
             return;
           }
 
-          // ── Input mode change for a specific viewer slot ──────────────────────
+          if (msg.type === "panic_toggle") {
+            toUinput({ type: 'panic_toggle', enabled: !!msg.enabled });
+            console.log("[host] KBM Panic Mode: %s", !!msg.enabled ? "ACTIVATED" : "Released");
+            return;
+          }
+
           if (msg.type === "set-input-mode") {
-            const modeMap = { gamepad: { gp: true, kb: false }, kbm: { gp: false, kb: true }, kbm_emulated: { gp: true, kb: true }, disabled: { gp: false, kb: false } };
+            const modeMap = {
+              gamepad:      { gp: true,  kb: false },
+              kbm:          { gp: false, kb: true  },
+              kbm_emulated: { gp: true,  kb: true  },
+              disabled:     { gp: false, kb: false  }
+            };
             const perms = modeMap[msg.mode] || { gp: true, kb: false };
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { ...cur, ...perms });
             const realId = msg.viewerId.split('_')[0];
             const vws = viewers.get(realId);
-            if (vws && vws.readyState === 1) vws.send(JSON.stringify({ type: "input-state", gp: perms.gp, kb: perms.kb, mode: msg.mode }));
+            if (vws && vws.readyState === 1) {
+              vws.send(JSON.stringify({ type: "input-state", gp: perms.gp, kb: perms.kb, mode: msg.mode }));
+            }
+            // ── Forward mode change to Python sidecar so it can route inputs
+            //    through the correct device (gamepad / kbm / kbm_emulated / disabled).
+            //    Without this the sidecar viewer_modes dict is always empty and
+            //    everything silently defaults to "gamepad".
+            toUinput({ type: 'set-input-mode', viewerId: msg.viewerId, mode: msg.mode });
             broadcastRoster();
             return;
           }
 
-          // ── Toggle slot lock ──────────────────────────────────────────────────
           if (msg.type === "toggle-slot-lock") {
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { ...cur, locked: !!msg.locked });
@@ -719,7 +733,6 @@ async function main() {
             return;
           }
 
-          // ── Regenerate PIN ────────────────────────────────────────────────────
           if (msg.type === "regen-pin") {
             PIN = makePin();
             console.log("[host] PIN regenerated:", PIN);
@@ -727,19 +740,17 @@ async function main() {
             return;
           }
 
-          // ── Arcade session management ─────────────────────────────────────────
           if (msg.type === "arcade-session-start") {
-            const url = msg.tunnelUrl || tunnelUrl;
-
-            if (!url) {
+            const arcadeUrl = msg.tunnelUrl || tunnelUrl;
+            if (!arcadeUrl) {
               if (hostWS && hostWS.readyState === 1)
                 hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'No tunnel URL active. Start a tunnel first.' }));
               return;
             }
-            if (!isAllowedArcadeUrl(url)) {
-              console.warn("[arcade] Rejected URL — not in whitelist:", url);
+            if (!isAllowedArcadeUrl(arcadeUrl)) {
+              console.warn("[arcade] Rejected URL — not in whitelist:", arcadeUrl);
               if (hostWS && hostWS.readyState === 1)
-                hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'Tunnel provider not allowed. Use cloudflared, zrok, localhost.run, or serveo.' }));
+                hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'Tunnel provider not allowed.' }));
               return;
             }
             if (!hostStreaming) {
@@ -747,27 +758,23 @@ async function main() {
                 hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'No active stream. Start sharing your screen first.' }));
               return;
             }
-
             const sessionId = 'ns-' + Date.now() + '-' + (++arcadeHostId);
             const session = {
               id: sessionId,
               game: sanitize(msg.config?.title || 'Arcade Game'),
-            thumbnail: msg.config?.thumbnail || null,
-            region: 'Nearsec Arcade',
-            hasPin: !!msg.config?.requirePin,
-            maxPlayers: parseInt(msg.config?.maxPlayers || 4),
-            url: url,
-            startedAt: Date.now(),
-            isStreaming: true,
+              thumbnail: msg.config?.thumbnail || null,
+              region: 'Nearsec Arcade',
+              hasPin: !!msg.config?.requirePin,
+              maxPlayers: parseInt(msg.config?.maxPlayers || 4),
+              url: arcadeUrl,
+              startedAt: Date.now(),
+              isStreaming: true,
             };
-
             arcadeSessions.set(sessionId, session);
-            console.log("[arcade] Session registered:", session.game, url);
+            console.log("[arcade] Session registered:", session.game, arcadeUrl);
             broadcastToArcade({ type: 'arcade-session-active', session });
             if (hostWS && hostWS.readyState === 1)
               hostWS.send(JSON.stringify({ type: 'arcade-session-active', session }));
-
-            // Broadcast this session to the Global Cloudflare Arcade!
             globalArcadeChannel.trigger('client-session-active', { session });
             return;
           }
@@ -791,7 +798,6 @@ async function main() {
             }
           }
 
-          // Fallback broadcast (host-stream-stopped, host-stream-ready, etc.)
           broadcast(JSON.stringify(msg));
 
         } catch (err) {
@@ -803,7 +809,6 @@ async function main() {
         console.log("[host] disconnected");
         hostWS = null;
         hostStreaming = false;
-        // Delist any arcade sessions owned by this host
         for (const [id] of arcadeSessions) {
           arcadeSessions.delete(id);
           broadcastToArcade({ type: 'arcade-session-stopped', id });
@@ -811,8 +816,8 @@ async function main() {
         broadcast(JSON.stringify({ type: "host-disconnected" }));
       });
 
-      // ── VIEWER ───────────────────────────────────────────────────────────────
-    } else if (path === "/ws/viewer") {
+    // ── VIEWER ───────────────────────────────────────────────────────────────
+    } else if (wsPath === "/ws/viewer") {
       const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
       const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
       const requirePin = shouldRequirePin(clientIp, hasTunnelHeader);
@@ -828,7 +833,7 @@ async function main() {
         if (pin !== PIN) {
           attempt.count++;
           if (attempt.count >= 6) {
-            attempt.lockedUntil = Date.now() + 2 * 60 * 1000; // 2 mins
+            attempt.lockedUntil = Date.now() + 2 * 60 * 1000;
             console.log(`[viewer] IP ${clientIp} locked out for 2 minutes (PIN brute-force)`);
           }
           pinAttempts.set(clientIp, attempt);
@@ -839,9 +844,9 @@ async function main() {
         }
         pinAttempts.delete(clientIp);
       } else {
-        // Log that a local user bypassed the check
-        console.log(`[viewer] IP ${clientIp} (requirePin=${requirePin}) bypassing PIN/rate-limit check`);
+        console.log(`[viewer] IP ${clientIp} (requirePin=${requirePin}) bypassing PIN check`);
       }
+
       let id = "v" + (++vidCount);
       const defaultName = "Guest" + (1000 + Math.floor(Math.random() * 9000));
       viewers.set(id, ws);
@@ -851,7 +856,6 @@ async function main() {
       ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: defaultName }));
       ws.send(JSON.stringify({ type: "input-state", gp: true, kb: false }));
 
-      // Send viewer-joined so they immediately get a stream offer
       if (hostWS && hostWS.readyState === 1) {
         hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: defaultName }));
         if (hostStreaming) {
@@ -865,53 +869,42 @@ async function main() {
         try {
           const msg = JSON.parse(raw);
 
-          // ── WebRTC signaling relay: answer / ice-viewer → host ──
           if (msg.type === "answer" || msg.type === "ice-viewer") {
             msg._viewerId = id;
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify(msg));
             return;
           }
 
-          // ── WebRTC signaling relay: host-not-streaming → viewer ──
           if (msg.type === "host-not-streaming") {
             const vws = viewers.get(msg.viewerId);
             if (vws && vws.readyState === 1) vws.send(JSON.stringify(msg));
             return;
           }
 
-          // Viewer reconnected with the same ID — reuse slot, avoid duplicate entry
           if (msg.type === "viewer-rejoin") {
             const claimedId = msg.viewerId;
             if (claimedId && viewers.has(claimedId)) {
               const tempId = id;
-              // Replace the stale WS entry with the new connection
               viewers.set(claimedId, ws);
-              // Remove the temporary new-id we assigned so there's no dupe
               viewers.delete(tempId);
               viewerNames.set(claimedId, viewerNames.get(tempId) || viewerNames.get(claimedId) || "Guest");
               viewerNames.delete(tempId);
-
               if (viewerHasController.has(tempId)) {
                 viewerHasController.delete(tempId);
                 viewerHasController.add(claimedId);
               }
-
               console.log("[viewer]", claimedId, "rejoined (slot reused, no duplicate)");
               id = claimedId;
-
-              // Tell host to immediately discard the temp connection and offer the real one
               if (hostWS && hostWS.readyState === 1) {
                 hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: tempId }));
                 hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) }));
               }
-
               ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: viewerNames.get(id) }));
               broadcastRoster();
             }
             return;
           }
 
-          // Viewer asked host to re-send offer (e.g. after reconnect)
           if (msg.type === "request-offer") {
             if (hostWS && hostWS.readyState === 1)
               hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id }));
@@ -921,12 +914,8 @@ async function main() {
           if (msg.type === "gpid") {
             const padIdx = msg.padIndex || 0;
             const pads = viewerGamepads.get(id) || new Set();
-
-            // Deduplicate: ignore if this padIndex is already registered for this viewer
             if (pads.has(padIdx)) return;
 
-            // Hardware deduplication: same physical controller reconnecting under a new viewer ID
-            // Evict the stale registration so no duplicate virtual controllers accumulate
             const hwKey = (msg.id || 'unknown') + ':' + padIdx;
             const staleViewerId = hwIdToViewer.get(hwKey);
             if (staleViewerId && staleViewerId !== id) {
@@ -944,7 +933,6 @@ async function main() {
             }
             hwIdToViewer.set(hwKey, id);
 
-            // Slot Cap: ignore if we already have 16 controllers total
             const totalPads = [...viewerGamepads.values()].reduce((sum, s) => sum + s.size, 0);
             if (totalPads >= 16) {
               console.log("[viewer] slot cap reached (16 total pads), ignoring controller from", id);
@@ -953,23 +941,21 @@ async function main() {
 
             pads.add(padIdx);
             viewerGamepads.set(id, pads);
-
             msg.pad_id = id + '_' + padIdx;
             if (!inputPerms.has(msg.pad_id)) inputPerms.set(msg.pad_id, { gp: true, kb: false, slot: null });
 
             const isNewController = !viewerHasController.has(id);
             viewerHasController.add(id);
-
             if (isNewController) {
               playJoinSound();
               console.log("[viewer]", id, "controller detected — now counted (" + controllerViewerCount() + " with controllers)");
             }
-
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: id, id: msg.id }));
-            toUinput(msg); // let sidecar detect controller type
+            toUinput(msg);
             broadcastRoster();
             return;
           }
+
           if (msg.type === "set-name") {
             const name = sanitize(String(msg.name || '')).slice(0, 20) || viewerNames.get(id);
             viewerNames.set(id, name);
@@ -978,6 +964,7 @@ async function main() {
             broadcastRoster();
             return;
           }
+
           if (msg.type === "chat") {
             msg.msg = sanitize(msg.msg);
             msg.from = sanitize(viewerNames.get(id) || msg.from || 'Guest').slice(0, 20);
@@ -985,20 +972,18 @@ async function main() {
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify(msg));
             return;
           }
+
           if (msg.type === "gamepad" || msg.type === "keyboard") {
-            // Remap: viewer sends type 'keyboard', Python sidecar expects type 'kbm'
             if (msg.type === "keyboard") msg.type = "kbm";
             const padIdx = msg.padIndex || 0;
             const rosterId = msg.type === "gamepad" ? id + '_' + padIdx : id + '_0';
 
-            // Auto-register controller if we haven't seen gpid yet for this pad
             if (msg.type === "gamepad") {
               const pads = viewerGamepads.get(id) || new Set();
               if (!pads.has(padIdx)) {
                 pads.add(padIdx);
                 viewerGamepads.set(id, pads);
                 if (!inputPerms.has(rosterId)) inputPerms.set(rosterId, { gp: true, kb: false, slot: null });
-
                 const isNew = !viewerHasController.has(id);
                 viewerHasController.add(id);
                 if (isNew) {
@@ -1010,14 +995,8 @@ async function main() {
             }
 
             const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
-            if (msg.type === "gamepad" && !perms.gp) {
-              console.log("[viewer]", id, "gamepad blocked (permissions disabled)");
-              return;
-            }
-            if (msg.type === "keyboard" && !perms.kb) {
-              console.log("[viewer]", id, "keyboard blocked (permissions disabled)");
-              return;
-            }
+            if (msg.type === "gamepad" && !perms.gp) return;
+            if (msg.type === "kbm" && !perms.kb) return;
 
             msg.pad_id = rosterId;
             toUinput(msg);
@@ -1029,37 +1008,28 @@ async function main() {
       ws.on("close", () => {
         const hadController = viewerHasController.has(id);
         const wasActive = viewers.get(id) === ws;
-        
-        // Only remove if this specific connection is the active one for this ID
         if (wasActive) {
           viewers.delete(id);
           viewerNames.delete(id);
           viewerGamepads.delete(id);
           viewerHasController.delete(id);
-          // Remove all hardware ID entries for this viewer so they don't block future reconnects
           for (const [hwKey, vid] of hwIdToViewer) {
             if (vid === id) hwIdToViewer.delete(hwKey);
           }
-          
           if (hadController) {
             playLeaveSound();
-            // Send a zero/neutral flush before destroying — prevents stuck D-pad / joystick
             toUinput({ type: 'flush_neutral', viewer_id: id });
-            // Then destroy all virtual controllers for this viewer
             toUinput({ type: 'disconnect_viewer', viewer_id: id });
           }
-
           broadcastRoster();
           if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
         }
-
         console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
       });
 
-      // ── ARCADE CLIENTS (arcade.js subscribers at nearsec.cutefame.net/arcade) ─
-    } else if (path === "/ws/arcade") {
+    // ── ARCADE CLIENTS ────────────────────────────────────────────────────────
+    } else if (wsPath === "/ws/arcade") {
       arcadeClients.add(ws);
-      // Immediately send all current sessions so the page doesn't wait for a change
       ws.send(JSON.stringify({ type: 'arcade-sessions', sessions: [...arcadeSessions.values()] }));
       ws.on("message", raw => {
         try {
@@ -1071,16 +1041,16 @@ async function main() {
       });
       ws.on("close", () => arcadeClients.delete(ws));
 
-      // ── AUDIO (WebSocket fallback — WebRTC carries audio natively) ────────────
-    } else if (path === "/ws/audio-host") {
+    // ── AUDIO ─────────────────────────────────────────────────────────────────
+    } else if (wsPath === "/ws/audio-host") {
       ws.on("message", raw => { audioViewers.forEach(v => { if (v.readyState === 1) v.send(raw); }); });
 
-    } else if (path === "/ws/audio") {
+    } else if (wsPath === "/ws/audio") {
       audioViewers.add(ws);
       ws.on("close", () => audioViewers.delete(ws));
 
-      // ── DEDICATED INPUT CHANNEL ───────────────────────────────────────────────
-    } else if (path === "/ws/input") {
+    // ── DEDICATED INPUT CHANNEL ───────────────────────────────────────────────
+    } else if (wsPath === "/ws/input") {
       let myId = null;
       ws.on("message", raw => {
         try {
@@ -1103,7 +1073,7 @@ async function main() {
     }
   });
 
-  // Reap dead WebSockets every 30 seconds
+  // Heartbeat — reap dead WebSockets every 30 seconds
   const interval = setInterval(() => {
     wss.clients.forEach(ws => {
       if (ws.isAlive === false) return ws.terminate();
@@ -1111,7 +1081,6 @@ async function main() {
       ws.ping();
     });
   }, 30000);
-
   wss.on('close', () => clearInterval(interval));
 
   server.listen(PORT, "0.0.0.0", async () => {
@@ -1119,7 +1088,6 @@ async function main() {
     if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + PORT + "/host");
     const cfg = loadConfig();
 
-    // .env USE_VPS takes priority over saved config
     if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
       console.log("  ~ Tunnel: VPS (from .env)");
       const tun = await startTunnelVps(PORT, process.env.VPS_HOST.trim());
@@ -1129,12 +1097,9 @@ async function main() {
           hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
       }
     } else if (cfg.neverAsk && cfg.tunnelProvider === 'portforward') {
-      // Port-forward mode: no tunnel process needed. Host shares their public IP directly.
-      // tunnelUrl stays null here; the host page reads neverAsk=true and skips the picker modal.
-      console.log("  ~ Tunnel: port forward mode (saved). Share your Public IP URL with viewers.");
+      console.log("  ~ Tunnel: port forward mode (saved).");
     } else if (cfg.neverAsk && cfg.tunnelProvider) {
-      // Use saved preference without asking
-      console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "' (edit nearsectogether.config.json to change)");
+      console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "'");
       const fn = {
         zrok: startTunnelZrok,
         cloudflared: startTunnelCloudflared,
@@ -1150,7 +1115,6 @@ async function main() {
           hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
       }
     } else {
-      // No saved preference — host page will show the picker modal
       console.log("  ~ Tunnel: waiting for host to choose provider...");
     }
   });
@@ -1160,36 +1124,25 @@ main();
 
 function cleanup(isElectron = false) {
   console.log("\n  \x1b[33m!\x1b[0m Shutting down... cleaning up ports and processes.");
-
-  // Kill Tunnel (Cloudflared, Zrok, etc)
   if (activeTunnelProc) {
     try { activeTunnelProc.kill(); } catch (e) { }
   }
-
-  // Kill Python Sidecar (Releases the virtual controllers!)
   if (uinputProc) {
     try {
-      // Ask Python nicely to destroy devices before dying
       if (uinputProc.stdin && uinputProc.stdin.writable) {
         uinputProc.stdin.write(JSON.stringify({ type: 'destroy_all' }) + "\n");
       }
       uinputProc.kill();
     } catch (e) { }
   }
-
-  // Free up port 3000
   if (!isElectron) {
-    // If running purely via Node (command line)
     killPort(3000).catch(() => {}).finally(() => process.exit());
   } else {
-    // If Electron is managing the lifecycle, don't force kill the process
     killPort(3000).catch(() => {});
   }
 }
 
-// Hook normal terminal stops
 process.on('SIGINT', () => cleanup(false));
 process.on('SIGTERM', () => cleanup(false));
 
-// Export to electron-main.js
-module.exports = { cleanup };
+module.exports = { cleanup, toUinput };

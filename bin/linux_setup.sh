@@ -12,13 +12,13 @@ apt-get install -y python3-pip libudev-dev libasound2-dev libpipewire-0.3-dev
 pip3 install python-uinput --break-system-packages
 if ! modprobe uinput 2>/dev/null; then
   if [ -e /dev/uinput ]; then
-    echo "✓ uinput is built into this kernel (modprobe not needed)"
+    echo "[OK] uinput is built into this kernel (modprobe not needed)"
   else
-    echo "✗ uinput not available — controller input will not work"
+    echo "[FAIL] uinput not available — controller input will not work"
     echo "  Try: sudo modprobe uinput  or check your kernel config"
   fi
 else
-  echo "✓ uinput module loaded"
+  echo "[OK] uinput module loaded"
 fi
 
 echo "--- Creating udev rules for virtual controllers ---"
@@ -44,4 +44,4 @@ SUBSYSTEM=="input", ATTRS{name}=="Microsoft Xbox*", \
 EOF
 
 udevadm control --reload-rules && udevadm trigger
-echo "✓ Linux setup complete. Virtual controllers will now bypass Steam Input interference."
+echo "[OK] Linux setup complete. Virtual controllers will now bypass Steam Input interference."

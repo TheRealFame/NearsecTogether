@@ -31,7 +31,7 @@ if [ "$OS" = "Linux" ]; then
 fi
 
 if [ "$OS" = "Darwin" ]; then
-    echo "  ⚠ macOS Experimental Mode:"
+    echo "  [WARNING] macOS Experimental Mode:"
     echo "  - Gamepad injection is NOT supported"
     echo "  - Keyboard/Mouse passthrough available only"
     echo "  - Install pyautogui: pip3 install pyautogui"

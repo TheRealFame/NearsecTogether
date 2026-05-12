@@ -162,11 +162,23 @@ async function fetchThumbnailForSession(session) {
         if (response.ok) {
             const data = await response.json();
             if (data.thumbnail) {
-                // Update the session object with the new image URL
+                // Update the session object
                 session.thumbnail = data.thumbnail;
 
-                // Re-render the grid so the new image appears
-                if (typeof filterCards === 'function') filterCards();
+                // PRELOAD: Download the image silently in the background
+                const img = new Image();
+                img.onload = () => {
+                    // Once fully loaded, inject it directly into the DOM without rebuilding the grid
+                    const thumbDiv = document.querySelector(`.client-card[data-id="${session.id}"] .thumb`);
+                    if (thumbDiv) {
+                        thumbDiv.style.backgroundImage = `url(${JSON.stringify(data.thumbnail)})`;
+                        thumbDiv.classList.remove('no-img');
+                        // Remove the placeholder SVG icon
+                        const svg = thumbDiv.querySelector('svg');
+                        if (svg) svg.remove();
+                    }
+                };
+                img.src = data.thumbnail;
             }
         }
     } catch (err) {
@@ -191,8 +203,14 @@ async function pingSession(session) {
     if (latencyMap[session.id]) return;
     try {
         const t0 = performance.now();
-        await fetch(session.url + '/ping', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-        const ms = Math.round(performance.now() - t0);
+        // Hit a valid, lightweight endpoint instead of a 404
+        await fetch(session.url + '/api/info', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+        const rawMs = performance.now() - t0;
+
+        // HTTP takes ~3 round trips (TCP + TLS + HTTP). WebRTC UDP takes 1.
+        // Divide by 2.5 to estimate the true direct connection latency.
+        const ms = Math.max(1, Math.round(rawMs / 2.5));
+
         let color = ms < 60 ? 'green' : ms < 120 ? 'yellow' : 'red';
         latencyMap[session.id] = { ms, color };
     } catch {
@@ -324,7 +342,7 @@ function openJoin(session) {
     meta.innerHTML = '';
 
     // Add tags to modal...
-    [session.region, (latencyMap[session.id]?.ms ? latencyMap[session.id].ms + 'ms' : null), (session.hasPin ? '🔒 PIN Required' : '🌐 Open')]
+    [session.region, (latencyMap[session.id]?.ms ? latencyMap[session.id].ms + 'ms' : null), (session.hasPin ? 'PIN Required' : 'Open')]
     .filter(val => val)
     .forEach(text => {
         const t = document.createElement('div');
@@ -360,7 +378,7 @@ function showSecurityDisclaimer(onAccept) {
         overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:monospace;';
         overlay.innerHTML = `
         <div style="background:#1e1f22;border-radius:12px;padding:28px;max-width:460px;width:92vw;box-shadow:0 16px 48px rgba(0,0,0,.8);border:1px solid #333;">
-        <div style="font-size:15px;font-weight:700;color:#f2f3f5;margin-bottom:10px;">⚠ Before you join</div>
+        <div style="font-size:15px;font-weight:700;color:#f2f3f5;margin-bottom:10px;">Before you join</div>
         <p style="font-size:11px;color:#949ba4;line-height:1.7;margin-bottom:16px;">
         You are about to connect to a <strong style="color:#f2f3f5">third-party host machine</strong>.
         The transport is encrypted via WebRTC, but you should:

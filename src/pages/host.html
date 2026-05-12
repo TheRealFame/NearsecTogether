@@ -1229,7 +1229,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;stroke-linecap:round;stroke-linejoin:round;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="8" y1="9" x2="16" y2="9"></line></svg> Arcade
             </button>
           </div>
-          <button class="btn" id="btnSwitch" onclick="startCapture()" disabled>
+          <button class="btn" id="btnSwitch" onclick="showSourceSelectionModal()" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
               <path d="M21 3v5h-5" />
@@ -1241,6 +1241,11 @@
             <svg viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg> Stop
+          </button>
+          <button class="btn" id="btnKbmPanic" onclick="toggleKbmPanic()" disabled style="background: #8B0000; border-color: #FF0000; color: #FFF;" title="Emergency: Freeze all keyboard/mouse input from viewers">
+            <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+            </svg> KBM Panic
           </button>
           <button class="btn" id="btnPreviewToggle" onclick="togglePreview()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;">
@@ -1420,22 +1425,33 @@
             </select>
             <button class="btn-retry" style="padding:6px 12px;font-size:10px;background:#1e1f22;color:#949ba4;border:1px solid #333;" onclick="enumerateAudioDevices()">Scan</button>
           </div>
-          <div style="font-size:9px;color:#444;margin-top:4px;">To exclude Discord: route game audio to a separate PipeWire sink, then select it here.</div>
+          <div style="font-size:9px;color:#444;margin-top:4px;">Desktop Audio is captured automatically if selected in the Linux Screen Share prompt.</div>
         </div>
 
         <div class="ctrl-modal-row" id="settingRowMic" onclick="toggleAppSetting('captureMic')" style="margin-top:8px;">
           <div class="ctrl-toggle-track" id="settingTrackMic"><div class="ctrl-toggle-thumb"></div></div>
           <div class="ctrl-row-text">
-            <div class="ctrl-row-label">Capture Microphone</div>
-            <div class="ctrl-row-desc">Mix your microphone into the stream so viewers can hear you without a separate voice chat.</div>
+            <div class="ctrl-row-label">Capture App Audio / Microphone</div>
+            <div class="ctrl-row-desc">Mix a specific input device into the stream. Use this to capture specific virtual audio cables or your microphone.</div>
           </div>
         </div>
 
-        <div style="margin-top:10px;" id="micDeviceRow">
-          <div style="font-size:10px;color:#949ba4;margin-bottom:6px;">Microphone Device</div>
+        <div style="margin-top:10px; padding: 10px; background: #0a0a0a; border-radius: 6px; border: 1px solid #1e1e1e;" id="micDeviceRow">
+          <div style="font-size:10px;color:#949ba4;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span>Input Source (Mic or Virtual Cable)</span>
+            <button class="btn-retry" style="padding:4px 8px;font-size:9px;background:#1e1f22;color:#00ff88;border:1px solid #1a6640;" onclick="createVirtualAudioCable()">+ Create Linux Virtual Cable</button>
+          </div>
           <select id="audioInputSelect" class="form-select" onchange="saveAudioDevice('input', this.value)">
             <option value="default">Default Microphone</option>
           </select>
+          <div style="font-size:10px;color:#666;margin-top:8px;line-height:1.5;" id="virtualAudioHelp">
+            <strong>How to capture a specific app without desktop sounds:</strong><br>
+            1. Click the green button above.<br>
+            2. Open your Linux sound settings (or <code>pavucontrol</code>).<br>
+            3. Find your Game/App and change its Output to <strong>"Nearsec_App_Audio"</strong>.<br>
+            4. In the dropdown directly above this text, select <strong>"Monitor of Nearsec_App_Audio"</strong>.<br>
+            5. Ensure the toggle switch above is turned ON.
+          </div>
         </div>
 
         <!-- ── NETWORK ── -->
@@ -1511,12 +1527,12 @@
         </div>
 
         <div style="background:#111; border:1px solid #222; border-radius:4px; padding:10px; font-size:10px; color:#666; margin-top:8px;">
-          💡 Once you start sharing, your session URL will be displayed below. Share this link on the Arcade page!
+          Once you start sharing, your session URL will be displayed below. Share this link on the Arcade page!
         </div>
       </div>
       <div class="modal-footer">
         <div class="btn-row">
-          <button class="btn-confirm" onclick="startArcadeSession()">🚀 Launch Arcade</button>
+          <button class="btn-confirm" onclick="startArcadeSession()">Launch Arcade</button>
           <button class="btn-skip" onclick="closeArcadeModal()">Cancel</button>
         </div>
       </div>
@@ -1575,6 +1591,20 @@
               <span style="color: var(--warn);">Note: Viewers must use a Chromium-based browser and manually grant WebHID permissions.</span>
             </div>
           </div>
+        </div>
+
+        <div class="ctrl-modal-row" style="flex-direction: column; gap: 8px; cursor: default;">
+          <div class="ctrl-row-text">
+            <div class="ctrl-row-label">Default Input Method for Viewers</div>
+            <div class="ctrl-row-desc">
+              Set the default input mode for new viewers. They can still be switched individually from the roster.
+            </div>
+          </div>
+          <select id="defaultInputModeSelect" onchange="changeDefaultInputMode(this.value)" style="padding: 8px; border-radius: 6px; border: 1px solid #444; background: #2c2f33; color: #f2f3f5; font-family: inherit; font-size: 12px;">
+            <option value="gamepad">Gamepad (recommended)</option>
+            <option value="kbm">Raw KBM</option>
+            <option value="kbm_emulated">KBM Emulated</option>
+          </select>
         </div>
 
       </div>
@@ -1730,7 +1760,28 @@
           <label for="rememberCheck">Remember this choice & don't ask again on startup</label>
         </div>
       </div>
-    </div> </div> <script src="/js/host.js"></script>
+    </div> </div>
+
+  <!-- ══ SOURCE/WINDOW SELECTION MODAL ═════════════════════════════════ -->
+  <div class="modal-bg gone" id="sourceModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Select Capture Source (Windows/Screens)</h3>
+        <p>Choose a window or screen to share. Your selection will be remembered.</p>
+      </div>
+      <div class="source-grid" id="sourceGrid">
+        <!-- Populated by JS -->
+      </div>
+      <div class="modal-footer">
+        <div class="btn-row">
+          <button class="btn primary" id="confirmSourceBtn" onclick="confirmSource()" disabled>Select</button>
+          <button class="btn" onclick="closeSourceModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/host.js"></script>
 </body>
 
 </html>

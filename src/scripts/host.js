@@ -2,6 +2,7 @@ const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCount = 0;
 let audioCtx, analyser, animFrame;
 let pinEnabled = true, currentPin = '----';
+let kbmPanicActive = false;  // Emergency freeze for all viewer KBM input
 
 // ── Audio Settings (Hidden from UI) ──────────────────────────────────────
 // forceAudioEnabled: Always attempt to capture audio, defaulted to true
@@ -566,6 +567,85 @@ async function sendOfferToViewer(viewerId) {
     log('Offer → viewer ' + viewerId, 'ok');
 }
 
+// ── SOURCE SELECTION MODAL (Windows/macOS) ──────────────────────────────────
+let selectedSourceId = null;
+
+async function showSourceSelectionModal() {
+    // Only show modal if electronAPI is available (Electron app)
+    if (!window.electronAPI || !window.electronAPI.getWindowSources) {
+        log('Source selection not available on this platform', 'warn');
+        startCapture();
+        return;
+    }
+
+    try {
+        const sources = await window.electronAPI.getWindowSources();
+        if (!sources || sources.length === 0) {
+            log('No sources available, using default capture', 'warn');
+            startCapture();
+            return;
+        }
+
+        const sourceGrid = document.getElementById('sourceGrid');
+        sourceGrid.innerHTML = '';
+        selectedSourceId = null;
+        document.getElementById('confirmSourceBtn').disabled = true;
+
+        sources.forEach((source, idx) => {
+            const card = document.createElement('div');
+            card.className = 'source-card';
+            card.id = 'source-' + idx;
+            card.onclick = () => selectSource(idx, source.id);
+
+            const thumbnail = source.thumbnail || '';
+            const imgHtml = thumbnail ? `<img src="${thumbnail}" class="source-thumbnail" alt="${source.name}">` : '<div class="source-thumbnail" style="background: #333; display: flex; align-items: center; justify-content: center; color: #888;">No Preview</div>';
+            
+            const sourceType = source.isScreen ? '🖥️ Screen' : '🪟 Window';
+            card.innerHTML = `
+                ${imgHtml}
+                <div class="source-name">${source.name}</div>
+                <div class="source-type">${sourceType}</div>
+            `;
+
+            sourceGrid.appendChild(card);
+        });
+
+        // Show modal
+        const modal = document.getElementById('sourceModal');
+        modal.classList.remove('gone');
+    } catch (e) {
+        log('Error loading sources: ' + e.message, 'error');
+        startCapture();
+    }
+}
+
+function selectSource(idx, sourceId) {
+    // Clear previous selection
+    document.querySelectorAll('.source-card').forEach(card => {
+        card.style.borderColor = '';
+        card.style.background = '';
+    });
+
+    // Highlight selected
+    const selectedCard = document.getElementById('source-' + idx);
+    selectedCard.style.borderColor = 'var(--ok)';
+    selectedCard.style.background = 'rgba(100, 200, 100, 0.1)';
+
+    selectedSourceId = sourceId;
+    document.getElementById('confirmSourceBtn').disabled = false;
+}
+
+function closeSourceModal() {
+    const modal = document.getElementById('sourceModal');
+    modal.classList.add('gone');
+    selectedSourceId = null;
+}
+
+async function confirmSource() {
+    closeSourceModal();
+    await startCapture();
+}
+
 // ── CAPTURE & MEDIA ──────────────────────────────────────────────────────────
 async function startCapture() {
     document.getElementById('btnStart').disabled = true;
@@ -576,24 +656,52 @@ async function startCapture() {
     peerConnections = {};
 
     try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { frameRate: { ideal: 60, max: 60 } },
-            // PIPEWIRE AUDIO: systemAudio:'include' (Chrome 105+) explicitly requests system/window audio
-            // via the PipeWire portal on Wayland. Audio capture preference is controlled by audioSettings.forceAudioEnabled.
-            // Even if disabled by user, we still show the dialog — the OS will handle whether to include audio.
-            audio: audioSettings.forceAudioEnabled ? {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-                sampleRate: 48000,
-                channelCount: 2,
-                latency: 0,
-                deviceId: audioSettings.defaultDevice
-            } : false,
-            systemAudio: 'include',          // Chrome 105+: shows audio share option in the dialog
-            selfBrowserSurface: 'exclude',   // Don't offer the Nearsec tab itself
-            surfaceSwitching: 'include',     // Allow switching to another window mid-stream
-        });
+        let screenStream;
+
+        // If we have a selected source from the modal, use it directly via chromeMediaSource
+        if (selectedSourceId && window.electronAPI) {
+            try {
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    audio: false,
+                    video: {
+                        frameRate: { ideal: 60, max: 60 },
+                        mandatory: {
+                            chromeMediaSource: 'desktop',
+                            chromeMediaSourceId: selectedSourceId
+                        }
+                    }
+                });
+                log('Using selected source: ' + selectedSourceId, 'ok');
+            } catch (e) {
+                log('Source selection failed, falling back to system dialog: ' + e.message, 'warn');
+                selectedSourceId = null;
+                // Fall through to normal getDisplayMedia
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { frameRate: { ideal: 60, max: 60 } },
+                    audio: audioSettings.forceAudioEnabled ? {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        sampleRate: { ideal: 48000 },
+                        channelCount: { ideal: 2 },
+                    } : false,
+                    systemAudio: 'include',
+                    selfBrowserSurface: 'exclude',
+                    surfaceSwitching: 'include',
+                });
+            }
+        } else {
+            // Normal browser getDisplayMedia flow (or modal not available)
+            screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { frameRate: { ideal: 60, max: 60 } },
+                // Wayland/PipeWire portals often reject complex audio objects.
+                // A simple boolean is required to trigger the portal's audio toggle.
+                audio: audioSettings.forceAudioEnabled
+            });
+        }
+
+        // Clear selection after use
+        selectedSourceId = null;
 
         const vTrack = screenStream.getVideoTracks()[0];
         if (!vTrack || vTrack.readyState === 'ended') {
@@ -654,8 +762,19 @@ async function startCapture() {
         (aTrack ? 'Audio: ' + (aTrack.label || 'default') : 'No audio');
 
         setCapDot('live');
-        if (aTrack) { setAudDot('live', 'Audio active'); startAudioMeter(combined); }
-        else setAudDot('warn', 'No audio — Check source');
+
+        // Give the audio track a tiny bit of time to initialize
+        setTimeout(() => {
+            let aTrack = currentStream ? currentStream.getAudioTracks()[0] : null;
+            if (aTrack) {
+                setAudDot('live', 'System Audio Active');
+                startAudioMeter(currentStream);
+            } else {
+                // Silently clear the warning if we still can't find the track object
+                // even though PipeWire might be handling it behind the scenes
+                setAudDot('', '');
+            }
+        }, 500);
 
         ws.send(JSON.stringify({ type: 'host-stream-ready' }));
         sysChat('Stream started.');
@@ -664,6 +783,7 @@ async function startCapture() {
         vTrack.onended = () => { log('Capture ended by OS', 'warn'); stopCapture(); };
         document.getElementById('btnSwitch').disabled = false;
         document.getElementById('btnStop').disabled = false;
+        document.getElementById('btnKbmPanic').disabled = false;
     } catch (err) {
         if (err.name === 'NotAllowedError' || err.name === 'AbortError') log('Capture cancelled', 'warn');
         else { log('Capture failed: ' + err.message, 'err'); setCapDot('err'); }
@@ -681,6 +801,9 @@ function stopCapture() {
     document.getElementById('btnStart').disabled = false;
     document.getElementById('btnSwitch').disabled = true;
     document.getElementById('btnStop').disabled = true;
+    document.getElementById('btnKbmPanic').disabled = true;
+    kbmPanicActive = false;  // Reset panic state
+    updateKbmPanicButton();
     Object.values(peerConnections).forEach(pc => pc.close());
     peerConnections = {};
 
@@ -709,6 +832,39 @@ function stopCapture() {
 
     log('Capture stopped');
     sysChat('Host stopped sharing.');
+}
+
+// ── KBM PANIC MODE (Emergency input freeze) ────────────────────────────────────
+function updateKbmPanicButton() {
+    const btn = document.getElementById('btnKbmPanic');
+    if (!btn) return;
+    
+    if (kbmPanicActive) {
+        btn.textContent = 'Release KBM';
+        btn.style.background = '#FF0000';
+        btn.style.borderColor = '#FFF';
+        btn.title = 'Click to release KBM control to viewers';
+    } else {
+        btn.textContent = 'KBM Panic';
+        btn.style.background = '#8B0000';
+        btn.style.borderColor = '#FF0000';
+        btn.title = 'Emergency: Freeze all keyboard/mouse input from viewers';
+    }
+}
+
+function toggleKbmPanic() {
+    kbmPanicActive = !kbmPanicActive;
+    updateKbmPanicButton();
+    
+    if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'panic_toggle', enabled: kbmPanicActive }));
+    }
+    
+    if (kbmPanicActive) {
+        log('⚠ KBM PANIC ACTIVATED - All viewer keyboard/mouse input frozen', 'warn');
+    } else {
+        log('✓ KBM panic released', 'ok');
+    }
 }
 
 function startAudioMeter(stream) {
@@ -871,7 +1027,8 @@ async function checkTunnelOnConnect() {
 const ctrlSettings = {
     forceXboxOne: localStorage.getItem('ns_ctrl_forceXboxOne') === 'true',
         enableDualShock: localStorage.getItem('ns_ctrl_enableDualShock') === 'true',
-        enableMotion: localStorage.getItem('ns_ctrl_enableMotion') === 'true'
+        enableMotion: localStorage.getItem('ns_ctrl_enableMotion') === 'true',
+        defaultInputMode: localStorage.getItem('ns_ctrl_defaultInputMode') || 'gamepad'
 };
 
 function applyCtrlSettingsUI() {
@@ -885,6 +1042,9 @@ function applyCtrlSettingsUI() {
     const trackMotion = document.getElementById('ctrlTrackMotion');
     const rowMotion   = document.getElementById('ctrlRowMotion');
 
+    const modeSelect = document.getElementById('defaultInputModeSelect');
+    if (modeSelect) modeSelect.value = ctrlSettings.defaultInputMode;
+
     const btn = document.getElementById('ctrlSettingsBtn');
 
     if (trackXbox) trackXbox.classList.toggle('on', ctrlSettings.forceXboxOne);
@@ -897,7 +1057,7 @@ function applyCtrlSettingsUI() {
     if (trackMotion) trackMotion.classList.toggle('on', ctrlSettings.enableMotion);
     if (rowMotion) rowMotion.classList.toggle('active', ctrlSettings.enableMotion);
 
-    const isNonDefault = ctrlSettings.forceXboxOne || ctrlSettings.enableDualShock || ctrlSettings.enableMotion;
+    const isNonDefault = ctrlSettings.forceXboxOne || ctrlSettings.enableDualShock || ctrlSettings.enableMotion || ctrlSettings.defaultInputMode !== 'gamepad';
     btn.style.color = isNonDefault ? 'var(--warn)' : '';
 }
 
@@ -909,13 +1069,22 @@ function toggleCtrlSetting(key) {
     log('ctrl-settings: ' + key + ' = ' + ctrlSettings[key], 'ok');
 }
 
+function changeDefaultInputMode(mode) {
+    ctrlSettings.defaultInputMode = mode;
+    localStorage.setItem('ns_ctrl_defaultInputMode', mode);
+    applyCtrlSettingsUI();
+    sendCtrlSettings();
+    log('Default input mode set to: ' + mode, 'ok');
+}
+
 function sendCtrlSettings() {
     if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({
             type: 'ctrl-settings',
             forceXboxOne: ctrlSettings.forceXboxOne,
                 enableDualShock: ctrlSettings.enableDualShock,
-                enableMotion: ctrlSettings.enableMotion
+                enableMotion: ctrlSettings.enableMotion,
+                defaultInputMode: ctrlSettings.defaultInputMode
         }));
     }
 }
@@ -1172,5 +1341,23 @@ function sysChat(text) {
 }
 
 // ── INITIALIZATION ────────────────────────────────────────────────────────
+function createVirtualAudioCable() {
+    log('Creating virtual audio cable...', 'ok');
+    fetch('/api/create-virtual-audio', { method: 'POST' })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            log('Virtual cable created! Updating devices...', 'ok');
+            // Give Linux 1 second to register the new device, then refresh the dropdowns
+            setTimeout(() => {
+                enumerateAudioDevices();
+                document.getElementById('virtualAudioHelp').style.color = 'var(--accent)';
+            }, 1000);
+        } else {
+            log('Failed to create cable: ' + res.error, 'err');
+        }
+    }).catch(e => log('Network error creating cable', 'err'));
+}
+
 applyCtrlSettingsUI();
 connectWS();

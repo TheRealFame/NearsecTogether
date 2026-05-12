@@ -132,22 +132,22 @@ async function createWindow() {
   win.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
       if (sources && sources.length > 0) {
-        let audioSource = sources.find(s => s.name && s.name.toLowerCase().includes('pipewire'));
-        let audioConfig = audioSource ? { id: audioSource.id } : 'loopback';
-        callback({ video: sources[0], audio: audioConfig });
+        // 'loopback' captures system audio on Windows only.
+        // On Linux, audio is handled by the browser-side PipeWire getDisplayMedia.
+        // We must omit the 'audio' key entirely if we aren't using loopback.
+        if (process.platform === 'win32') {
+          callback({ video: sources[0], audio: 'loopback' });
+        } else {
+          callback({ video: sources[0] });
+        }
       } else {
         callback({});
       }
     }).catch(err => {
       console.error('[electron] desktopCapturer error:', err);
-      callback({});
+      // Only call the fallback if the callback hasn't already been consumed
+      try { callback({}); } catch (e) { /* ignore double-call errors */ }
     });
-  });
-
-  win.on('resize', () => {
-    const [w, h] = win.getSize();
-    settings.w = w; settings.h = h;
-    saveSettings(settings);
   });
 
   // ── Minimize to tray vs Quit Dialog ──────────────────────────────────────────
@@ -220,13 +220,34 @@ async function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  const { globalShortcut } = require('electron');
+  let isPanicActive = false;
+
+  // ── THE PANIC BUTTON: Ctrl + Shift + Backspace ──
+  // This listens globally. Even if the app is minimized or your mouse is hijacked,
+  // hitting this combo will instantly freeze or unfreeze viewer inputs.
+  globalShortcut.register('CommandOrControl+Shift+Backspace', () => {
+    isPanicActive = !isPanicActive;
+    console.log(`\n[electron] PANIC MODE ${isPanicActive ? 'ACTIVATED (Inputs Frozen)' : 'DEACTIVATED (Inputs Resumed)'}`);
+
+    // Send the toggle directly to the Python uinput sidecar
+    if (serverCore && serverCore.toUinput) {
+      serverCore.toUinput({ type: 'panic_toggle', enabled: isPanicActive });
+    }
+  });
+});
 
 // ── Cleanup Hook ──────────────────────────────────────────────────────────────
 app.on('will-quit', () => {
   console.log("\n[electron] App is quitting, forcing cleanup...");
+  const { globalShortcut } = require('electron');
+  globalShortcut.unregisterAll(); // Free up the hotkey when closing
+
   if (serverCore && serverCore.cleanup) {
-    serverCore.cleanup(true); // Pass 'true' to tell the server it's being managed by Electron
+    serverCore.cleanup(true);
   }
 });
 
