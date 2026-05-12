@@ -1124,6 +1124,12 @@ main();
 
 function cleanup(isElectron = false) {
   console.log("\n  \x1b[33m!\x1b[0m Shutting down... cleaning up ports and processes.");
+
+  if (process.platform === 'linux') {
+    const { exec } = require("child_process");
+    exec("pactl list short modules | grep NearsecAppAudio | cut -f1 | xargs -r pactl unload-module", () => {});
+  }
+
   if (activeTunnelProc) {
     try { activeTunnelProc.kill(); } catch (e) { }
   }
