@@ -36,11 +36,6 @@
     "directories": {
       "output": "dist"
     },
-    "linux": {
-      "target": ["AppImage", "deb"],
-      "icon": "assets/NearsecTogether.png",
-      "category": "Network"
-    },
     "files": [
       "!/.env",
       "**/*",
@@ -65,7 +60,8 @@
     },
     "linux": {
       "target": ["AppImage", "deb"],
-      "icon": "assets/NearsecTogether.png"
+      "icon": "assets/NearsecTogether.png",
+      "category": "Network"
     }
   }
 }

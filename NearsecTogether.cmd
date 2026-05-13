@@ -1,1 +1,3 @@
-/home/fame/NearsecTogether/bin/start.cmd
+@echo off
+cd /d "%~dp0"
+node .

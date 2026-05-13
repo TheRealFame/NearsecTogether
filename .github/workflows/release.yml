@@ -5,30 +5,41 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+
 jobs:
   release:
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
-        # We build on Ubuntu for Linux and Windows for the .exe
-        os: [ubuntu-latest, windows-latest]
+        os:
+          - ubuntu-latest
+          - windows-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Remove broken launcher symlinks
+        shell: bash
+        run: |
+          rm -f NearsecTogether.cmd
+          rm -f NearsecTogether.bat
+          rm -f NearsecTogether.command
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: 'npm'
+          node-version: 22
+          cache: npm
 
       - name: Install Dependencies
         run: npm install
 
-      - name: Build & Publish
-        # This command runs electron-builder and uploads to your GitHub Releases
+      - name: Build Electron App
         run: npm run dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
