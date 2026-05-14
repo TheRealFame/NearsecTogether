@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NearsecTogether Setup</title>
+  <style>
+    body { background: #080808; color: #e8e8e8; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .card { background: #141414; border: 1px solid #222; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    img { width: 80px; margin-bottom: 20px; filter: drop-shadow(0 0 15px rgba(192,132,252,0.4)); }
+    h1 { margin: 0 0 10px; color: #c084fc; font-size: 24px; }
+    p { color: #888; line-height: 1.6; margin-bottom: 24px; font-size: 14px; }
+    button { background: #c084fc; color: #000; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-family: inherit; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+    button:hover { background: #d495ff; transform: scale(1.02); }
+    button:disabled { background: #444; color: #888; cursor: not-allowed; transform: none; }
+    #status { margin-top: 20px; font-size: 12px; color: #facc15; min-height: 16px; }
+    .err { color: #f87171 !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="../../assets/NearsecTogether.png" alt="Logo">
+    <h1>First Time Setup</h1>
+    <p>NearsecTogether needs to install system dependencies (like virtual controller drivers) to run properly on this machine. You will be prompted for administrator permissions.</p>
+    <button id="btn" onclick="startSetup()">Grant Permission & Install</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    function startSetup() {
+      const btn = document.getElementById('btn');
+      const status = document.getElementById('status');
+      btn.disabled = true;
+      btn.textContent = 'Installing... (This may take a minute)';
+      status.className = '';
+      status.textContent = 'Waiting for OS permission prompt...';
+
+      if (window.electronAPI) {
+        window.electronAPI.runSetup();
+
+        window.electronAPI.onSetupSuccess(() => {
+          status.style.color = '#4ade80';
+          status.textContent = 'Success! Rebooting app...';
+        });
+
+        window.electronAPI.onSetupFailed((err) => {
+          btn.disabled = false;
+          btn.textContent = 'Try Again';
+          status.className = 'err';
+          status.textContent = 'Installation failed: ' + err;
+        });
+      }
+    }
+  </script>
+</body>
+</html>

@@ -4,6 +4,7 @@ node_modules/
 .vscode
 kbm_bindings.json
 *.bak
+.flatpak-builder
 
 # wrangler files
 .wrangler

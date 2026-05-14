@@ -6,5 +6,5 @@ Icon=/usr/share/pixmaps/NearsecTogether.png
 Name=NearsecTogether
 Path=
 StartupNotify=true
-Terminal=true
+Terminal=false
 Type=Application

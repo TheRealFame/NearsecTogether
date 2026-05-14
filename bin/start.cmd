@@ -26,8 +26,10 @@ echo "  └───────────────────────
 # OS Detection & Environment Logic
 OS="$(uname -s)"
 if [ "$OS" = "Linux" ]; then
-    ! lsmod | grep -q uinput && sudo modprobe uinput 2>/dev/null
-    [ -e /dev/uinput ] && [ ! -w /dev/uinput ] && sudo chmod 666 /dev/uinput 2>/dev/null
+    if [ ! -w /dev/uinput ]; then
+        echo "  [WARN] /dev/uinput is not writable. Controllers may not work."
+        echo "  Run 'sudo ./linux_setup.sh' to fix permissions."
+    fi
 fi
 
 if [ "$OS" = "Darwin" ]; then

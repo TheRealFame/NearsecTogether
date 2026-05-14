@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=NearsecTogether
+Exec=nearsec-together
+Terminal=false
+Type=Application
+Icon=org.cutefame.NearsecTogether
+Categories=Network;Game;
+Comment=Browser-based low-latency game streaming host.

@@ -423,6 +423,14 @@ async function _doJoin() {
         joinUrl += (joinUrl.includes('?') ? '&' : '?') + 'pin=' + encodeURIComponent(pin);
     }
     closeJoin();
+
+    // NEW: If loaded inside Electron Dashboard, pass it up instead of navigating
+    const isElectron = new URLSearchParams(window.location.search).get('electron') === '1';
+    if (isElectron && window.parent) {
+        window.parent.postMessage({ type: 'JOIN_SESSION', url: joinUrl, game: activeSession.game }, '*');
+        return;
+    }
+
     try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (_) {}
     location.href = joinUrl;
 }

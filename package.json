@@ -1,6 +1,6 @@
 {
   "name": "NearsecTogether",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "author": "Fame <support@cutefame.net>",
   "description": "Browser-based game streaming host",
   "main": "electron-main.js",
@@ -11,20 +11,21 @@
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
     "dist": "electron-builder --publish always",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
-  
-
+    "dist:win": "electron-builder --win --publish always",
+    "dist:mac": "electron-builder --mac --publish always",
+    "dist:linux": "electron-builder --linux --publish always"
   },
   "dependencies": {
+    "discord-rpc": "^4.0.1",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.0",
-    "pusher-js": "^8.5.0",
-    "ws": "^8.0.0",
+    "kill-port": "latest",
     "open": "latest",
     "play-sound": "latest",
-    "kill-port": "latest",
-    "which": "latest"
+    "pusher-js": "^8.5.0",
+    "sudo-prompt": "^9.2.1",
+    "which": "latest",
+    "ws": "^8.0.0"
   },
   "devDependencies": {
     "electron": "^28.0.0",
@@ -32,18 +33,18 @@
     "wrangler": "^4.90.0"
   },
   "build": {
-  "appId": "com.nearsectogether.app",
-  "productName": "NearsecTogether",
-
-  "publish": [
-    {
+    "appId": "com.nearsectogether.app",
+    "productName": "NearsecTogether",
+    "publish": {
       "provider": "github"
-    }
-  ],
-
-  "directories": {
-    "output": "dist"
-  },
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      "linux_setup.sh",
+      "bin/**/*"
+    ],
     "files": [
       "!/.env",
       "**/*",
@@ -55,11 +56,13 @@
     ],
     "asarUnpack": [
       "src/sidecar/**/*",
-      "bin/**/*",
       "assets/**/*"
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/NearsecTogether.png"
     },
     "mac": {
@@ -67,7 +70,10 @@
       "icon": "assets/NearsecTogether.png"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/NearsecTogether.png",
       "category": "Network"
     }
