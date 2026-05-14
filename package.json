@@ -10,10 +10,11 @@
     "dev": "electron . --dev",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
-    "dist": "electron-builder",
+    "dist": "electron-builder --publish always",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux"
+  
 
   },
   "dependencies": {
