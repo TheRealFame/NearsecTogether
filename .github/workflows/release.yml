@@ -17,6 +17,7 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
+          - macos-latest
 
     steps:
       - name: Checkout Code
@@ -42,4 +43,3 @@ jobs:
         run: npm run dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```

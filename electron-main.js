@@ -105,7 +105,7 @@ async function createWindow() {
   win = new BrowserWindow({
     width: Math.max(settings.w, 600),
                           height: Math.max(settings.h, 500),
-                          minWidth: 600,
+                          minWidth: 650,
                           minHeight: 500,
                           title: 'NearsecTogether',
                           icon: path.join(__dirname, 'assets/NearsecTogether.png'),
@@ -217,6 +217,26 @@ async function createWindow() {
     if (win) win.setAlwaysOnTop(settings.alwaysOnTop);
     saveSettings(settings);
     return settings.alwaysOnTop;
+  });
+
+  // ── Source picker (Discord-style grid — all windows at once) ──────────────
+  ipcMain.handle('get-window-sources', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 320, height: 180 },
+        fetchWindowIcons: false,
+      });
+      return sources.map(s => ({
+        id:        s.id,
+        name:      s.name,
+        thumbnail: s.thumbnail.toDataURL(),
+                               isScreen:  s.id.startsWith('screen:'),
+      }));
+    } catch (err) {
+      console.error('[electron] get-window-sources error:', err.message);
+      return [];
+    }
   });
 }
 

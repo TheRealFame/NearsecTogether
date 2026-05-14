@@ -429,25 +429,24 @@ async function main() {
   // ── Platform Detection & Warnings ──────────────────────────────────────────
   console.log("");
   if (process.platform === 'win32') {
-    console.log("╔════════════════════════════════════════════════════════════╗");
-    console.log("║           WINDOWS - EXPERIMENTAL MODE                      ║");
-    console.log("╠════════════════════════════════════════════════════════════╣");
-    console.log("║ GAMEPAD:  Requires ViGEmBus driver                          ║");
-    console.log("║           https://github.com/nefarius/ViGEmBus/releases    ║");
-    console.log("║ INPUT:    KBM (keyboard/mouse) working                      ║");
-    console.log("║ AUDIO:    Using Windows Media Player (via PowerShell)       ║");
-    console.log("║ NOTES:    Process priority may be limited without admin    ║");
-    console.log("╚════════════════════════════════════════════════════════════╝");
+    console.log("============================================================");
+    console.log("  WINDOWS - EXPERIMENTAL MODE");
+    console.log("============================================================");
+    console.log("  GAMEPAD:  Requires ViGEmBus driver");
+    console.log("            https://github.com/nefarius/ViGEmBus/releases");
+    console.log("  INPUT:    KBM (keyboard/mouse) working");
+    console.log("  AUDIO:    Using Windows Media Player (via PowerShell)");
+    console.log("  NOTES:    Process priority may be limited without admin");
+    console.log("============================================================");
   } else if (process.platform === 'darwin') {
-    console.log("╔════════════════════════════════════════════════════════════╗");
-    console.log("║           macOS - EXPERIMENTAL MODE                        ║");
-    console.log("╠════════════════════════════════════════════════════════════╣");
-    console.log("║ GAMEPAD:  NOT SUPPORTED (no injection API on macOS)         ║");
-    console.log("║ INPUT:    KBM only (keyboard/mouse via pyautogui)           ║");
-    console.log("║ AUDIO:    Using afplay (native)                             ║");
-    console.log("║ SETUP:    pip3 install pyautogui                            ║");
-    console.log("║ NOTES:    Alternative: users can use native gamepad support║");
-    console.log("╚════════════════════════════════════════════════════════════╝");
+    console.log("============================================================");
+    console.log("  macOS - EXPERIMENTAL MODE");
+    console.log("============================================================");
+    console.log("  GAMEPAD:  NOT SUPPORTED (no injection API on macOS)");
+    console.log("  INPUT:    KBM only (keyboard/mouse via pyautogui)");
+    console.log("  AUDIO:    Using afplay (native)");
+    console.log("  SETUP:    pip3 install pyautogui");
+    console.log("============================================================");
   } else if (process.platform === 'linux') {
     console.log("✓ Linux - Fully supported (stable)");
   }

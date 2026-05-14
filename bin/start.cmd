@@ -53,34 +53,66 @@ exit 0
 :WINDOWS
 :: --- WINDOWS SECTION ---
 @echo off
-:: %~dp0 is the folder containing the script.
-:: %~dp0.. moves the path up one level.
+setlocal enabledelayedexpansion
+
+:: Set UTF-8 code page so Unicode characters render correctly in this terminal
+chcp 65001 > nul 2>&1
+
+:: Set window title
+title NearsecTogether
+
 cd /d "%~dp0.."
 
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3000') do taskkill /f /pid %%a >nul 2>&1
-if not exist .env echo CF_TOKEN= > .env
+:: Kill any existing process on port 3000
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr :3000') do taskkill /f /pid %%a >nul 2>&1
 
+if not exist .env (
+    echo CF_TOKEN= > .env
+)
+
+echo.
 echo ========================================
-echo    Nearsec Together Launcher (Windows)
+echo  NearsecTogether Launcher (Windows)
 echo ========================================
 echo.
-echo IMPORTANT: Windows requires ViGEmBus driver for gamepad support!
-echo Download and install from:
-echo https://github.com/nefarius/ViGEmBus/releases
+echo  Gamepad support requires ViGEmBus driver:
+echo  https://github.com/nefarius/ViGEmBus/releases
 echo.
-echo For KBM and basic testing:
-echo - KBM input will work (keyboard/mouse passthrough)
-echo - Gamepad will NOT work without ViGEmBus
-echo - Audio playback uses Windows Media Player
+echo  Tunnel setup: run bin\windows_setup.ps1 if needed
+echo  (installs cloudflared, zrok, and/or playit)
 echo.
 
-node -v >nul 2>&1 || (echo Node.js missing & pause & exit)
-if not exist node_modules call npm install --silent
+node -v >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Node.js is not installed or not in PATH.
+    echo Please install Node.js from https://nodejs.org/
+    pause
+    exit /b 1
+)
 
-:: set SDL_GAMECONTROLLER_IGNORE_DEVICES=0x045e/0x028e,0x054c/0x09cc,0x054c/0x0ce6
+if not exist node_modules (
+    echo Installing npm dependencies...
+    call npm install --silent
+    if errorlevel 1 (
+        echo ERROR: npm install failed
+        pause
+        exit /b 1
+    )
+)
+
 if exist node_modules\.bin\electron.cmd (
     call node_modules\.bin\electron.cmd . %*
 ) else (
     node src\scripts\server.js %*
 )
-pause
+
+:: Only pause if the app exited with an error so the user can read it.
+:: Normal Electron close exits with code 0 and this window will auto-close.
+if errorlevel 1 (
+    echo.
+    echo  Application exited with an error ^(code %errorlevel%^).
+    echo  Press any key to close this window.
+    pause > nul
+)
+
+endlocal

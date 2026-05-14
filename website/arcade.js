@@ -83,7 +83,7 @@ arcadeChannel.bind('client-session-ping', (data) => {
         if (typeof updateLiveDot === 'function') updateLiveDot(true);
         if (typeof filterCards === 'function') filterCards();
 
-        // 🚀 Fetch the thumbnail dynamically if it's missing
+        // Fetch the thumbnail dynamically if it's missing
         fetchThumbnailForSession(data);
     }
 });

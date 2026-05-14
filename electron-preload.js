@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSettings: (s) => ipcRenderer.invoke('save-settings', s),
   toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top'),
   onSettingsUpdated: (cb) => ipcRenderer.on('settings-updated', (_, s) => cb(s)),
-  
+
   // NEW: Desktop Capturer API for window/screen selection
   getWindowSources: async () => {
     try {

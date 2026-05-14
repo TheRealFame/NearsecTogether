@@ -24,20 +24,28 @@ jobs:
 
       - name: Prepare Files
         run: |
-          # 1. Copy your home file to index.html for the root domain
-          cp website/nearsec-home.html website/index.html
+          # Create a dedicated dist folder to match the expected routing
+          mkdir -p dist/arcade
 
-          # 2. Create the 'arcade' folder for clean URL routing
-          mkdir -p website/arcade
+          # 1. Route the main HTML files
+          cp website/nearsec-home.html dist/index.html
+          cp website/nearsec-arcade.html dist/arcade/index.html
 
-          # 3. Copy the arcade HTML into that folder as index.html
-          cp website/nearsec-arcade.html website/arcade/index.html
+          # 2. Copy the Arcade JS logic
+          cp website/arcade.js dist/arcade/arcade.js
+
+          # 3. Copy assets (Images, sounds, icons)
+          cp -r assets dist/assets
+          cp assets/NearsecTogether.png dist/NearsecTogether.png
+
+          # 4. Copy auxiliary pages (like gamepad-popup.html)
+          cp -r src/pages dist/pages
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Points to your specific website folder
-          path: './website'
+          # Point the upload to the fully assembled dist folder
+          path: './dist'
 
       - name: Deploy to GitHub Pages
         id: deployment
