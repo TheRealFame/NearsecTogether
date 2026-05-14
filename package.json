@@ -32,11 +32,18 @@
     "wrangler": "^4.90.0"
   },
   "build": {
-    "appId": "com.nearsectogether.app",
-    "productName": "NearsecTogether",
-    "directories": {
-      "output": "dist"
-    },
+  "appId": "com.nearsectogether.app",
+  "productName": "NearsecTogether",
+
+  "publish": [
+    {
+      "provider": "github"
+    }
+  ],
+
+  "directories": {
+    "output": "dist"
+  },
     "files": [
       "!/.env",
       "**/*",
