@@ -34,10 +34,6 @@
   "build": {
     "appId": "com.nearsectogether.app",
     "productName": "NearsecTogether",
-    "publish": [
-    {
-      "provider": "github"
-    }],
     "directories": {
       "output": "dist"
     },
