@@ -72,25 +72,36 @@ function checkSystemReady() {
 }
 
 // ── Setup IPC Handlers ────────────────────────────────────────────────────────
-ipcMain.on('open-external', (event, url) => {
-  shell.openExternal(url);
-});
+ipcMain.on('continue-boot', async () => {
+  console.log('[electron] Transitioning to Dashboard...');
 
-ipcMain.on('continue-boot', () => {
-  // Mark setup as complete so they are never bothered again
+  // 1. Force save the config immediately
   saveConfig({ firstRunComplete: true });
 
-  // Save a reference to the setup window
-  const setupWindow = mainWindow;
+  // 2. Start the server and wait for it to be ready
+  try {
+    const port = await startServer();
+    serverPort = port;
 
-  // Start the actual app FIRST
-  finalizeBootSequence().then(() => {
-    // Only close the setup window AFTER the dashboard is fully created.
-    // This stops Electron from thinking the app is closed and committing suicide.
-    if (setupWindow && !setupWindow.isDestroyed()) {
-      setupWindow.close();
-    }
-  });
+    // 3. Create the Main Window (Dashboard)
+    createMainWindow(port);
+
+    // 4. Safety Transition: Wait for the dashboard to exist before killing the setup window
+    setTimeout(() => {
+      // Get all open windows
+      const allWindows = BrowserWindow.getAllWindows();
+
+      allWindows.forEach(win => {
+        // Find the specific window that is currently showing the setup page and close it
+        if (win.webContents.getURL().includes('setup.html')) {
+          win.close();
+        }
+      });
+    }, 1500); // 1.5 second buffer to ensure smooth handoff
+
+  } catch (err) {
+    console.error('[electron] Boot sequence failed:', err);
+  }
 });
 
 ipcMain.on('run-setup', (event) => {
@@ -98,7 +109,7 @@ ipcMain.on('run-setup', (event) => {
 
   if (process.platform === 'win32') {
     const scriptPath = path.join(resourceFolder, 'bin', 'windows_setup.ps1');
-    const cmd = `powershell.exe -Command "Start-Process powershell -ArgumentList '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', '\\"${scriptPath}\\"' -Verb RunAs -Wait"`;
+    const cmd = `powershell.exe -Command "Start-Process powershell -ArgumentList '-ExecutionPolicy', 'Bypass', '-File', '\\"${scriptPath}\\"' -Verb RunAs -Wait"`;
 
     exec(cmd, (error) => {
       if (error) {
