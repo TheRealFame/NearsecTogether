@@ -197,42 +197,56 @@ function createMainWindow(port) {
     const currentURL = mainWindow.webContents.getURL();
     if (currentURL.includes('/host')) {
       mainWindow.webContents.executeJavaScript(`
-      if (!document.getElementById('ns-dash-trigger') && window.electronAPI) {
-        const trigger = document.createElement('div');
-        trigger.id = 'ns-dash-trigger';
-        trigger.style.cssText = 'position:fixed;bottom:0;left:0;width:60px;height:80px;z-index:999998;';
+      if (!document.getElementById('ns-dash-btn') && window.electronAPI) {
         const btn = document.createElement('button');
         btn.id = 'ns-dash-btn';
         btn.innerHTML = '← Dashboard';
-        btn.style.cssText = 'position:fixed;bottom:20px;left:0;opacity:0.8;z-index:999999;padding:12px 20px;background:#141414;color:#888;border:1px solid #333;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;box-shadow:2px 2px 10px rgba(0,0,0,0.5);transition:all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);pointer-events:auto;';
 
-        trigger.onmouseenter = () => { btn.style.opacity = '1'; btn.style.left = '0'; btn.style.pointerEvents = 'auto'; };
-        trigger.onmouseleave = (e) => { if (e.relatedTarget === btn) return; btn.style.opacity = '0'; btn.style.left = '-40px'; btn.style.pointerEvents = 'none'; btn.style.background = '#141414'; btn.style.color = '#c084fc'; };
-        btn.onmouseleave = (e) => { if (e.relatedTarget === trigger) return; btn.style.opacity = '0'; btn.style.left = '-40px'; btn.style.pointerEvents = 'none'; btn.style.background = '#141414'; btn.style.color = '#c084fc'; };
-        btn.onmouseover = () => { btn.style.background = '#c084fc'; btn.style.color = '#000'; };
+        // Muted gray, dark border, slightly transparent, ALWAYS visible
+        btn.style.cssText = 'position:fixed;bottom:20px;left:0;opacity:0.8;z-index:999999;padding:12px 20px;background:#141414;color:#888;border:1px solid #333;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;transition:all 0.2s ease;';
+
+        // Hover: Wakes up and turns purple
+        btn.onmouseover = () => {
+          btn.style.opacity = '1';
+          btn.style.color = '#c084fc';
+          btn.style.borderColor = '#c084fc';
+        };
+
+        // Leave: Goes back to sleep (muted gray)
+        btn.onmouseleave = () => {
+          btn.style.opacity = '0.8';
+          btn.style.color = '#888';
+          btn.style.borderColor = '#333';
+        };
+
         btn.onclick = () => window.electronAPI.backToDashboard();
 
-        document.body.appendChild(trigger);
+        // We only append the button now, no more trigger box!
         document.body.appendChild(btn);
       }
       `);
     }
   });
-
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     if (IS_STEAM_DECK) mainWindow.maximize();
   });
 
-    mainWindow.on('close', (e) => {
-      if (loadConfig().tray !== false && tray && !app.isQuiting) {
-        e.preventDefault();
-        mainWindow.hide();
-      }
-    });
+   // Set a global flag before quitting so we don't intercept the close
+  app.on('before-quit', () => {
+    app.isQuiting = true;
+  });
 
-    if (loadConfig().alwaysOnTop) mainWindow.setAlwaysOnTop(true, 'floating');
-    return mainWindow;
+  mainWindow.on('close', (e) => {
+    // FAILSAFE: Only hide if the tray object actually exists and wasn't destroyed
+    if (loadConfig().tray !== false && tray && !tray.isDestroyed() && !app.isQuiting) {
+      e.preventDefault();
+      mainWindow.hide();
+    } else {
+      // If there is no tray, we MUST let the app close, or it becomes a ghost.
+      app.isQuiting = true;
+    }
+  });
 }
 
 function createViewerWindow(sessionUrl, meta = {}) {
@@ -373,42 +387,46 @@ async function finalizeBootSequence() {
   });
 }
 
-// ── App Lifecycle (The Final Clean Version) ──────────────────────────────────
-const gotLock = app.requestSingleInstanceLock();
+// ── App Lifecycle (The Ultimate Bypass) ──────────────────────────────────
+// We are completely removing the Single Instance Lock for testing.
+// This guarantees the app will open, even if a ghost is running.
 
-if (!gotLock) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+  }
+});
 
-  app.on('ready', async () => {
-    // Always boot to the dashboard. If firstRunComplete is false the
-    // dashboard shows the yellow setup-notice bar instead of a separate
-    // setup window — this ensures Windows packaged builds never get stuck.
+app.on('ready', async () => {
+  const cfg = loadConfig();
+  if (!app.isPackaged || cfg.firstRunComplete === true) {
     finalizeBootSequence();
-  });
+  } else {
+    createSetupWindow();
+  }
+});
 
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
-  });
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
 
-    app.on('activate', () => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        finalizeBootSequence();
-      } else {
-        mainWindow.show();
-      }
-    });
+app.on('activate', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    const cfg = loadConfig();
+    if (!app.isPackaged || cfg.firstRunComplete === true) {
+      finalizeBootSequence();
+    } else {
+      createSetupWindow();
+    }
+  } else {
+    mainWindow.show();
+  }
+});
 
-    app.on('will-quit', () => {
-      globalShortcut.unregisterAll();
-      stopServer();
-      if (discordRPC) try { discordRPC.destroy(); } catch {}
-    });
-}
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  stopServer();
+  if (discordRPC) try { discordRPC.destroy(); } catch {}
+});
