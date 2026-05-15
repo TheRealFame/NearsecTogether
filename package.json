@@ -52,7 +52,8 @@
       "!src/docs",
       "!**/*.md",
       "!.github",
-      "!kbm_presets"
+      "!kbm_presets",
+      "!.flatpak-builder"
     ],
     "asarUnpack": [
       "src/sidecar/**/*",

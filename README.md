@@ -5,6 +5,7 @@
 ## Screenshots -- Dashboard, Viewer Page, Arcade
 
 <div align="center">
+  <img src="assets/screenshots/nearsec-client-home.png" alt="Nearsec Host" width="45%">
   <img src="assets/screenshots/nearsec-host.png" alt="Nearsec Host" width="45%">
   <img src="assets/screenshots/nearsec-viewer.png" alt="Nearsec Viewer" width="45%">
   <img src="assets/screenshots/nearsec-arcade.png" alt="Nearsec Arcade" width="45%">

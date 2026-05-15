@@ -75,38 +75,51 @@ function checkSystemReady() {
   return true; // Mac/Other
 }
 
-ipcMain.on('run-setup', (event) => {
-  const options = { name: 'NearsecTogether' };
-  let command = '';
+const { exec } = require('child_process');
 
-  // ── THE FIX: Smart Pathing ──
-  // If packaged, look in the extracted resources folder. If in dev, look in the project root.
+ipcMain.on('run-setup', (event) => {
   const resourceFolder = app.isPackaged ? process.resourcesPath : ROOT;
 
-  if (process.platform === 'linux') {
-    const scriptPath = path.join(resourceFolder, 'linux_setup.sh');
-    command = `bash "${scriptPath}"`;
-  } else if (process.platform === 'win32') {
+  if (process.platform === 'win32') {
     const scriptPath = path.join(resourceFolder, 'bin', 'windows_setup.ps1');
-    command = `powershell.exe -ExecutionPolicy Bypass -File "${scriptPath}"`;
-  } else {
-    event.sender.send('setup-success');
-    return;
+
+    // Windows: This opens a brand new, VISIBLE PowerShell window as Administrator.
+    // -Wait ensures Electron pauses until the user finishes and closes the terminal window.
+    const cmd = `powershell.exe -Command "Start-Process powershell -ArgumentList '-NoExit -ExecutionPolicy Bypass -File \\"${scriptPath}\\"' -Verb RunAs -Wait"`;
+
+    exec(cmd, (error) => {
+      if (error) {
+        console.error('[setup]', error);
+        return event.sender.send('setup-failed', 'Setup was cancelled or failed.');
+      }
+      event.sender.send('setup-success');
+      app.relaunch();
+      app.quit();
+    });
+
+  } else if (process.platform === 'darwin') {
+    // Mac: Opens the native macOS Terminal app and runs the pip3 install
+    const cmd = `osascript -e 'tell application "Terminal" to do script "echo \\"Running Nearsec Mac Setup...\\"; pip3 install pyautogui; echo \\"Done. You can close this window.\\""'`;
+
+    exec(cmd, (error) => {
+      if (error) return event.sender.send('setup-failed', error.message);
+      event.sender.send('setup-success');
+      app.relaunch();
+      app.quit();
+    });
+
+  } else if (process.platform === 'linux') {
+    // Linux: sudo-prompt is still safe here because your .sh script has no "pause" commands
+    const sudo = require('sudo-prompt');
+    const scriptPath = path.join(resourceFolder, 'linux_setup.sh');
+
+    sudo.exec(`bash "${scriptPath}"`, { name: 'NearsecTogether' }, (error, stdout) => {
+      if (error) return event.sender.send('setup-failed', error.message || 'Permission denied.');
+      event.sender.send('setup-success');
+      app.relaunch();
+      app.quit();
+    });
   }
-
-  sudo.exec(command, options, (error, stdout, stderr) => {
-    if (error) {
-      console.error('[setup]', error);
-      event.sender.send('setup-failed', error.message || 'Permission denied or script failed.');
-      return;
-    }
-    console.log('[setup] Success:', stdout);
-    event.sender.send('setup-success');
-
-    // Relaunch the app cleanly
-    app.relaunch();
-    app.quit();
-  });
 });
 
 // ── Server process management ─────────────────────────────────────────────────

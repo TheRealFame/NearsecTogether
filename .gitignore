@@ -11,3 +11,4 @@ kbm_bindings.json
 .dev.vars*
 !.dev.vars.example
 !.env.example
+dist/
