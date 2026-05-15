@@ -20,10 +20,48 @@
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: 'IBM Plex Mono', monospace; overflow: hidden; }
 
-    #titlebar { position: absolute; top: 0; left: 0; right: 0; height: 36px; -webkit-app-region: drag; z-index: 500; }
-    #app { display: flex; height: 100vh; }
+    /*
+     * LAYOUT FIX: body is now a flex column so that #setup-notice sits
+     * above #app without disturbing the sidebar / main-content flexbox.
+     * #app uses flex:1 + min-height:0 instead of height:100vh so it
+     * fills whatever vertical space remains after the notice bar.
+     */
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Setup notice ─────────────────────────────────────────────────────
+       Sits OUTSIDE #app so it never affects the sidebar/content flex row.
+       flex-shrink:0 prevents it from being squashed by #app. */
+    #setup-notice {
+      display: none;
+      width: 100%;
+      flex-shrink: 0;
+      background: #facc15;
+      color: #000;
+      padding: 18px 24px;
+      font-size: 14px;
+      font-weight: 900;
+      cursor: pointer;
+      border-bottom: 4px solid #000;
+      text-align: center;
+      z-index: 2000;
+      position: relative;
+      /* use flex so pointer-events wrapper doesn't interfere */
+    }
+
+    #titlebar {
+      position: fixed; top: 0; left: 0; right: 0; height: 36px;
+      -webkit-app-region: drag; z-index: 500;
+    }
+
+    /* #app fills remaining height after the notice bar */
+    #app { flex: 1; min-height: 0; display: flex; }
 
     #sidebar {
       width: var(--sidebar-width); background: var(--sidebar); border-right: 1px solid var(--border);
@@ -31,7 +69,7 @@
       transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
       -webkit-app-region: drag; overflow: hidden; white-space: nowrap;
     }
-    #sidebar.collapsed { var(--sidebar-width): 76px; width: 76px; }
+    #sidebar.collapsed { width: 76px; }
 
     .sidebar-header { display: flex; align-items: center; margin-bottom: 40px; padding: 0 4px; -webkit-app-region: no-drag; }
     .collapse-btn {
@@ -61,7 +99,7 @@
 
     .spacer { flex: 1; }
 
-    #main-content { flex: 1; position: relative; display: flex; flex-direction: column; background: var(--bg); }
+    #main-content { flex: 1; position: relative; display: flex; flex-direction: column; background: var(--bg); min-width: 0; }
     .panel { display: none; width: 100%; height: 100%; flex-direction: column; overflow-y: auto; }
     .panel.active { display: flex; }
     .panel::-webkit-scrollbar { width: 6px; }
@@ -113,7 +151,7 @@
     .setting-info h4 { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
     .setting-info p { font-size: 12px; color: var(--muted); }
 
-    .toggle { position: relative; width: 44px; height: 24px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; transition: background 0.2s; }
+    .toggle { position: relative; width: 44px; height: 24px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; transition: background 0.2s; flex-shrink: 0; }
     .toggle.on { background: var(--accent); border-color: var(--accent); }
     .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
     .toggle.on .toggle-thumb { transform: translateX(20px); }
@@ -133,302 +171,395 @@
 </head>
 <body>
 
-<div id="titlebar"></div>
-<div id="virtual-cursor"></div>
+  <!-- Drag region for the frameless titlebar -->
+  <div id="titlebar"></div>
 
-<div id="app">
-  <div id="sidebar">
-    <div class="sidebar-header">
-      <button class="collapse-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  <!-- Virtual gamepad cursor -->
+  <div id="virtual-cursor"></div>
+
+  <!--
+    SETUP NOTICE — lives OUTSIDE #app so it never pushes sidebar content
+    sideways. It stacks vertically above #app because body is now a flex
+    column. When hidden (display:none) it takes zero space.
+  -->
+  <div id="setup-notice" onclick="runInAppSetup()">
+    <div style="pointer-events:none;">
+      ⚠ DRIVERS REQUIRED — CLICK THIS BAR TO INSTALL (SUDO / ADMIN PROMPT WILL APPEAR)
+    </div>
+  </div>
+
+  <!-- ── Main layout: sidebar + content ───────────────────────────────── -->
+  <div id="app">
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <button class="collapse-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6"  x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <div class="brand-wrap">
+          <img src="../../assets/NearsecTogether.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'">
+          <div class="brand-text">Nearsec Together</div>
+        </div>
+      </div>
+
+      <button class="nav-btn active" onclick="switchTab('connect')" id="tab-connect">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span class="btn-text">Home</span>
       </button>
-      <div class="brand-wrap">
-        <img src="../../assets/NearsecTogether.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'">
-        <div class="brand-text">Nearsec Together</div>
-      </div>
-    </div>
 
-    <button class="nav-btn active" onclick="switchTab('connect')" id="tab-connect">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-      <span class="btn-text">Home</span>
-    </button>
-
-    <button class="nav-btn" onclick="switchTab('arcade')" id="tab-arcade">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-      <span class="btn-text">Live Arcade</span>
-    </button>
-
-    <button class="nav-btn" onclick="window.electronAPI.openHost()" id="tab-host">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-      <span class="btn-text">Host Session</span>
-    </button>
-
-    <div class="spacer"></div>
-
-    <button class="nav-btn" onclick="document.getElementById('gpModal').classList.add('open')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><path d="M6 12h4m-2-2v4m10-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-2 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path></svg>
-      <span class="btn-text">Test Controller</span>
-    </button>
-
-    <button class="nav-btn" onclick="switchTab('settings')" id="tab-settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-      <span class="btn-text">App Settings</span>
-    </button>
-  </div>
-
-  <div id="main-content">
-
-    <div class="panel active" id="panel-connect">
-      <div class="connect-container">
-        <h1>Connect to Session</h1>
-        <p class="sub">Paste a tunnel URL to instantly join a private session, or browse public games in the Live Arcade.</p>
-
-        <div class="connect-card">
-          <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Direct Link</h2>
-          <div class="input-row">
-            <div class="input-wrapper">
-              <input type="text" id="directLinkInput" placeholder="https://..." onkeydown="if(event.key==='Enter')joinDirectLink()">
-              <button class="btn-paste" onclick="pasteFromClipboard()" title="Paste from Clipboard">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-              </button>
-            </div>
-            <button class="btn-connect" onclick="joinDirectLink()">Join</button>
-          </div>
-          <div class="error-msg" id="directLinkErr"></div>
-        </div>
-
-        <div class="info-grid">
-          <div class="info-card">
-            <h3>Quick Tip</h3>
-            <p>Connect a controller and press any button. The app will automatically switch to gamepad navigation mode.</p>
-          </div>
-          <div class="info-card">
-            <h3>Discord RPC</h3>
-            <p>Your Discord status automatically updates when you host or join a session, showing the game you are playing.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel" id="panel-arcade">
-      <iframe src="https://nearsec.cutefame.net/arcade?electron=1" style="width: 100%; height: 100%; border: none;"></iframe>
-    </div>
-
-    <div class="panel" id="panel-settings">
-      <div class="settings-container">
-        <h1>App Settings</h1>
-        <p class="sub">Configure global client behaviors and preferences.</p>
-
-        <div class="settings-section">
-          <h2>General</h2>
-
-          <div class="setting-row" onclick="toggleAppSetting('tray')">
-            <div class="setting-info">
-              <h4>Start Minimized to Tray</h4>
-              <p>Keep the app running in the background when closing the window.</p>
-            </div>
-            <div class="toggle" id="settingTrackTray"><div class="toggle-thumb"></div></div>
-          </div>
-
-          <div class="setting-row" onclick="toggleAppSetting('alwaysOnTop')">
-            <div class="setting-info">
-              <h4>Always on Top</h4>
-              <p>Keep the Nearsec window above all other windows.</p>
-            </div>
-            <div class="toggle" id="settingTrackAlwaysOnTop"><div class="toggle-thumb"></div></div>
-          </div>
-
-          <div class="setting-row" onclick="toggleAppSetting('bootToHost')">
-            <div class="setting-info">
-              <h4>Boot Directly to Host Session</h4>
-              <p>Skip the dashboard home screen and boot straight into the native Host interface.</p>
-            </div>
-            <div class="toggle" id="settingTrackBootHost"><div class="toggle-thumb"></div></div>
-          </div>
-
-          <div class="setting-row" onclick="toggleAppSetting('discordRPC')">
-            <div class="setting-info">
-              <h4>Discord Rich Presence</h4>
-              <p>Show your friends what game you're playing on Nearsec Arcade.</p>
-            </div>
-            <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <h2>Experimental (Requires App Restart)</h2>
-
-          <div class="setting-row" onclick="toggleAppSetting('hwDecode')">
-            <div class="setting-info">
-              <h4>Hardware Decoding</h4>
-              <p>Use your GPU to decode video for lower latency and battery usage.</p>
-            </div>
-            <div class="toggle" id="settingTrackHWDecode"><div class="toggle-thumb"></div></div>
-          </div>
-
-          <div class="setting-row" onclick="toggleAppSetting('fpsUnlock')">
-            <div class="setting-info">
-              <h4>Unlock Framerate (120Hz+)</h4>
-              <p>Disables the standard 60fps cap for high refresh rate streaming.</p>
-            </div>
-            <div class="toggle" id="settingTrackFpsUnlock"><div class="toggle-thumb"></div></div>
-          </div>
-
-          <div class="setting-row" onclick="toggleAppSetting('vsyncOff')">
-            <div class="setting-info">
-              <h4>Disable V-Sync</h4>
-              <p>Disables vertical sync for the absolute lowest latency. May cause screen tearing.</p>
-            </div>
-            <div class="toggle" id="settingTrackVsyncOff"><div class="toggle-thumb"></div></div>
-          </div>
-
-          <div class="setting-row" onclick="toggleAppSetting('zeroCopy')">
-            <div class="setting-info">
-              <h4>Zero-Copy Video Capture</h4>
-              <p>Bypasses system memory and keeps video frames entirely on the GPU. Extremely fast, but may glitch on some hardware.</p>
-            </div>
-            <div class="toggle" id="settingTrackZeroCopy"><div class="toggle-thumb"></div></div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<div class="modal-bg" id="gpModal">
-  <div class="modal-content">
-    <div class="modal-head">
-      <span>Controller Settings</span>
-      <button class="close-modal" onclick="document.getElementById('gpModal').classList.remove('open')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      <button class="nav-btn" onclick="switchTab('arcade')" id="tab-arcade">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+        <span class="btn-text">Live Arcade</span>
       </button>
+
+      <button class="nav-btn" onclick="window.electronAPI && window.electronAPI.openHost()" id="tab-host">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8"  y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <span class="btn-text">Host Session</span>
+      </button>
+
+      <div class="spacer"></div>
+
+      <button class="nav-btn" onclick="document.getElementById('gpModal').classList.add('open')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+          <path d="M6 12h4m-2-2v4m10-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-2 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path>
+        </svg>
+        <span class="btn-text">Test Controller</span>
+      </button>
+
+      <button class="nav-btn" onclick="switchTab('settings')" id="tab-settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span class="btn-text">App Settings</span>
+      </button>
+    </div><!-- /#sidebar -->
+
+    <!-- Main content area — panels swap here -->
+    <div id="main-content">
+
+      <!-- HOME panel -->
+      <div class="panel active" id="panel-connect">
+        <div class="connect-container">
+          <h1>Connect to Session</h1>
+          <p class="sub">Paste a tunnel URL to instantly join a private session, or browse public games in the Live Arcade.</p>
+
+          <div class="connect-card">
+            <h2>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+              </svg>
+              Direct Link
+            </h2>
+            <div class="input-row">
+              <div class="input-wrapper">
+                <input type="text" id="directLinkInput" placeholder="https://..." onkeydown="if(event.key==='Enter')joinDirectLink()">
+                <button class="btn-paste" onclick="pasteFromClipboard()" title="Paste from Clipboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+              </div>
+              <button class="btn-connect" onclick="joinDirectLink()">Join</button>
+            </div>
+            <div class="error-msg" id="directLinkErr"></div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <h3>Quick Tip</h3>
+              <p>Connect a controller and press any button. The app will automatically switch to gamepad navigation mode.</p>
+            </div>
+            <div class="info-card">
+              <h3>Discord RPC</h3>
+              <p>Your Discord status automatically updates when you host or join a session, showing the game you are playing.</p>
+            </div>
+          </div>
+        </div>
+      </div><!-- /#panel-connect -->
+
+      <!-- LIVE ARCADE panel — iframe fills full panel -->
+      <div class="panel" id="panel-arcade">
+        <iframe
+          src="https://nearsec.cutefame.net/arcade?electron=1"
+          style="width:100%; height:100%; border:none; flex:1;"
+          allow="gamepad"
+        ></iframe>
+      </div><!-- /#panel-arcade -->
+
+      <!-- SETTINGS panel -->
+      <div class="panel" id="panel-settings">
+        <div class="settings-container">
+          <h1>App Settings</h1>
+          <p class="sub">Configure global client behaviours and preferences.</p>
+
+          <div class="settings-section">
+            <h2>General</h2>
+
+            <div class="setting-row" onclick="toggleAppSetting('tray')">
+              <div class="setting-info">
+                <h4>Start Minimized to Tray</h4>
+                <p>Keep the app running in the background when closing the window.</p>
+              </div>
+              <div class="toggle" id="settingTrackTray"><div class="toggle-thumb"></div></div>
+            </div>
+
+            <div class="setting-row" onclick="toggleAppSetting('alwaysOnTop')">
+              <div class="setting-info">
+                <h4>Always on Top</h4>
+                <p>Keep the Nearsec window above all other windows.</p>
+              </div>
+              <div class="toggle" id="settingTrackAlwaysOnTop"><div class="toggle-thumb"></div></div>
+            </div>
+
+            <div class="setting-row" onclick="toggleAppSetting('bootToHost')">
+              <div class="setting-info">
+                <h4>Boot Directly to Host Session</h4>
+                <p>Skip the dashboard home screen and boot straight into the native Host interface.</p>
+              </div>
+              <div class="toggle" id="settingTrackBootHost"><div class="toggle-thumb"></div></div>
+            </div>
+
+            <div class="setting-row" onclick="toggleAppSetting('discordRPC')">
+              <div class="setting-info">
+                <h4>Discord Rich Presence</h4>
+                <p>Show your friends what game you're playing on Nearsec Arcade.</p>
+              </div>
+              <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>Experimental (Requires App Restart)</h2>
+
+            <div class="setting-row" onclick="toggleAppSetting('hwDecode')">
+              <div class="setting-info">
+                <h4>Hardware Decoding</h4>
+                <p>Use your GPU to decode video for lower latency and battery usage.</p>
+              </div>
+              <div class="toggle" id="settingTrackHWDecode"><div class="toggle-thumb"></div></div>
+            </div>
+
+            <div class="setting-row" onclick="toggleAppSetting('fpsUnlock')">
+              <div class="setting-info">
+                <h4>Unlock Framerate (120Hz+)</h4>
+                <p>Disables the standard 60fps cap for high refresh rate streaming.</p>
+              </div>
+              <div class="toggle" id="settingTrackFpsUnlock"><div class="toggle-thumb"></div></div>
+            </div>
+
+            <div class="setting-row" onclick="toggleAppSetting('vsyncOff')">
+              <div class="setting-info">
+                <h4>Disable V-Sync</h4>
+                <p>Disables vertical sync for the absolute lowest latency. May cause screen tearing.</p>
+              </div>
+              <div class="toggle" id="settingTrackVsyncOff"><div class="toggle-thumb"></div></div>
+            </div>
+
+            <div class="setting-row" onclick="toggleAppSetting('zeroCopy')">
+              <div class="setting-info">
+                <h4>Zero-Copy Video Capture</h4>
+                <p>Bypasses system memory and keeps video frames entirely on the GPU. Extremely fast, but may glitch on some hardware.</p>
+              </div>
+              <div class="toggle" id="settingTrackZeroCopy"><div class="toggle-thumb"></div></div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /#panel-settings -->
+
+    </div><!-- /#main-content -->
+  </div><!-- /#app -->
+
+  <!-- ── Controller tester modal ──────────────────────────────────────── -->
+  <div class="modal-bg" id="gpModal">
+    <div class="modal-content">
+      <div class="modal-head">
+        <span>Controller Settings</span>
+        <button class="close-modal" onclick="document.getElementById('gpModal').classList.remove('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6"  x2="6"  y2="18"></line>
+            <line x1="6"  y1="6"  x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <iframe src="gamepad-popup.html" style="flex:1; border:none;"></iframe>
     </div>
-    <iframe src="gamepad-popup.html" style="flex:1; border:none;"></iframe>
   </div>
-</div>
 
-<script>
-  function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('collapsed');
-  }
+  <script>
+    // ── Sidebar collapse ───────────────────────────────────────────────────────
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('collapsed');
+    }
 
-  function switchTab(name) {
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(t => t.classList.remove('active'));
+    // ── Tab / panel switching ──────────────────────────────────────────────────
+    function switchTab(name) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(t => t.classList.remove('active'));
+      document.getElementById('panel-' + name).classList.add('active');
+      document.getElementById('tab-'   + name)?.classList.add('active');
+    }
 
-    document.getElementById('panel-' + name).classList.add('active');
-    document.getElementById('tab-' + name).classList.add('active');
-  }
+    // ── Settings / config sync ─────────────────────────────────────────────────
+    let appConfig = {};
 
-  // ── SETTINGS / CONFIG SYNC ──
-  let appConfig = {};
-
-  window.addEventListener('DOMContentLoaded', async () => {
-    if (window.electronAPI) {
+    async function loadAndSyncSettings() {
+      if (!window.electronAPI) return;
       appConfig = await window.electronAPI.getSettings();
       syncSettingsUI();
     }
-  });
 
-  function syncSettingsUI() {
-    document.getElementById('settingTrackTray')?.classList.toggle('on', appConfig.tray !== false);
-    document.getElementById('settingTrackAlwaysOnTop')?.classList.toggle('on', !!appConfig.alwaysOnTop);
-    document.getElementById('settingTrackBootHost')?.classList.toggle('on', !!appConfig.bootToHost);
-    document.getElementById('settingTrackDiscordRPC')?.classList.toggle('on', appConfig.discordRPC !== false);
-
-    document.getElementById('settingTrackHWDecode')?.classList.toggle('on', appConfig.hwDecode !== false);
-    document.getElementById('settingTrackFpsUnlock')?.classList.toggle('on', !!appConfig.fpsUnlock);
-    document.getElementById('settingTrackVsyncOff')?.classList.toggle('on', !!appConfig.vsyncOff);
-    document.getElementById('settingTrackZeroCopy')?.classList.toggle('on', !!appConfig.zeroCopy);
-  }
-
-  function toggleAppSetting(key) {
-    if (['tray', 'hwDecode', 'discordRPC'].includes(key)) {
-      appConfig[key] = appConfig[key] === false ? true : false;
-    } else {
-      appConfig[key] = !appConfig[key];
+    function syncSettingsUI() {
+      document.getElementById('settingTrackTray')?.classList.toggle('on', appConfig.tray !== false);
+      document.getElementById('settingTrackAlwaysOnTop')?.classList.toggle('on', !!appConfig.alwaysOnTop);
+      document.getElementById('settingTrackBootHost')?.classList.toggle('on', !!appConfig.bootToHost);
+      document.getElementById('settingTrackDiscordRPC')?.classList.toggle('on', appConfig.discordRPC !== false);
+      document.getElementById('settingTrackHWDecode')?.classList.toggle('on', appConfig.hwDecode !== false);
+      document.getElementById('settingTrackFpsUnlock')?.classList.toggle('on', !!appConfig.fpsUnlock);
+      document.getElementById('settingTrackVsyncOff')?.classList.toggle('on', !!appConfig.vsyncOff);
+      document.getElementById('settingTrackZeroCopy')?.classList.toggle('on', !!appConfig.zeroCopy);
     }
-    syncSettingsUI();
-    if (window.electronAPI) {
-      window.electronAPI.saveSettings(appConfig);
-      if (key === 'alwaysOnTop') window.electronAPI.toggleAlwaysOnTop();
-    }
-  }
 
-  async function pasteFromClipboard() {
-    try {
-      const text = await navigator.clipboard.readText();
-      document.getElementById('directLinkInput').value = text;
-      document.getElementById('directLinkInput').focus();
-    } catch (err) {
-      document.getElementById('directLinkErr').textContent = '⚠ Could not read clipboard. Please paste manually.';
-    }
-  }
-
-  async function joinDirectLink() {
-    const url = document.getElementById('directLinkInput').value.trim();
-    const errEl = document.getElementById('directLinkErr');
-
-    if (!url) { errEl.textContent = 'Please enter a valid URL.'; return; }
-    errEl.style.color = 'var(--muted)';
-    errEl.textContent = 'Verifying tunnel...';
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const pingUrl = url.endsWith('/') ? url + 'api/info' : url + '/api/info';
-      await fetch(pingUrl, { method: 'HEAD', mode: 'no-cors', signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      errEl.textContent = '';
-      if (window.electronAPI) window.electronAPI.joinSession(url, { game: "Direct Connect" });
-    } catch (e) {
-      errEl.style.color = 'var(--danger)';
-      errEl.textContent = '⚠ Session unreachable. Make sure the host is online.';
-    }
-  }
-
-  window.addEventListener('message', (event) => {
-    if (event.origin.includes('nearsec.cutefame.net') && event.data.type === 'JOIN_SESSION') {
-      if (window.electronAPI) window.electronAPI.joinSession(event.data.url, { game: event.data.game });
-    }
-  });
-
-  const cursor = document.getElementById('virtual-cursor');
-  let cx = window.innerWidth / 2, cy = window.innerHeight / 2;
-
-  function updateGamepad() {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) {
-      if (!p) continue;
-
-      cursor.style.display = 'block';
-
-      const dx = p.axes[0], dy = p.axes[1];
-      if (Math.abs(dx) > 0.15) cx += dx * 14;
-      if (Math.abs(dy) > 0.15) cy += dy * 14;
-
-      cx = Math.max(0, Math.min(window.innerWidth, cx));
-      cy = Math.max(0, Math.min(window.innerHeight, cy));
-      cursor.style.left = cx + 'px';
-      cursor.style.top = cy + 'px';
-
-      if (p.buttons[0].pressed && !p._wasPressed) {
-        cursor.classList.add('clicking');
-        const el = document.elementFromPoint(cx, cy);
-        if (el && typeof el.click === 'function') el.click();
-        p._wasPressed = true;
-      } else if (!p.buttons[0].pressed) {
-        cursor.classList.remove('clicking');
-        p._wasPressed = false;
+    function toggleAppSetting(key) {
+      if (['tray', 'hwDecode', 'discordRPC'].includes(key)) {
+        appConfig[key] = appConfig[key] === false ? true : false;
+      } else {
+        appConfig[key] = !appConfig[key];
+      }
+      syncSettingsUI();
+      if (window.electronAPI) {
+        window.electronAPI.saveSettings(appConfig);
+        if (key === 'alwaysOnTop') window.electronAPI.toggleAlwaysOnTop();
       }
     }
-    requestAnimationFrame(updateGamepad);
-  }
 
-  window.addEventListener('gamepadconnected', () => requestAnimationFrame(updateGamepad));
-</script>
+    // ── Direct-link join ───────────────────────────────────────────────────────
+    async function pasteFromClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById('directLinkInput').value = text;
+        document.getElementById('directLinkInput').focus();
+      } catch {
+        document.getElementById('directLinkErr').textContent = '⚠ Could not read clipboard. Please paste manually.';
+      }
+    }
+
+    async function joinDirectLink() {
+      const url    = document.getElementById('directLinkInput').value.trim();
+      const errEl  = document.getElementById('directLinkErr');
+      if (!url) { errEl.textContent = 'Please enter a valid URL.'; return; }
+
+      errEl.style.color  = 'var(--muted)';
+      errEl.textContent  = 'Verifying tunnel...';
+
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 5000);
+        const pingUrl = url.replace(/\/$/, '') + '/api/info';
+        await fetch(pingUrl, { method: 'HEAD', mode: 'no-cors', signal: controller.signal });
+        clearTimeout(tid);
+        errEl.textContent = '';
+        if (window.electronAPI) window.electronAPI.joinSession(url, { game: 'Direct Connect' });
+      } catch {
+        errEl.style.color = 'var(--danger)';
+        errEl.textContent = '⚠ Session unreachable. Make sure the host is online.';
+      }
+    }
+
+    // Forward join events from the arcade iframe
+    window.addEventListener('message', (event) => {
+      if (event.origin.includes('nearsec.cutefame.net') && event.data?.type === 'JOIN_SESSION') {
+        if (window.electronAPI) window.electronAPI.joinSession(event.data.url, { game: event.data.game });
+      }
+    });
+
+    // ── Gamepad virtual cursor (Steam Deck / couch play) ──────────────────────
+    const cursor = document.getElementById('virtual-cursor');
+    let cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+
+    function updateGamepad() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const p of pads) {
+        if (!p) continue;
+        cursor.style.display = 'block';
+        const dx = p.axes[0], dy = p.axes[1];
+        if (Math.abs(dx) > 0.15) cx += dx * 14;
+        if (Math.abs(dy) > 0.15) cy += dy * 14;
+        cx = Math.max(0, Math.min(window.innerWidth,  cx));
+        cy = Math.max(0, Math.min(window.innerHeight, cy));
+        cursor.style.left = cx + 'px';
+        cursor.style.top  = cy + 'px';
+        if (p.buttons[0].pressed && !p._wasPressed) {
+          cursor.classList.add('clicking');
+          const el = document.elementFromPoint(cx, cy);
+          if (el && typeof el.click === 'function') el.click();
+          p._wasPressed = true;
+        } else if (!p.buttons[0].pressed) {
+          cursor.classList.remove('clicking');
+          p._wasPressed = false;
+        }
+      }
+      requestAnimationFrame(updateGamepad);
+    }
+
+    window.addEventListener('gamepadconnected', () => requestAnimationFrame(updateGamepad));
+
+    // ── In-app first-run setup flow ────────────────────────────────────────────
+    async function checkFirstRun() {
+      if (!window.electronAPI) return;
+      const cfg = await window.electronAPI.getSettings();
+      if (appConfig.isPackaged && cfg.firstRunComplete !== true) {
+        document.getElementById('setup-notice').style.display = 'block';
+      }
+    }
+
+    async function runInAppSetup() {
+      const notice = document.getElementById('setup-notice');
+      notice.style.background = '#eab308';
+      notice.innerHTML = '<b>Launching Setup… Check your taskbar for an admin prompt.</b>';
+
+      if (!window.electronAPI) return;
+
+      window.electronAPI.runSetup();
+
+      window.electronAPI.onSetupSuccess(() => {
+        notice.style.background = '#4ade80';
+        notice.innerHTML        = '<b>✓ Success! Saving and restarting…</b>';
+        appConfig.firstRunComplete = true;
+        window.electronAPI.saveSettings(appConfig);
+        // Small delay so the user can read the success message
+        setTimeout(() => window.electronAPI.continueBoot(), 1500);
+      });
+
+      window.electronAPI.onSetupFailed(() => {
+        notice.style.background = '#f87171';
+        notice.innerHTML        = '<b>✗ Setup failed or was denied. Click here to try again.</b>';
+      });
+    }
+
+    // ── Boot ───────────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      loadAndSyncSettings();
+      checkFirstRun();
+    });
+  </script>
 </body>
 </html>

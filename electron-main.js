@@ -58,80 +58,33 @@ if (initialCfg.zeroCopy) {
 
 // ── System Readiness Check ────────────────────────────────────────────────────
 function checkSystemReady() {
-  // 1. THE OVERRIDE: If running from source code, bypass the installer entirely!
-  if (!app.isPackaged) {
-    console.log('[electron] Running from source code. Skipping setup installer.');
-    return true;
-  }
-
-  // 2. If it IS a compiled app (.exe / .AppImage), check if they finished setup.
-  const cfg = loadConfig();
-  if (!cfg.firstRunComplete) return false;
-
+  // We return true so the app always boots.
+  // We can still use this function later to show a "Driver Missing" warning in the UI.
   return true;
 }
 
+
 // ── Setup IPC Handlers ────────────────────────────────────────────────────────
-ipcMain.on('continue-boot', async () => {
-  console.log('[electron] Transitioning to Dashboard...');
-
-  // 1. Force save the config immediately
+ipcMain.on('continue-boot', () => {
   saveConfig({ firstRunComplete: true });
-
-  // 2. Start the server and wait for it to be ready
-  try {
-    const port = await startServer();
-    serverPort = port;
-
-    // 3. Create the Main Window (Dashboard)
-    createMainWindow(port);
-
-    // 4. Safety Transition: Wait for the dashboard to exist before killing the setup window
-    setTimeout(() => {
-      // Get all open windows
-      const allWindows = BrowserWindow.getAllWindows();
-
-      allWindows.forEach(win => {
-        // Find the specific window that is currently showing the setup page and close it
-        if (win.webContents.getURL().includes('setup.html')) {
-          win.close();
-        }
-      });
-    }, 1500); // 1.5 second buffer to ensure smooth handoff
-
-  } catch (err) {
-    console.error('[electron] Boot sequence failed:', err);
-  }
+  app.relaunch();
+  app.quit();
 });
 
 ipcMain.on('run-setup', (event) => {
   const resourceFolder = app.isPackaged ? process.resourcesPath : ROOT;
-
   if (process.platform === 'win32') {
     const scriptPath = path.join(resourceFolder, 'bin', 'windows_setup.ps1');
     const cmd = `powershell.exe -Command "Start-Process powershell -ArgumentList '-ExecutionPolicy', 'Bypass', '-File', '\\"${scriptPath}\\"' -Verb RunAs -Wait"`;
-
     exec(cmd, (error) => {
-      if (error) {
-        console.error('[setup]', error);
-        return event.sender.send('setup-failed', 'Setup was cancelled or failed.');
-      }
+      if (error) return event.sender.send('setup-failed');
       event.sender.send('setup-success');
     });
-
-  } else if (process.platform === 'darwin') {
-    const cmd = `osascript -e 'tell application "Terminal" to do script "echo \\"Running Nearsec Mac Setup...\\"; pip3 install pyautogui; echo \\"Done. You can close this window.\\""'`;
-    exec(cmd, (error) => {
-      if (error) return event.sender.send('setup-failed', error.message);
-      event.sender.send('setup-success');
-    });
-
   } else if (process.platform === 'linux') {
     const sudo = require('sudo-prompt');
     const scriptPath = path.join(resourceFolder, 'bin', 'linux_setup.sh');
-
-    sudo.exec(`bash "${scriptPath}"`, { name: 'NearsecTogether' }, (error, stdout) => {
-      if (error) return event.sender.send('setup-failed', error.message || 'Permission denied.');
+    sudo.exec(`bash "${scriptPath}"`, { name: 'NearsecTogether' }, (err) => {
+      if (err) return event.sender.send('setup-failed');
       event.sender.send('setup-success');
     });
   }
@@ -251,7 +204,7 @@ function createMainWindow(port) {
         const btn = document.createElement('button');
         btn.id = 'ns-dash-btn';
         btn.innerHTML = '← Dashboard';
-        btn.style.cssText = 'position:fixed;bottom:20px;left:-40px;opacity:0;z-index:999999;padding:12px 20px;background:#141414;color:#c084fc;border:1px solid #c084fc;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;box-shadow:4px 4px 20px rgba(0,0,0,0.8);transition:all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);pointer-events:none;';
+        btn.style.cssText = 'position:fixed;bottom:20px;left:0;opacity:0.8;z-index:999999;padding:12px 20px;background:#141414;color:#888;border:1px solid #333;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;box-shadow:2px 2px 10px rgba(0,0,0,0.5);transition:all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);pointer-events:auto;';
 
         trigger.onmouseenter = () => { btn.style.opacity = '1'; btn.style.left = '0'; btn.style.pointerEvents = 'auto'; };
         trigger.onmouseleave = (e) => { if (e.relatedTarget === btn) return; btn.style.opacity = '0'; btn.style.left = '-40px'; btn.style.pointerEvents = 'none'; btn.style.background = '#141414'; btn.style.color = '#c084fc'; };
@@ -420,19 +373,50 @@ async function finalizeBootSequence() {
   });
 }
 
+// ── App Lifecycle (The Final Clean Version) ──────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) { app.quit(); } else {
-  app.on('second-instance', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
 
-  app.on('ready', async () => {
-    if (!checkSystemReady()) {
-      createSetupWindow();
-      return;
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
     }
-    finalizeBootSequence();
   });
 
-  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-  app.on('activate', () => { if (!mainWindow || mainWindow.isDestroyed()) createMainWindow(serverPort); else mainWindow.show(); });
-  app.on('will-quit', () => { globalShortcut.unregisterAll(); stopServer(); if (discordRPC) try { discordRPC.destroy(); } catch {} });
+  app.on('ready', async () => {
+    // Check if we are already "Installed" or in Dev mode
+    const cfg = loadConfig();
+    if (!app.isPackaged || cfg.firstRunComplete === true) {
+      finalizeBootSequence();
+    } else {
+      createSetupWindow();
+    }
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+
+    app.on('activate', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        const cfg = loadConfig();
+        if (!app.isPackaged || cfg.firstRunComplete === true) {
+          finalizeBootSequence();
+        } else {
+          createSetupWindow();
+        }
+      } else {
+        mainWindow.show();
+      }
+    });
+
+    app.on('will-quit', () => {
+      globalShortcut.unregisterAll();
+      stopServer();
+      if (discordRPC) try { discordRPC.destroy(); } catch {}
+    });
 }
