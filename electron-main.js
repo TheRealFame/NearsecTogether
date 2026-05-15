@@ -3,12 +3,12 @@
 process.on('uncaughtException', (e) => console.error('\n[electron] ⚠ Uncaught Exception:', e));
 process.on('unhandledRejection', (e) => console.error('\n[electron] ⚠ Unhandled Rejection:', e));
 
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, powerSaveBlocker, shell } = require('electron');
+const { exec } = require('child_process');
 const path   = require('path');
 const fs     = require('fs');
 const http   = require('http');
 const https  = require('https');
-const sudo   = require('sudo-prompt'); // Required for GUI password prompts
 
 // Prevent computer from sleeping while hosting
 powerSaveBlocker.start('prevent-app-suspension');
@@ -58,34 +58,47 @@ if (initialCfg.zeroCopy) {
 
 // ── System Readiness Check ────────────────────────────────────────────────────
 function checkSystemReady() {
-  if (process.platform === 'linux') {
-    try {
-      // Check if the virtual controller device is writable
-      fs.accessSync('/dev/uinput', fs.constants.W_OK);
-      return true;
-    } catch (err) {
-      return false; // User needs to run linux_setup.sh
-    }
+  // 1. THE OVERRIDE: If running from source code, bypass the installer entirely!
+  if (!app.isPackaged) {
+    console.log('[electron] Running from source code. Skipping setup installer.');
+    return true;
   }
-  if (process.platform === 'win32') {
-    // Check if ViGEmBus is installed
-    const vigemPath = 'C:\\Program Files\\Nefarius Software Solutions\\ViGEm Bus Driver';
-    return fs.existsSync(vigemPath);
-  }
-  return true; // Mac/Other
+
+  // 2. If it IS a compiled app (.exe / .AppImage), check if they finished setup.
+  const cfg = loadConfig();
+  if (!cfg.firstRunComplete) return false;
+
+  return true;
 }
 
-const { exec } = require('child_process');
+// ── Setup IPC Handlers ────────────────────────────────────────────────────────
+ipcMain.on('open-external', (event, url) => {
+  shell.openExternal(url);
+});
+
+ipcMain.on('continue-boot', () => {
+  // Mark setup as complete so they are never bothered again
+  saveConfig({ firstRunComplete: true });
+
+  // Save a reference to the setup window
+  const setupWindow = mainWindow;
+
+  // Start the actual app FIRST
+  finalizeBootSequence().then(() => {
+    // Only close the setup window AFTER the dashboard is fully created.
+    // This stops Electron from thinking the app is closed and committing suicide.
+    if (setupWindow && !setupWindow.isDestroyed()) {
+      setupWindow.close();
+    }
+  });
+});
 
 ipcMain.on('run-setup', (event) => {
   const resourceFolder = app.isPackaged ? process.resourcesPath : ROOT;
 
   if (process.platform === 'win32') {
     const scriptPath = path.join(resourceFolder, 'bin', 'windows_setup.ps1');
-
-    // Windows: This opens a brand new, VISIBLE PowerShell window as Administrator.
-    // -Wait ensures Electron pauses until the user finishes and closes the terminal window.
-    const cmd = `powershell.exe -Command "Start-Process powershell -ArgumentList '-NoExit -ExecutionPolicy Bypass -File \\"${scriptPath}\\"' -Verb RunAs -Wait"`;
+    const cmd = `powershell.exe -Command "Start-Process powershell -ArgumentList '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', '\\"${scriptPath}\\"' -Verb RunAs -Wait"`;
 
     exec(cmd, (error) => {
       if (error) {
@@ -93,34 +106,25 @@ ipcMain.on('run-setup', (event) => {
         return event.sender.send('setup-failed', 'Setup was cancelled or failed.');
       }
       event.sender.send('setup-success');
-      app.relaunch();
-      app.quit();
     });
 
   } else if (process.platform === 'darwin') {
-    // Mac: Opens the native macOS Terminal app and runs the pip3 install
     const cmd = `osascript -e 'tell application "Terminal" to do script "echo \\"Running Nearsec Mac Setup...\\"; pip3 install pyautogui; echo \\"Done. You can close this window.\\""'`;
-
     exec(cmd, (error) => {
       if (error) return event.sender.send('setup-failed', error.message);
       event.sender.send('setup-success');
-      app.relaunch();
-      app.quit();
     });
 
   } else if (process.platform === 'linux') {
-    // Linux: sudo-prompt is still safe here
     const sudo = require('sudo-prompt');
-    // FIXED: Pointing inside the 'bin' directory
     const scriptPath = path.join(resourceFolder, 'bin', 'linux_setup.sh');
 
     sudo.exec(`bash "${scriptPath}"`, { name: 'NearsecTogether' }, (error, stdout) => {
       if (error) return event.sender.send('setup-failed', error.message || 'Permission denied.');
       event.sender.send('setup-success');
-      app.relaunch();
-      app.quit();
     });
   }
+});
 
 // ── Server process management ─────────────────────────────────────────────────
 let serverPort = null;
@@ -190,7 +194,7 @@ const IS_STEAM_DECK = process.env.SteamDeck === '1' || fs.existsSync('/etc/steam
 function createSetupWindow() {
   Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
-    width: 600, height: 500,
+    width: 700, height: 600,
     backgroundColor: '#080808',
     icon: path.join(ASSETS_DIR, 'NearsecTogether.png'),
                                  webPreferences: { preload: PRELOAD_MAIN, nodeIntegration: false, contextIsolation: true }
@@ -225,7 +229,6 @@ function createMainWindow(port) {
     mainWindow.loadFile(path.join(PAGES_DIR, 'dashboard.html'), { query: { port: String(port) } });
   }
 
-  // Inject hidden dashboard slider into Host
   mainWindow.webContents.on('did-finish-load', () => {
     const currentURL = mainWindow.webContents.getURL();
     if (currentURL.includes('/host')) {
@@ -389,32 +392,33 @@ ipcMain.handle('get-server-info', async () => {
 ipcMain.handle('ping-session', async (_e, url) => pingSessionUrl(url));
 
 // ── App Lifecycle ─────────────────────────────────────────────────────────────
+async function finalizeBootSequence() {
+  const port = await startServer();
+  serverPort = port;
+  createMainWindow(port);
+  if (loadConfig().tray !== false) createTray();
+  if (loadConfig().discordRPC !== false) initDiscord().catch(() => {});
+
+  let isPanicActive = false;
+  globalShortcut.register('CommandOrControl+Shift+Backspace', () => {
+    isPanicActive = !isPanicActive;
+    console.log(`\n[electron] PANIC MODE ${isPanicActive ? 'ACTIVATED (Inputs Frozen)' : 'DEACTIVATED (Inputs Resumed)'}`);
+    if (serverCore && serverCore.toUinput) {
+      serverCore.toUinput({ type: 'panic_toggle', enabled: isPanicActive });
+    }
+  });
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); } else {
   app.on('second-instance', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
 
   app.on('ready', async () => {
-    // 1. Check if the OS is properly configured
     if (!checkSystemReady()) {
       createSetupWindow();
       return;
     }
-
-    // 2. If configured, boot normally
-    const port = await startServer();
-    serverPort = port;
-    createMainWindow(port);
-    if (loadConfig().tray !== false) createTray();
-    if (loadConfig().discordRPC !== false) initDiscord().catch(() => {});
-
-    let isPanicActive = false;
-    globalShortcut.register('CommandOrControl+Shift+Backspace', () => {
-      isPanicActive = !isPanicActive;
-      console.log(`\n[electron] PANIC MODE ${isPanicActive ? 'ACTIVATED (Inputs Frozen)' : 'DEACTIVATED (Inputs Resumed)'}`);
-      if (serverCore && serverCore.toUinput) {
-        serverCore.toUinput({ type: 'panic_toggle', enabled: isPanicActive });
-      }
-    });
+    finalizeBootSequence();
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
