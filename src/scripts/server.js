@@ -55,15 +55,23 @@ function toUinput(msg) {
 
 const projectRoot = path.join(__dirname, '..', '..');
 const envFile = path.join(projectRoot, '.env');
-if (!fs.existsSync(envFile)) {
-  fs.writeFileSync(envFile, `CF_TOKEN=\nCUSTOM_URL=\nZROK_RESERVED_NAME=\nUSE_VPS=false\nVPS_HOST=\nIS_VPS=false\n`);
+
+try {
+  // FAILSAFE: Only write the .env file if we are NOT inside the read-only AppImage/ASAR
+  if (!__dirname.includes('app.asar') && !fs.existsSync(envFile)) {
+    fs.writeFileSync(envFile, `CF_TOKEN=\nCUSTOM_URL=\nZROK_RESERVED_NAME=\nUSE_VPS=false\nVPS_HOST=\nIS_VPS=false\n`);
+  }
+} catch (e) {
+  console.warn("[server] Skipping .env creation (packaged read-only environment).");
 }
 
 try {
-  fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
-    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-    if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
-  });
+  if (fs.existsSync(envFile)) {
+    fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
+    });
+  }
 } catch (e) { }
 
 function getLanIP() {
