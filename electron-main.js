@@ -388,13 +388,10 @@ if (!gotLock) {
   });
 
   app.on('ready', async () => {
-    // Check if we are already "Installed" or in Dev mode
-    const cfg = loadConfig();
-    if (!app.isPackaged || cfg.firstRunComplete === true) {
-      finalizeBootSequence();
-    } else {
-      createSetupWindow();
-    }
+    // Always boot to the dashboard. If firstRunComplete is false the
+    // dashboard shows the yellow setup-notice bar instead of a separate
+    // setup window — this ensures Windows packaged builds never get stuck.
+    finalizeBootSequence();
   });
 
   app.on('window-all-closed', () => {
@@ -403,12 +400,7 @@ if (!gotLock) {
 
     app.on('activate', () => {
       if (!mainWindow || mainWindow.isDestroyed()) {
-        const cfg = loadConfig();
-        if (!app.isPackaged || cfg.firstRunComplete === true) {
-          finalizeBootSequence();
-        } else {
-          createSetupWindow();
-        }
+        finalizeBootSequence();
       } else {
         mainWindow.show();
       }
