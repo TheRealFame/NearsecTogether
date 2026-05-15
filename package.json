@@ -42,8 +42,11 @@
       "output": "dist"
     },
     "extraResources": [
-      "linux_setup.sh",
-      "bin/**/*"
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": ["**/*"]
+      }
     ],
     "files": [
       "!/.env",

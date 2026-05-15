@@ -109,9 +109,10 @@ ipcMain.on('run-setup', (event) => {
     });
 
   } else if (process.platform === 'linux') {
-    // Linux: sudo-prompt is still safe here because your .sh script has no "pause" commands
+    // Linux: sudo-prompt is still safe here
     const sudo = require('sudo-prompt');
-    const scriptPath = path.join(resourceFolder, 'linux_setup.sh');
+    // FIXED: Pointing inside the 'bin' directory
+    const scriptPath = path.join(resourceFolder, 'bin', 'linux_setup.sh');
 
     sudo.exec(`bash "${scriptPath}"`, { name: 'NearsecTogether' }, (error, stdout) => {
       if (error) return event.sender.send('setup-failed', error.message || 'Permission denied.');
@@ -120,7 +121,6 @@ ipcMain.on('run-setup', (event) => {
       app.quit();
     });
   }
-});
 
 // ── Server process management ─────────────────────────────────────────────────
 let serverPort = null;
