@@ -400,12 +400,9 @@ app.on('second-instance', () => {
 });
 
 app.on('ready', async () => {
-  const cfg = loadConfig();
-  if (!app.isPackaged || cfg.firstRunComplete === true) {
-    finalizeBootSequence();
-  } else {
-    createSetupWindow();
-  }
+  // BYPASS: Always boot the dashboard.
+  // The yellow bar in dashboard.html will handle the setup now!
+  finalizeBootSequence();
 });
 
 app.on('window-all-closed', () => {
@@ -414,12 +411,8 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (!mainWindow || mainWindow.isDestroyed()) {
-    const cfg = loadConfig();
-    if (!app.isPackaged || cfg.firstRunComplete === true) {
-      finalizeBootSequence();
-    } else {
-      createSetupWindow();
-    }
+    // BYPASS: Always boot the dashboard.
+    finalizeBootSequence();
   } else {
     mainWindow.show();
   }
