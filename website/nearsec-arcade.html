@@ -48,6 +48,22 @@
       min-height: 100vh;
     }
 
+    /* ── Language Switcher ── */
+    .lang-switcher {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .globe-icon {
+      width: 18px; height: 18px; opacity: 0.6; transition: opacity 0.2s;
+    }
+    #langSelect {
+      background: transparent; border: none; color: var(--muted);
+      font-family: inherit; font-size: 13px; font-weight: 600;
+      cursor: pointer; outline: none; transition: color 0.2s;
+    }
+    #langSelect option { background: var(--surface); color: var(--text); }
+    #langSelect:hover { color: var(--text); }
+    .lang-switcher:hover .globe-icon { opacity: 1; }
+
     /* ── Top bar ── */
     .top-bar {
       height: 72px; padding: 0 24px;
@@ -477,9 +493,17 @@
       <input type="text" id="searchInput" placeholder="Search games or regions..." oninput="filterCards()">
     </div>
 
-    <div class="live-badge">
-      <div class="live-dot" id="liveDot" style="background:var(--muted); box-shadow:none;"></div>
-      <span id="liveCount">—</span>
+    <div style="display: flex; align-items: center; gap: 24px;">
+      <div class="lang-switcher">
+        <img src="/assets/icons/globe.svg" class="globe-icon" alt="Lang" onerror="this.style.display='none'">
+        <select id="langSelect" onchange="I18N.changeLanguage(this.value)">
+          </select>
+      </div>
+
+      <div class="live-badge">
+        <div class="live-dot" id="liveDot" style="background:var(--muted); box-shadow:none;"></div>
+        <span id="liveCount">—</span>
+      </div>
     </div>
   </nav>
 
@@ -546,6 +570,7 @@
     </iframe>
   </div>
 </div>
+  <script src="/js/i18n.js"></script>
   <script src="arcade.js"></script>
 </body>
 </html>

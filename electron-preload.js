@@ -16,13 +16,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getWindowSources: async () => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['window', 'screen'] });
-      return sources.map(source => ({
-        id: source.id,
-        name: source.name,
-        displayId: source.display_id,
-        thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
-        isScreen: source.id.startsWith('screen'),
-      }));
+      // Cleanly map data so only cloneable primitives cross the bridge
+      return sources.map(source => {
+        let thumbUrl = null;
+        if (source.thumbnail && typeof source.thumbnail.toDataURL === 'function') {
+          try {
+            thumbUrl = source.thumbnail.toDataURL();
+          } catch (e) {
+            console.warn('[preload] Failed to convert thumbnail to data URL');
+          }
+        }
+        return {
+          id: source.id,
+          name: source.name,
+          displayId: source.display_id || null,
+          thumbnail: thumbUrl,
+          isScreen: source.id.startsWith('screen')
+        };
+      });
     } catch (err) {
       console.error('[preload] getWindowSources error:', err);
       return [];

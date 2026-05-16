@@ -10,7 +10,7 @@ const sidecarPath = __dirname.includes('app.asar')
 ? path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'sidecar', 'input_driver.py')
 : path.join(__dirname, "..", "sidecar", "input_driver.py");
 const { exec, spawn } = require("child_process");
-const open = (...args) => import('open').then(({default: open}) => open(...args));
+const open = (...args) => import('open').then(({ default: open }) => open(...args));
 const which = require("which");
 const killPort = require("kill-port");
 let hostWS = null;
@@ -26,7 +26,7 @@ const crypto = require("crypto");
 
 const PusherRaw = require('pusher-js');
 
-// ── Bulletproof Electron/Node Module Extractor ──
+// ── Bulletproof Electron/Node Module Extractor ──────────────────────────────
 let Pusher;
 if (typeof PusherRaw === 'function') {
   Pusher = PusherRaw;
@@ -57,7 +57,6 @@ const projectRoot = path.join(__dirname, '..', '..');
 const envFile = path.join(projectRoot, '.env');
 
 try {
-  // FAILSAFE: Only write the .env file if we are NOT inside the read-only AppImage/ASAR
   if (!__dirname.includes('app.asar') && !fs.existsSync(envFile)) {
     fs.writeFileSync(envFile, `CF_TOKEN=\nCUSTOM_URL=\nZROK_RESERVED_NAME=\nUSE_VPS=false\nVPS_HOST=\nIS_VPS=false\n`);
   }
@@ -74,11 +73,12 @@ try {
   }
 } catch (e) { }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function getLanIP() {
   for (const iface of Object.values(os.networkInterfaces()))
     for (const n of iface)
       if (n.family === "IPv4" && !n.internal) return n.address;
-  return "127.0.0.1";
+      return "127.0.0.1";
 }
 function shouldRequirePin(ip, hasTunnelHeader = false) {
   return true;
@@ -95,7 +95,7 @@ function getTailscaleIP() {
   for (const iface of Object.values(os.networkInterfaces()))
     for (const n of iface)
       if (n.family === "IPv4" && n.address.startsWith("100.")) return n.address;
-  return null;
+      return null;
 }
 function findFreePort(start) {
   return new Promise(resolve => {
@@ -118,9 +118,8 @@ function getPublicIP() {
 // ── Windows binary path resolver ─────────────────────────────────────────────
 // windows_setup.ps1 installs tunnel binaries to $HOME:
 //   cloudflared  → $HOME\cloudflared.exe
-//   zrok         → $HOME\zrok\zrok.exe   (zip extracted into $HOME\zrok\)
+//   zrok         → $HOME\zrok\zrok.exe
 //   playit       → $HOME\playit.exe
-// We check PATH first (via which), then these fallback locations on Windows.
 const WIN_BINARY_PATHS = {
   cloudflared: [
     path.join(os.homedir(), 'cloudflared.exe'),
@@ -141,11 +140,6 @@ const WIN_BINARY_PATHS = {
   ],
 };
 
-/**
- * Resolves the full path to a binary.
- * Checks PATH first (cross-platform), then Windows-specific fallback paths.
- * Returns the resolved path string, or null if not found.
- */
 function findBinaryPath(name) {
   return which(name).then(p => p).catch(() => {
     if (process.platform !== 'win32') return null;
@@ -211,7 +205,7 @@ function startTunnelPlayit(port) {
         const claim = str.match(/https:\/\/playit\.gg\/claim\/[a-z0-9\-]+/i);
         if (claim) { console.log("  \x1b[33m!\x1b[0m playit first-run — visit: \x1b[1m" + claim[0] + "\x1b[0m"); openBrowser(claim[0]); }
         const url = str.match(/https?:\/\/[a-z0-9\-]+\.at\.playit\.gg(?::\d+)?/i)
-          || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
+        || str.match(/https?:\/\/[a-z0-9\-]+\.playit\.gg(?::\d+)?/i);
         if (url && !done) { done = true; resolve({ url: url[0], proc }); console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url[0] + "\x1b[0m"); }
       };
       proc.stdout.on("data", check); proc.stderr.on("data", check);
@@ -313,21 +307,18 @@ function startTunnelVps(port, vpsHost) {
 
 function startTunnelZrok(port) {
   return new Promise(async (resolve) => {
-    // Check PATH and Windows home-dir fallbacks
     const zrokPath = await findBinaryPath('zrok').then(p => p).catch(() => null)
-      || await findBinaryPath('zrok2').then(p => p).catch(() => null)
-      || (function() {
-        // Manual scan of known Linux/Windows locations
-        const candidates = [
-          '/usr/bin/zrok2', '/usr/bin/zrok', '/usr/local/bin/zrok',
-          path.join(os.homedir(), 'bin/zrok'),
-          './zrok',
-          // Windows paths (already covered by findBinaryPath fallback, but belt-and-suspenders)
-          path.join(os.homedir(), 'zrok', 'zrok.exe'),
-        ];
-        for (const c of candidates) if (fs.existsSync(c)) return c;
-        return null;
-      })();
+    || await findBinaryPath('zrok2').then(p => p).catch(() => null)
+    || (function () {
+      const candidates = [
+        '/usr/bin/zrok2', '/usr/bin/zrok', '/usr/local/bin/zrok',
+        path.join(os.homedir(), 'bin/zrok'),
+        './zrok',
+        path.join(os.homedir(), 'zrok', 'zrok.exe'),
+      ];
+      for (const c of candidates) if (fs.existsSync(c)) return c;
+      return null;
+    })();
 
     if (!zrokPath) { resolve(null); return; }
 
@@ -360,7 +351,6 @@ async function startTunnel(port) {
   if (forced === "playit") return startTunnelPlayit(port);
   if (forced === "localhostrun") return startTunnelLocalhostRun(port);
   if (forced === "serveo") return startTunnelServeo(port);
-  // Auto: try cloudflared → zrok → playit → SSH providers
   const cf = await startTunnelCloudflared(port);
   if (cf) return cf;
   const z = await startTunnelZrok(port);
@@ -370,13 +360,10 @@ async function startTunnel(port) {
   console.log("  \x1b[33m~\x1b[0m Trying localhost.run and serveo in parallel...");
   const ssh = await Promise.any([
     startTunnelLocalhostRun(port),
-    startTunnelServeo(port)
+                                startTunnelServeo(port)
   ].map(p => p.then(r => r || Promise.reject()))).catch(() => null);
   if (ssh) return ssh;
-  console.log("  \x1b[33m!\x1b[0m All tunnels failed. Options:");
-  console.log("    cloudflared  : https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/");
-  console.log("    serveo/lhr   : outbound SSH (port 22) may be blocked by your router/ISP");
-  console.log("    TUNNEL=cloudflared  node server.js   # force a specific provider");
+  console.log("  \x1b[33m!\x1b[0m All tunnels failed.");
   return null;
 }
 
@@ -388,21 +375,21 @@ function makePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
 
 // ── Arcade session registry ───────────────────────────────────────────────────
 const arcadeSessions = new Map();
-const arcadeClients  = new Set();
-let   arcadeHostId   = 0;
+const arcadeClients = new Set();
+let arcadeHostId = 0;
 
 const ARCADE_ALLOWED_DOMAINS = [
   'trycloudflare.com',
-  'zrok.io',
-  'localhost.run',
-  'serveo.net',
+'zrok.io',
+'localhost.run',
+'serveo.net',
 ];
 function isAllowedArcadeUrl(rawUrl) {
   try {
     const u = new URL(rawUrl);
     if (u.protocol !== 'https:') return false;
     return ARCADE_ALLOWED_DOMAINS.some(d =>
-      u.hostname === d || u.hostname.endsWith('.' + d)
+    u.hostname === d || u.hostname.endsWith('.' + d)
     );
   } catch { return false; }
 }
@@ -433,6 +420,64 @@ function saveConfig(updates) {
   }
 }
 
+// ── Auto-Host Watchdog ────────────────────────────────────────────────────────
+//
+// WHY buildGameEnv() EXISTS:
+// When Electron or Node spawns a child process, the child only inherits
+// whatever is in process.env at that moment. On Linux, critical variables
+// like XDG_RUNTIME_DIR (Wayland socket location), DBUS_SESSION_BUS_ADDRESS
+// (required by SDL2/Qt to find the display), and PULSE_RUNTIME_PATH (audio)
+// are injected by PAM/systemd-logind into *interactive* shell sessions but
+// are often absent from non-interactive processes like Electron.
+// Without them a graphical app like MAME silently exits the moment it tries
+// to open a window or play sound, even though the exact same command works
+// fine in a terminal.
+//
+function buildGameEnv() {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+  const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`;
+
+  return {
+    // Start with whatever Node already has (preserves PATH, LANG, HOME, etc.)
+    ...process.env,
+
+    // ── Display ──────────────────────────────────────────────────────────────
+    // Prefer Wayland when available; SDL will fall back to X11 automatically.
+    DISPLAY:          process.env.DISPLAY         || ':0',
+    WAYLAND_DISPLAY:  process.env.WAYLAND_DISPLAY || 'wayland-0',
+    XDG_SESSION_TYPE: process.env.XDG_SESSION_TYPE || 'wayland',
+
+    // ── Runtime dir — the single most common missing variable ────────────────
+    // Wayland socket lives at $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY.
+    // PipeWire, PulseAudio, and D-Bus sockets live here too.
+    // Without this, every graphical or audio init call fails.
+    XDG_RUNTIME_DIR: runtimeDir,
+
+    // ── D-Bus — required by SDL2 and Qt for display server discovery ─────────
+    DBUS_SESSION_BUS_ADDRESS:
+    process.env.DBUS_SESSION_BUS_ADDRESS || `unix:path=${runtimeDir}/bus`,
+
+    // ── Audio ────────────────────────────────────────────────────────────────
+    PULSE_RUNTIME_PATH:   process.env.PULSE_RUNTIME_PATH   || `${runtimeDir}/pulse`,
+    PIPEWIRE_RUNTIME_DIR: process.env.PIPEWIRE_RUNTIME_DIR || runtimeDir,
+
+    // ── User identity ────────────────────────────────────────────────────────
+    HOME: process.env.HOME || os.homedir(),
+    USER: process.env.USER || os.userInfo().username,
+
+    // ── SDL2 hints ───────────────────────────────────────────────────────────
+    // Forces SDL to try Wayland first, then X11. Without this, SDL on some
+    // distros defaults to the X11 backend even in a Wayland-only session.
+    SDL_VIDEODRIVER: process.env.SDL_VIDEODRIVER || 'wayland,x11',
+    SDL_AUDIODRIVER: process.env.SDL_AUDIODRIVER || 'pipewire,pulseaudio,alsa',
+  };
+}
+
+let activeGameProcess = null;
+let activeGameCmd     = null;
+let lastGameLog       = 'Waiting to start...';
+
+// ── Persistent config ────────────────────────────────────────────────────────
 async function main() {
   // ── Platform Detection & Warnings ──────────────────────────────────────────
   console.log("");
@@ -470,7 +515,7 @@ async function main() {
   console.log("  Host page : http://localhost:" + PORT + "/host");
   console.log("  LAN URL   : http://" + LAN_IP + ":" + PORT + "/");
   if (PUBLIC_IP) console.log("  Public IP : http://" + PUBLIC_IP + ":" + PORT + "/ (needs port forward)");
-  console.log("  PIN       : \x1b[1;32m" + PIN + "\x1b[0m\n");
+    console.log("  PIN       : \x1b[1;32m" + PIN + "\x1b[0m\n");
 
   const app = express();
   const server = http.createServer(app);
@@ -482,7 +527,150 @@ async function main() {
     next();
   });
 
-  const APP_VERSION = "1.0.0";
+  const { spawn } = require('child_process');
+
+  // ── Watchdog: start/stop unattended game processes ───────────────────────
+  app.post('/api/restart-game', express.json(), (req, res) => {
+    const { command } = req.body;
+    if (!command) return res.json({ success: false, error: 'No command provided' });
+
+    // Kill the old process group before spawning a new one.
+    if (activeGameProcess) {
+      try { process.kill(-activeGameProcess.pid, 'SIGKILL'); } catch (_) {}
+      activeGameProcess = null;
+    }
+    activeGameCmd = null;
+    lastGameLog   = 'Waiting to start...';
+
+    if (command === 'KILL_ONLY') return res.json({ success: true });
+
+    console.log(`[Watchdog] Launching: ${command}`);
+    activeGameCmd = command;
+    lastGameLog   = 'Booting process...';
+
+    const child = spawn(command, {
+      shell: true,
+      detached: true,
+      // 'ignore' stdin prevents SDL/Qt from erroring on the closed pipe that
+      // Electron provides. 'pipe' on stdout/stderr lets us surface crash output.
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: buildGameEnv(),
+    });
+
+    child.stdout.on('data', data => {
+      lastGameLog = data.toString().trim();
+      console.log(`[Auto-Host stdout] ${lastGameLog}`);
+    });
+
+    child.stderr.on('data', data => {
+      // MAME and most SDL apps write normal init lines to stderr — don't treat
+      // every line as fatal. We still surface it so the dashboard can show it.
+      const line = data.toString().trim();
+      lastGameLog = line;
+      console.log(`[Auto-Host stderr] ${line}`);
+    });
+
+    child.on('error', err => {
+      lastGameLog = `Spawn error: ${err.message}`;
+      console.error(`[Watchdog] ${lastGameLog}`);
+      activeGameProcess = null;
+      activeGameCmd     = null;
+    });
+
+    child.on('exit', (code, signal) => {
+      const reason = signal ? `killed by ${signal}` : `exit code ${code}`;
+      console.log(`[Watchdog] Process ended (${reason}).`);
+      if (code !== 0 && code !== null) {
+        lastGameLog = `Process ended (${reason}). Check /api/debug-env for missing display/audio vars.`;
+      }
+      activeGameProcess = null;
+      activeGameCmd     = null;
+    });
+
+    child.unref();
+    activeGameProcess = child;
+
+    res.json({ success: true });
+  });
+
+  // ── Game status (polled by the dashboard every second) ───────────────────
+  app.get('/api/game-status', (req, res) => {
+    res.json({
+      running:   !!activeGameProcess,
+      command:   activeGameCmd,
+      tunnelUrl: tunnelUrl,
+      log:       lastGameLog,
+    });
+  });
+
+  // ── Environment debug endpoint ───────────────────────────────────────────
+  // Hit this in a browser tab when a game won't launch to see exactly which
+  // display/audio variables are present (or missing) in the Node process.
+  // Compare the output to what `env` prints in your terminal — any field
+  // showing null is a candidate for the crash.
+  //
+  //   http://localhost:3000/api/debug-env
+  //
+  app.get('/api/debug-env', (req, res) => {
+    const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+    const runtimeDir = process.env.XDG_RUNTIME_DIR || (uid ? `/run/user/${uid}` : null);
+
+    // Check whether the key sockets actually exist on disk so we can tell
+    // immediately if the paths are right, not just if the variables are set.
+    const socketExists = (p) => { try { return p ? fs.existsSync(p) : false; } catch { return false; } };
+
+    const waylandSocket = runtimeDir && process.env.WAYLAND_DISPLAY
+    ? path.join(runtimeDir, process.env.WAYLAND_DISPLAY)
+    : null;
+    const dbusSocket = process.env.DBUS_SESSION_BUS_ADDRESS
+    ? process.env.DBUS_SESSION_BUS_ADDRESS.replace('unix:path=', '')
+    : (runtimeDir ? path.join(runtimeDir, 'bus') : null);
+    const pulseSocket = (process.env.PULSE_RUNTIME_PATH || (runtimeDir ? path.join(runtimeDir, 'pulse') : null));
+
+    res.json({
+      // ── Process identity ──
+      pid:      process.pid,
+      uid:      uid,
+      platform: process.platform,
+
+      // ── Display ──
+      DISPLAY:          process.env.DISPLAY          || null,
+      WAYLAND_DISPLAY:  process.env.WAYLAND_DISPLAY  || null,
+      XDG_SESSION_TYPE: process.env.XDG_SESSION_TYPE || null,
+
+      // ── Runtime dir ──
+      XDG_RUNTIME_DIR:              runtimeDir,
+      xdg_runtime_dir_exists:       socketExists(runtimeDir),
+
+             // ── Wayland socket ──
+             wayland_socket_path:          waylandSocket,
+             wayland_socket_exists:        socketExists(waylandSocket),
+
+             // ── D-Bus ──
+             DBUS_SESSION_BUS_ADDRESS:     process.env.DBUS_SESSION_BUS_ADDRESS || null,
+             dbus_socket_path:             dbusSocket,
+             dbus_socket_exists:           socketExists(dbusSocket),
+
+             // ── Audio ──
+             PULSE_RUNTIME_PATH:           process.env.PULSE_RUNTIME_PATH   || null,
+             PIPEWIRE_RUNTIME_DIR:         process.env.PIPEWIRE_RUNTIME_DIR || null,
+             pulse_socket_exists:          socketExists(pulseSocket ? path.join(pulseSocket, 'native') : null),
+
+             // ── User / home ──
+             HOME: process.env.HOME || null,
+             USER: process.env.USER || null,
+
+             // ── SDL hints (set by buildGameEnv, not present here unless user set them) ──
+             SDL_VIDEODRIVER: process.env.SDL_VIDEODRIVER || null,
+             SDL_AUDIODRIVER: process.env.SDL_AUDIODRIVER || null,
+
+             // ── What buildGameEnv() would actually inject for the next launch ──
+             resolved_env: buildGameEnv(),
+    });
+  });
+
+  const packageData = require('../../package.json');
+  const APP_VERSION = packageData.version;
 
   app.use("/js", express.static(path.join(__dirname, "..", "..", "src", "scripts")));
   app.use("/assets", express.static(path.join(__dirname, "..", "..", "assets")));
@@ -494,6 +682,10 @@ async function main() {
   app.get("/gamepad-popup.html", (req, res) => res.sendFile(path.join(pagesDir, "gamepad-popup.html")));
 
   app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
+  app.get("/js/version.js", (req, res) => {
+    res.setHeader("Content-Type", "application/javascript");
+    res.send(`window.CLIENT_VERSION = "${APP_VERSION}";`);
+  });
   app.get("/api/pin-required", (req, res) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
@@ -504,20 +696,18 @@ async function main() {
 
   app.get("/api/status", (req, res) => {
     res.json({
-      online: !!hostWS,
-      streaming: hostStreaming,
-      viewers: viewers.size,
+      online:      !!hostWS,
+      streaming:   hostStreaming,
+      viewers:     viewers.size,
       controllers: controllerViewerCount(),
-      tunnel: tunnelUrl,
-      version: APP_VERSION,
-      uptime: process.uptime()
+             tunnel:      tunnelUrl,
+             version:     APP_VERSION,
+             uptime:      process.uptime()
     });
   });
 
   app.post("/api/create-virtual-audio", (req, res) => {
     if (process.platform !== 'linux') return res.json({ success: false, error: "Linux only feature" });
-
-    // pactl load-module module-null-sink is the universal command for BOTH PulseAudio and PipeWire.
     exec('pactl load-module module-null-sink sink_name=NearsecAppAudio sink_properties=device.description="Nearsec_App_Audio"', (err) => {
       if (err) return res.json({ success: false, error: err.message });
       res.json({ success: true });
@@ -539,12 +729,12 @@ async function main() {
     res.json({ ok: true, starting: true });
 
     const fn = {
-      zrok: startTunnelZrok,
-      cloudflared: startTunnelCloudflared,
-      playit: startTunnelPlayit,
+      zrok:         startTunnelZrok,
+      cloudflared:  startTunnelCloudflared,
+      playit:       startTunnelPlayit,
       localhostrun: startTunnelLocalhostRun,
-      vps: (p) => startTunnelVps(p, ((req.body && req.body.vpsHost) || process.env.VPS_HOST || '').trim()),
-      portforward: async () => null
+      vps:          (p) => startTunnelVps(p, ((req.body && req.body.vpsHost) || process.env.VPS_HOST || '').trim()),
+           portforward:  async () => null
     }[provider] || startTunnel;
 
     if (provider === 'vps' && req.body && req.body.vpsHost) {
@@ -587,7 +777,7 @@ async function main() {
   const viewerHasController = new Set();
   const hwIdToViewer = new Map();
 
-  const JOIN_SOUND = require('path').join(__dirname, '../../assets/joinsound.wav');
+  const JOIN_SOUND  = require('path').join(__dirname, '../../assets/joinsound.wav');
   const LEAVE_SOUND = require('path').join(__dirname, '../../assets/leavesound.wav');
   const { playSound: playSoundUtil } = require('./audio-util');
 
@@ -597,7 +787,7 @@ async function main() {
       if (err) console.log("[audio] Could not play sound on " + process.platform + ":", err.message);
     });
   }
-  function playJoinSound() { playSound(JOIN_SOUND); }
+  function playJoinSound()  { playSound(JOIN_SOUND); }
   function playLeaveSound() { playSound(LEAVE_SOUND); }
 
   function broadcast(data) {
@@ -613,29 +803,29 @@ async function main() {
     viewers.forEach((vws, id) => {
       const pads = viewerGamepads.get(id) || new Set([0]);
       pads.forEach(padIdx => {
-        const isExtra = padIdx > 0;
+        const isExtra   = padIdx > 0;
         const nameSuffix = isExtra ? ' ' + (padIdx + 1) : '';
-        const rosterId = id + '_' + padIdx;
-        const p = inputPerms.get(rosterId) || { gp: true, kb: false, slot: null };
+        const rosterId  = id + '_' + padIdx;
+        const p         = inputPerms.get(rosterId) || { gp: true, kb: false, slot: null };
 
         let mode = 'gamepad';
-        if (!p.gp && p.kb) mode = 'kbm';
+        if (!p.gp && p.kb)   mode = 'kbm';
         else if (p.gp && p.kb) mode = 'kbm_emulated';
         else if (!p.gp && !p.kb) mode = 'disabled';
 
         roster.push({
-          id: rosterId,
-          name: (viewerNames.get(id) || id) + nameSuffix,
-          gp: !!p.gp,
-          kb: !!p.kb,
-          slot: p.slot ?? null,
-          locked: !!p.locked,
-          inputMode: mode
+          id:        rosterId,
+          name:      (viewerNames.get(id) || id) + nameSuffix,
+                    gp:        !!p.gp,
+                    kb:        !!p.kb,
+                    slot:      p.slot ?? null,
+                    locked:    !!p.locked,
+                    inputMode: mode
         });
       });
     });
     const count = controllerViewerCount();
-    const msg = JSON.stringify({ type: "roster", viewers: roster, controllerCount: count });
+    const msg   = JSON.stringify({ type: "roster", viewers: roster, controllerCount: count });
     broadcast(msg);
     if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
   }
@@ -644,9 +834,9 @@ async function main() {
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
-    const url = new URL(req.url, "http://x");
+    const url    = new URL(req.url, "http://x");
     const wsPath = url.pathname;
-    const pin = url.searchParams.get("pin") || "";
+    const pin    = url.searchParams.get("pin") || "";
 
     // ── HOST ─────────────────────────────────────────────────────────────────
     if (wsPath === "/ws/host") {
@@ -672,7 +862,7 @@ async function main() {
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { gp: !!msg.gp, kb: !!msg.kb, slot: cur.slot });
             const realId = msg.viewerId.split('_')[0];
-            const vws = viewers.get(realId);
+            const vws    = viewers.get(realId);
             if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
               vws.send(JSON.stringify({ type: "input-state", gp: !!msg.gp, kb: !!msg.kb }));
             }
@@ -684,7 +874,7 @@ async function main() {
             const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { ...cur, slot: msg.slot });
             const realId = msg.viewerId.split('_')[0];
-            const vws = viewers.get(realId);
+            const vws    = viewers.get(realId);
             if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
               vws.send(JSON.stringify({ type: "slot-assigned", slot: msg.slot }));
             }
@@ -699,7 +889,7 @@ async function main() {
             toUinput({ type: 'set_enable_dualshock', value: !!msg.enableDualShock });
             toUinput({ type: 'set_enable_motion',    value: !!msg.enableMotion });
             console.log("[host] ctrl-settings: forceXboxOne=%s enableDualShock=%s enableMotion=%s",
-              !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion);
+                        !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion);
             return;
           }
 
@@ -716,18 +906,14 @@ async function main() {
               kbm_emulated: { gp: true,  kb: true  },
               disabled:     { gp: false, kb: false  }
             };
-            const perms = modeMap[msg.mode] || { gp: true, kb: false };
-            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
+            const perms  = modeMap[msg.mode] || { gp: true, kb: false };
+            const cur    = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
             inputPerms.set(msg.viewerId, { ...cur, ...perms });
             const realId = msg.viewerId.split('_')[0];
-            const vws = viewers.get(realId);
+            const vws    = viewers.get(realId);
             if (vws && vws.readyState === 1) {
               vws.send(JSON.stringify({ type: "input-state", gp: perms.gp, kb: perms.kb, mode: msg.mode }));
             }
-            // ── Forward mode change to Python sidecar so it can route inputs
-            //    through the correct device (gamepad / kbm / kbm_emulated / disabled).
-            //    Without this the sidecar viewer_modes dict is always empty and
-            //    everything silently defaults to "gamepad".
             toUinput({ type: 'set-input-mode', viewerId: msg.viewerId, mode: msg.mode });
             broadcastRoster();
             return;
@@ -767,15 +953,15 @@ async function main() {
             }
             const sessionId = 'ns-' + Date.now() + '-' + (++arcadeHostId);
             const session = {
-              id: sessionId,
-              game: sanitize(msg.config?.title || 'Arcade Game'),
-              thumbnail: msg.config?.thumbnail || null,
-              region: 'Nearsec Arcade',
-              hasPin: !!msg.config?.requirePin,
-              maxPlayers: parseInt(msg.config?.maxPlayers || 4),
-              url: arcadeUrl,
-              startedAt: Date.now(),
-              isStreaming: true,
+              id:         sessionId,
+              game:       sanitize(msg.config?.title || 'Arcade Game'),
+            thumbnail:  msg.config?.thumbnail || null,
+            region:     'Nearsec Arcade',
+            hasPin:     !!msg.config?.requirePin,
+            maxPlayers: parseInt(msg.config?.maxPlayers || 4),
+            url:        arcadeUrl,
+            startedAt:  Date.now(),
+            isStreaming: true,
             };
             arcadeSessions.set(sessionId, session);
             console.log("[arcade] Session registered:", session.game, arcadeUrl);
@@ -814,8 +1000,8 @@ async function main() {
 
       ws.on("close", () => {
         console.log("[host] disconnected");
-        hostWS = null;
-        hostStreaming = false;
+        hostWS        = null;
+        hostStreaming  = false;
         for (const [id] of arcadeSessions) {
           arcadeSessions.delete(id);
           broadcastToArcade({ type: 'arcade-session-stopped', id });
@@ -823,11 +1009,11 @@ async function main() {
         broadcast(JSON.stringify({ type: "host-disconnected" }));
       });
 
-    // ── VIEWER ───────────────────────────────────────────────────────────────
+      // ── VIEWER ───────────────────────────────────────────────────────────────
     } else if (wsPath === "/ws/viewer") {
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+      const clientIp       = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
       const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
-      const requirePin = shouldRequirePin(clientIp, hasTunnelHeader);
+      const requirePin     = shouldRequirePin(clientIp, hasTunnelHeader);
 
       if (pinEnabled && requirePin) {
         const attempt = pinAttempts.get(clientIp) || { count: 0, lockedUntil: 0 };
@@ -903,7 +1089,7 @@ async function main() {
               console.log("[viewer]", claimedId, "rejoined (slot reused, no duplicate)");
               id = claimedId;
               if (hostWS && hostWS.readyState === 1) {
-                hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: tempId }));
+                hostWS.send(JSON.stringify({ type: "viewer-left",   viewerId: tempId }));
                 hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) }));
               }
               ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: viewerNames.get(id) }));
@@ -920,10 +1106,10 @@ async function main() {
 
           if (msg.type === "gpid") {
             const padIdx = msg.padIndex || 0;
-            const pads = viewerGamepads.get(id) || new Set();
+            const pads   = viewerGamepads.get(id) || new Set();
             if (pads.has(padIdx)) return;
 
-            const hwKey = (msg.id || 'unknown') + ':' + padIdx;
+            const hwKey        = (msg.id || 'unknown') + ':' + padIdx;
             const staleViewerId = hwIdToViewer.get(hwKey);
             if (staleViewerId && staleViewerId !== id) {
               console.log("[viewer] evicting stale hw registration:", hwKey, "from", staleViewerId, "→", id);
@@ -973,7 +1159,7 @@ async function main() {
           }
 
           if (msg.type === "chat") {
-            msg.msg = sanitize(msg.msg);
+            msg.msg  = sanitize(msg.msg);
             msg.from = sanitize(viewerNames.get(id) || msg.from || 'Guest').slice(0, 20);
             broadcast(JSON.stringify(msg));
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify(msg));
@@ -982,7 +1168,7 @@ async function main() {
 
           if (msg.type === "gamepad" || msg.type === "keyboard") {
             if (msg.type === "keyboard") msg.type = "kbm";
-            const padIdx = msg.padIndex || 0;
+            const padIdx  = msg.padIndex || 0;
             const rosterId = msg.type === "gamepad" ? id + '_' + padIdx : id + '_0';
 
             if (msg.type === "gamepad") {
@@ -1003,7 +1189,7 @@ async function main() {
 
             const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
             if (msg.type === "gamepad" && !perms.gp) return;
-            if (msg.type === "kbm" && !perms.kb) return;
+            if (msg.type === "kbm"     && !perms.kb) return;
 
             msg.pad_id = rosterId;
             toUinput(msg);
@@ -1014,7 +1200,7 @@ async function main() {
 
       ws.on("close", () => {
         const hadController = viewerHasController.has(id);
-        const wasActive = viewers.get(id) === ws;
+        const wasActive     = viewers.get(id) === ws;
         if (wasActive) {
           viewers.delete(id);
           viewerNames.delete(id);
@@ -1025,8 +1211,8 @@ async function main() {
           }
           if (hadController) {
             playLeaveSound();
-            toUinput({ type: 'flush_neutral', viewer_id: id });
-            toUinput({ type: 'disconnect_viewer', viewer_id: id });
+            toUinput({ type: 'flush_neutral',      viewer_id: id });
+            toUinput({ type: 'disconnect_viewer',  viewer_id: id });
           }
           broadcastRoster();
           if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
@@ -1034,7 +1220,7 @@ async function main() {
         console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
       });
 
-    // ── ARCADE CLIENTS ────────────────────────────────────────────────────────
+      // ── ARCADE CLIENTS ────────────────────────────────────────────────────────
     } else if (wsPath === "/ws/arcade") {
       arcadeClients.add(ws);
       ws.send(JSON.stringify({ type: 'arcade-sessions', sessions: [...arcadeSessions.values()] }));
@@ -1048,7 +1234,7 @@ async function main() {
       });
       ws.on("close", () => arcadeClients.delete(ws));
 
-    // ── AUDIO ─────────────────────────────────────────────────────────────────
+      // ── AUDIO ─────────────────────────────────────────────────────────────────
     } else if (wsPath === "/ws/audio-host") {
       ws.on("message", raw => { audioViewers.forEach(v => { if (v.readyState === 1) v.send(raw); }); });
 
@@ -1056,7 +1242,7 @@ async function main() {
       audioViewers.add(ws);
       ws.on("close", () => audioViewers.delete(ws));
 
-    // ── DEDICATED INPUT CHANNEL ───────────────────────────────────────────────
+      // ── DEDICATED INPUT CHANNEL ───────────────────────────────────────────────
     } else if (wsPath === "/ws/input") {
       let myId = null;
       ws.on("message", raw => {
@@ -1093,7 +1279,7 @@ async function main() {
   server.listen(PORT, "0.0.0.0", async () => {
     console.log("Listening on port " + PORT);
     if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + PORT + "/host");
-    const cfg = loadConfig();
+      const cfg = loadConfig();
 
     if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
       console.log("  ~ Tunnel: VPS (from .env)");
@@ -1108,12 +1294,12 @@ async function main() {
     } else if (cfg.neverAsk && cfg.tunnelProvider) {
       console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "'");
       const fn = {
-        zrok: startTunnelZrok,
-        cloudflared: startTunnelCloudflared,
-        playit: startTunnelPlayit,
+        zrok:         startTunnelZrok,
+        cloudflared:  startTunnelCloudflared,
+        playit:       startTunnelPlayit,
         localhostrun: startTunnelLocalhostRun,
-        serveo: startTunnelServeo,
-        vps: (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || '')
+        serveo:       startTunnelServeo,
+        vps:          (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || '')
       }[cfg.tunnelProvider] || startTunnel;
       const tun = await fn(PORT);
       if (tun) {
@@ -1155,7 +1341,7 @@ function cleanup(isElectron = false) {
   }
 }
 
-process.on('SIGINT', () => cleanup(false));
+process.on('SIGINT',  () => cleanup(false));
 process.on('SIGTERM', () => cleanup(false));
 
 module.exports = { cleanup, toUinput };

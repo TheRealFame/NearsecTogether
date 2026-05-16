@@ -1,6 +1,6 @@
 {
   "name": "NearsecTogether",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Fame <support@cutefame.net>",
   "description": "Browser-based game streaming host",
   "main": "electron-main.js",
@@ -23,7 +23,6 @@
     "open": "latest",
     "play-sound": "latest",
     "pusher-js": "^8.5.0",
-    "sudo-prompt": "^9.2.1",
     "which": "latest",
     "ws": "^8.0.0"
   },
@@ -35,6 +34,15 @@
   "build": {
     "appId": "com.nearsectogether.app",
     "productName": "NearsecTogether",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": true
+    },
     "publish": {
       "provider": "github"
     },
@@ -45,7 +53,9 @@
       {
         "from": "bin",
         "to": "bin",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "files": [

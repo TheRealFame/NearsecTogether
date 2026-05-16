@@ -6,11 +6,12 @@ goto :WINDOWS
 BATCH_SECTION
 
 # --- UNIX SECTION (Linux, Mac, FreeBSD, Arch) ---
-# 1. Get the directory of the script
-# 2. Move up one level (..)
-# 3. Enter that parent directory
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DIR"
+
+# 1. PREEMPTIVE GHOST KILLER
+# Instantly terminate any lingering process holding Port 3000 before we even try to boot
+lsof -ti:3000 | xargs kill -9 >/dev/null 2>&1
 
 cleanup() {
     echo "\n  ! Shutting down... cleaning up port 3000"
@@ -44,13 +45,13 @@ fi
 ! command -v node >/dev/null 2>&1 && { echo "X Node.js missing"; exit 1; }
 [ ! -d node_modules ] && npm install --silent
 
-# export SDL_GAMECONTROLLER_IGNORE_DEVICES="0x045e/0x028e,0x054c/0x09cc,0x054c/0x0ce6"
 if [ -f node_modules/.bin/electron ]; then
     ./node_modules/.bin/electron . "$@"
 else
     exec node src/scripts/server.js "$@"
 fi
 exit 0
+
 
 :WINDOWS
 :: --- WINDOWS SECTION ---

@@ -51,6 +51,11 @@
       flex-shrink: 0;
     }
 
+    .logo-wrap, .hdr-right {
+      /* FIX: Ensure buttons inside the header remain clickable */
+      -webkit-app-region: no-drag;
+    }
+
     .logo {
       font-size: 12px;
       font-weight: 600;
@@ -965,13 +970,12 @@
       font-size: 10px;
       color: #888;
     }
-      border: none;
-      transition: all 0.2s;
-    }
 
     .btn-confirm {
       background: var(--accent);
       color: #000;
+      border: none;
+      transition: all 0.2s;
     }
 
     .btn-confirm:hover {
@@ -1193,11 +1197,12 @@
       <header>
         <div class="logo-wrap">
           <div class="logo">
-            <img src="/assets/NearsecTogether.png" alt="NearsecTogether"
-              style="height:24px; display:block; margin: 0 auto 4px; filter: drop-shadow(0 0 10px var(--accent-dim));">
+            <img src="/assets/NearsecTogether.png" alt="NearsecTogether" style="height:24px; display:block; margin: 0 auto 4px; filter: drop-shadow(0 0 10px var(--accent-dim));">
             NearsecTogether
           </div>
-          <div style="font-size:8px;color:var(--muted);margin-top:2px;letter-spacing:0.05em">Co-op streaming host</div>
+          <div style="font-size:8px;color:var(--muted);margin-top:2px;letter-spacing:0.05em">
+            Co-op host <span style="margin: 0 4px;">•</span> <span id="displayHostName" style="color: var(--accent); font-weight: 600;">Guest</span>
+          </div>
         </div>
         <div class="hdr-right">
           <span id="codecBadge" class="codec-badge">—</span>
@@ -1207,12 +1212,9 @@
             </svg>
           </button>
           <button class="gear-btn" onclick="showAppSettings()" title="Settings">
-            <svg class="svg-icon" style="width:16px; height:16px; color:var(--muted)" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="svg-icon" style="width:16px; height:16px; color:var(--muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-              </path>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
           </button>
         </div>
@@ -1222,7 +1224,7 @@
         <div class="sec">
           <div class="sec-label">Capture</div>
           <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <button class="btn primary" id="btnStart" onclick="startCapture()" style="flex:1;margin:0;">
+            <button class="btn primary" id="btnStart" onclick="showSourceSelectionModal()" style="flex:1;margin:0;">
               <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;"><circle cx="12" cy="12" r="8"/></svg> Start
             </button>
             <button class="btn" id="btnArcade" onclick="showArcadeModal()" style="flex:1;margin:0;" title="Arcade Mode">
@@ -1718,37 +1720,29 @@
                 onclick="event.stopPropagation()">
 
               <div style="background:#080808; padding:10px; border-radius:4px; border:1px solid #222;">
-                <div style="font-size:9px; color:#555; margin-bottom:6px; letter-spacing:0.05em;">TERMINAL COMMAND:
-                </div>
+                <div style="font-size:9px; color:#555; margin-bottom:6px; letter-spacing:0.05em;">TERMINAL COMMAND:</div>
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                  <code
-                    style="color:#888; font-size:10px; font-family:monospace; word-break:break-all; flex:1;">ssh -N -R 3000:localhost:3000 VPS</code>
-                  <button class="copy-btn" style="margin:0; padding:4px 8px; flex-shrink:0;"
-                    onclick="copyCmd(event, 'ssh -N -R 3000:localhost:3000 VPS')">copy</button>
+                  <code style="color:#888; font-size:10px; font-family:monospace; word-break:break-all; flex:1;">ssh -N -R 3000:localhost:3000 VPS</code>
+                  <button class="copy-btn" style="margin:0; padding:4px 8px; flex-shrink:0;" onclick="copyCmd(event, 'ssh -N -R 3000:localhost:3000 VPS')">copy</button>
                 </div>
               </div>
-
-
             </div>
+          </label>
+        </div> <div style="border-top: 1px solid var(--border); margin: 0 -16px; padding: 12px 16px;">
+          <label class="provider-card" style="flex-direction:row; align-items:center; height:auto; margin-bottom:0; padding: 10px 14px;">
+            <input type="radio" name="provider" value="portforward">
+            <div class="prov-emoji" style="display:flex; align-items:center;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon" style="width:20px; height:20px; color:#fff;">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+            </div>
+            <div class="prov-name">Manual Port Forwarding <span class="pill pill-lat">Direct</span></div>
+            <div style="margin-left:auto; font-size:10px; color:var(--muted);">Forward port 3000</div>
+          </label>
         </div>
-        </label>
-      </div>
-      <div style="border-top: 1px solid var(--border); margin: 0 -16px; padding: 12px 16px;">
-        <label class="provider-card"
-          style="flex-direction:row; align-items:center; height:auto; margin-bottom:0; padding: 10px 14px;">
-          <input type="radio" name="provider" value="portforward">
-          <div class="prov-emoji" style="display:flex; align-items:center;"><svg xmlns="http://www.w3.org/2000/svg"
-              width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" class="svg-icon"
-              style="width:20px; height:20px; color:#fff;">
-              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-              <line x1="6" y1="6" x2="6.01" y2="6" />
-              <line x1="6" y1="18" x2="6.01" y2="18" />
-            </svg></div>
-          <div class="prov-name">Manual Port Forwarding <span class="pill pill-lat">Direct</span></div>
-          <div style="margin-left:auto; font-size:10px; color:var(--muted);">Forward port 3000</div>
-        </label>
       </div>
       <div class="modal-footer">
         <div class="btn-row">
@@ -1760,9 +1754,9 @@
           <label for="rememberCheck">Remember this choice & don't ask again on startup</label>
         </div>
       </div>
-    </div> </div>
+    </div>
+  </div>
 
-  <!-- ══ SOURCE/WINDOW SELECTION MODAL ═════════════════════════════════ -->
   <div class="modal-bg gone" id="sourceModal">
     <div class="modal">
       <div class="modal-head">
@@ -1770,8 +1764,7 @@
         <p>Choose a window or screen to share. Your selection will be remembered.</p>
       </div>
       <div class="source-grid" id="sourceGrid">
-        <!-- Populated by JS -->
-      </div>
+        </div>
       <div class="modal-footer">
         <div class="btn-row">
           <button class="btn primary" id="confirmSourceBtn" onclick="confirmSource()" disabled>Select</button>
@@ -1781,114 +1774,114 @@
     </div>
   </div>
 
+  <script src="/js/i18n.js"></script>
   <script src="/js/host.js"></script>
   <script>
-(function patchTunnelCommandsForPlatform() {
-  const ua = navigator.userAgent;
-  const isWin = ua.includes('Win');
-  const isMac = ua.includes('Mac') && !ua.includes('Windows');
-  if (!isWin && !isMac) return; // Linux: keep the existing commands as-is
+    (function patchTunnelCommandsForPlatform() {
+      const ua = navigator.userAgent;
+      const isWin = ua.includes('Win');
+      const isMac = ua.includes('Mac') && !ua.includes('Windows');
+      if (!isWin && !isMac) return; // Linux: keep the existing commands as-is
 
-  // ── Platform-specific commands per provider ──────────────────────────────
-  // Each entry: { cmd (shown + copied), comment (dimmed hint line) }
-  const CMDS = {
-    cloudflared: {
-      win: {
-        cmd:     'winget install Cloudflare.cloudflared',
-        comment: '# Or: github.com/cloudflare/cloudflared/releases  (Windows installer)',
-      },
-      mac: {
-        cmd:     'brew install cloudflare/cloudflare/cloudflared',
-        comment: '# Requires Homebrew — brew.sh',
-      },
-    },
-    zrok: {
-      win: {
-        cmd:     'https://github.com/openziti/zrok/releases',
-        comment: '# Download the Windows zip, extract, add to PATH, then: zrok enable [token]',
-      },
-      mac: {
-        cmd:     'brew install openziti/homebrew-openziti/zrok',
-        comment: '# Then: zrok enable [token]',
-      },
-    },
-    localhostrun: {
-      win: {
-        cmd:     'ssh -R 80:localhost:3000 nokey@localhost.run',
-        comment: '# OpenSSH is built into Windows 10+ — no install needed',
-      },
-      mac: {
-        cmd:     'ssh -R 80:localhost:3000 nokey@localhost.run',
-        comment: '# SSH is built into macOS — no install needed',
-      },
-    },
-    playit: {
-      win: {
-        cmd:     'https://playit.gg/download',
-        comment: '# Download the Windows installer from playit.gg',
-      },
-      mac: {
-        cmd:     'https://playit.gg/download',
-        comment: '# Download the macOS version from playit.gg',
-      },
-    },
-    // VPS and portforward cards have no install commands — skip
-  };
+      // ── Platform-specific commands per provider ──────────────────────────────
+      // Each entry: { cmd (shown + copied), comment (dimmed hint line) }
+      const CMDS = {
+        cloudflared: {
+          win: {
+            cmd:     'winget install Cloudflare.cloudflared',
+            comment: '# Or: github.com/cloudflare/cloudflared/releases  (Windows installer)',
+          },
+          mac: {
+            cmd:     'brew install cloudflare/cloudflare/cloudflared',
+            comment: '# Requires Homebrew — brew.sh',
+          },
+        },
+        zrok: {
+          win: {
+            cmd:     'https://github.com/openziti/zrok/releases',
+            comment: '# Download the Windows zip, extract, add to PATH, then: zrok enable [token]',
+          },
+          mac: {
+            cmd:     'brew install openziti/homebrew-openziti/zrok',
+            comment: '# Then: zrok enable [token]',
+          },
+        },
+        localhostrun: {
+          win: {
+            cmd:     'ssh -R 80:localhost:3000 nokey@localhost.run',
+            comment: '# OpenSSH is built into Windows 10+ — no install needed',
+          },
+          mac: {
+            cmd:     'ssh -R 80:localhost:3000 nokey@localhost.run',
+            comment: '# SSH is built into macOS — no install needed',
+          },
+        },
+        playit: {
+          win: {
+            cmd:     'https://playit.gg/download',
+            comment: '# Download the Windows installer from playit.gg',
+          },
+          mac: {
+            cmd:     'https://playit.gg/download',
+            comment: '# Download the macOS version from playit.gg',
+          },
+        },
+        // VPS and portforward cards have no install commands — skip
+      };
 
-  const platform = isWin ? 'win' : 'mac';
+      const platform = isWin ? 'win' : 'mac';
 
-  function applyPlatformCmds() {
-    document.querySelectorAll('.provider-card').forEach(function(card) {
-      const radio = card.querySelector('input[type=radio]');
-      if (!radio) return;
-      const provider = radio.value;
-      const info = CMDS[provider] && CMDS[provider][platform];
-      if (!info) return;
+      function applyPlatformCmds() {
+        document.querySelectorAll('.provider-card').forEach(function(card) {
+          const radio = card.querySelector('input[type=radio]');
+          if (!radio) return;
+          const provider = radio.value;
+          const info = CMDS[provider] && CMDS[provider][platform];
+          if (!info) return;
 
-      const installDiv = card.querySelector('.prov-install');
-      if (!installDiv) return;
+          const installDiv = card.querySelector('.prov-install');
+          if (!installDiv) return;
 
-      // Update displayed command text
-      const cmdSpan = installDiv.querySelector('.cmd');
-      if (cmdSpan) cmdSpan.textContent = info.cmd;
+          // Update displayed command text
+          const cmdSpan = installDiv.querySelector('.cmd');
+          if (cmdSpan) cmdSpan.textContent = info.cmd;
 
-      // Update or inject comment line
-      let commentSpan = installDiv.querySelector('.comment');
-      if (!commentSpan) {
-        commentSpan = document.createElement('span');
-        commentSpan.className = 'comment';
-        commentSpan.style.display = 'block';
-        commentSpan.style.marginTop = '4px';
-        installDiv.appendChild(commentSpan);
+          // Update or inject comment line
+          let commentSpan = installDiv.querySelector('.comment');
+          if (!commentSpan) {
+            commentSpan = document.createElement('span');
+            commentSpan.className = 'comment';
+            commentSpan.style.display = 'block';
+            commentSpan.style.marginTop = '4px';
+            installDiv.appendChild(commentSpan);
+          }
+          commentSpan.textContent = info.comment;
+
+          // Re-wire the copy button to copy the platform command
+          const copyBtn = installDiv.querySelector('.copy-btn');
+          if (copyBtn) {
+            // Replace onclick entirely so it uses the right cmd string
+            copyBtn.onclick = function(e) { copyCmd(e, info.cmd); };
+          }
+        });
       }
-      commentSpan.textContent = info.comment;
 
-      // Re-wire the copy button to copy the platform command
-      const copyBtn = installDiv.querySelector('.copy-btn');
-      if (copyBtn) {
-        // Replace onclick entirely so it uses the right cmd string
-        copyBtn.onclick = function(e) { copyCmd(e, info.cmd); };
+      // Run once on DOM ready (covers initial page load)
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyPlatformCmds);
+      } else {
+        applyPlatformCmds();
       }
-    });
-  }
 
-  // Run once on DOM ready (covers initial page load)
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applyPlatformCmds);
-  } else {
-    applyPlatformCmds();
-  }
-
-  // Also run whenever the tunnel modal is opened (cards are already in DOM,
-  // but this re-applies after any dynamic OS-hint injection in showTunnelModal)
-  const _origShow = window.showTunnelModal;
-  window.showTunnelModal = function() {
-    _origShow && _origShow.apply(this, arguments);
-    // Small delay lets showTunnelModal finish adding its dynamic OS hints first
-    setTimeout(applyPlatformCmds, 0);
-  };
-})();
-</script>
+      // Also run whenever the tunnel modal is opened (cards are already in DOM,
+      // but this re-applies after any dynamic OS-hint injection in showTunnelModal)
+      const _origShow = window.showTunnelModal;
+      window.showTunnelModal = function() {
+        _origShow && _origShow.apply(this, arguments);
+        // Small delay lets showTunnelModal finish adding its dynamic OS hints first
+        setTimeout(applyPlatformCmds, 0);
+      };
+    })();
+  </script>
 </body>
-
 </html>

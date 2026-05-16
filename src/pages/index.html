@@ -38,6 +38,11 @@
       overflow: hidden;
       font-family: 'IBM Plex Mono', monospace;
       touch-action: manipulation;
+
+      /* FIX: Prevent text selection and the blinking insert caret */
+      user-select: none;
+      -webkit-user-select: none;
+      caret-color: transparent;
     }
 
     /* ── Video ─────────────────────────────────────── */
@@ -739,6 +744,8 @@
 </head>
 
 <body>
+  <select id="langSelect" onchange="I18N.changeLanguage(this.value)" style="background: transparent; color: #555; border: 1px solid #333; border-radius: 4px; font-size: 10px; margin-top: 24px; padding: 4px; outline: none; cursor: pointer;">
+    </select>
   <div id="pinScreen">
     <div class="brand-wrap">
       <img src="/assets/NearsecTogether.png" alt="NearsecTogether" class="brand-img">
@@ -800,6 +807,7 @@
     <div id="bar-inner">
       <button id="touchToggleBtn" onclick="toggleTouch()">Touch UI</button>
       <button id="guideBtn" onclick="openControllerGuide()">? Guide</button>
+      <button id="rumbleBtn" onclick="toggleClientRumble()">Rumble: ON</button>
       <button id="fsBtn" onclick="toggleFS()">[ ] Full</button>
       <button id="audBtn" onclick="toggleAudio()">Audio</button>
       <button id="chatBtn" onclick="toggleChat()">Chat</button>
@@ -860,6 +868,8 @@
     </div>
   </div>
 
+  <script src="/js/i18n.js"></script>
+  <script src="/js/version.js"></script>
   <script src="/js/viewer.js"></script>
 </body>
 

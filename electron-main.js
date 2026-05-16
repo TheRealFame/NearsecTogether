@@ -4,6 +4,13 @@ process.on('uncaughtException', (e) => console.error('\n[electron] ⚠ Uncaught 
 process.on('unhandledRejection', (e) => console.error('\n[electron] ⚠ Unhandled Rejection:', e));
 
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, powerSaveBlocker, shell } = require('electron');
+
+// --- SMART WAYLAND DETECTION ---
+if (process.platform === 'linux' && (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland')) {
+  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+}
+
 const { exec } = require('child_process');
 const path   = require('path');
 const fs     = require('fs');
@@ -58,11 +65,8 @@ if (initialCfg.zeroCopy) {
 
 // ── System Readiness Check ────────────────────────────────────────────────────
 function checkSystemReady() {
-  // We return true so the app always boots.
-  // We can still use this function later to show a "Driver Missing" warning in the UI.
   return true;
 }
-
 
 // ── Setup IPC Handlers ────────────────────────────────────────────────────────
 ipcMain.on('continue-boot', () => {
@@ -73,6 +77,7 @@ ipcMain.on('continue-boot', () => {
 
 ipcMain.on('run-setup', (event) => {
   const resourceFolder = app.isPackaged ? process.resourcesPath : ROOT;
+
   if (process.platform === 'win32') {
     const scriptPath = path.join(resourceFolder, 'bin', 'windows_setup.ps1');
     const cmd = `powershell.exe -Command "Start-Process powershell -ArgumentList '-ExecutionPolicy', 'Bypass', '-File', '\\"${scriptPath}\\"' -Verb RunAs -Wait"`;
@@ -80,11 +85,13 @@ ipcMain.on('run-setup', (event) => {
       if (error) return event.sender.send('setup-failed');
       event.sender.send('setup-success');
     });
+
   } else if (process.platform === 'linux') {
-    const sudo = require('sudo-prompt');
     const scriptPath = path.join(resourceFolder, 'bin', 'linux_setup.sh');
-    sudo.exec(`bash "${scriptPath}"`, { name: 'NearsecTogether' }, (err) => {
-      if (err) return event.sender.send('setup-failed');
+    const cmd = `x-terminal-emulator -e bash -c "sudo bash \\"${scriptPath}\\"; echo ''; echo 'Setup complete. Press ENTER to close.'; read"`;
+
+    exec(cmd, (error) => {
+      if (error) return event.sender.send('setup-failed');
       event.sender.send('setup-success');
     });
   }
@@ -161,9 +168,12 @@ function createSetupWindow() {
     width: 700, height: 600,
     backgroundColor: '#080808',
     icon: path.join(ASSETS_DIR, 'NearsecTogether.png'),
-                                 webPreferences: { preload: PRELOAD_MAIN, nodeIntegration: false, contextIsolation: true }
+                                 webPreferences: { preload: PRELOAD_MAIN, nodeIntegration: false, webSecurity: false, contextIsolation: true }
   });
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.webContents.session.setPermissionRequestHandler((wc, permission, cb) => {
+    cb(true);
+  });
   mainWindow.loadFile(path.join(PAGES_DIR, 'setup.html'));
 }
 
@@ -172,14 +182,37 @@ function createMainWindow(port) {
   const winState = loadConfig().mainWindowState || {};
 
   mainWindow = new BrowserWindow({
-    width: winState.width || 1280, height: winState.height || 800, x: winState.x, y: winState.y,
-    minWidth: 900, minHeight: 600, backgroundColor: '#080808', show: false,
+    width: winState.width || 1280,
+    height: winState.height || 800,
+    x: winState.x,
+    y: winState.y,
+    minWidth: 900,
+    minHeight: 600,
+    backgroundColor: '#080808',
+    show: false,
     icon: path.join(ASSETS_DIR, 'NearsecTogether.png'),
-                                 titleBarStyle: 'hidden', titleBarOverlay: { color: '#080808', symbolColor: '#c084fc', height: 36 },
-                                 webPreferences: { preload: PRELOAD_MAIN, nodeIntegration: false, contextIsolation: true, webSecurity: true },
+                                 titleBarStyle: 'hidden',
+                                 titleBarOverlay: { color: '#080808', symbolColor: '#c084fc', height: 36 },
+                                 webPreferences: {
+                                   preload: PRELOAD_MAIN,
+                                   nodeIntegration: false,
+                                   contextIsolation: true,
+                                   webSecurity: false
+                                 },
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  // --- SAFE SCREEN CAPTURE HANDLER ---
+  const { session } = require('electron');
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (process.platform === 'linux') {
+      callback({ video: { id: 'screen:0:0', name: 'Wayland Portal' } });
+    } else {
+      callback({ error: 'Windows/Mac must use custom UI via getUserMedia' });
+    }
+  });
+
   ['resize', 'move'].forEach(ev => {
     mainWindow.on(ev, () => {
       if (mainWindow.isMaximized() || mainWindow.isFullScreen()) return;
@@ -201,52 +234,32 @@ function createMainWindow(port) {
         const btn = document.createElement('button');
         btn.id = 'ns-dash-btn';
         btn.innerHTML = '← Dashboard';
-
-        // Muted gray, dark border, slightly transparent, ALWAYS visible
         btn.style.cssText = 'position:fixed;bottom:20px;left:0;opacity:0.8;z-index:999999;padding:12px 20px;background:#141414;color:#888;border:1px solid #333;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;transition:all 0.2s ease;';
-
-        // Hover: Wakes up and turns purple
-        btn.onmouseover = () => {
-          btn.style.opacity = '1';
-          btn.style.color = '#c084fc';
-          btn.style.borderColor = '#c084fc';
-        };
-
-        // Leave: Goes back to sleep (muted gray)
-        btn.onmouseleave = () => {
-          btn.style.opacity = '0.8';
-          btn.style.color = '#888';
-          btn.style.borderColor = '#333';
-        };
-
+        btn.onmouseover = () => { btn.style.opacity = '1'; btn.style.color = '#c084fc'; btn.style.borderColor = '#c084fc'; };
+        btn.onmouseleave = () => { btn.style.opacity = '0.8'; btn.style.color = '#888'; btn.style.borderColor = '#333'; };
         btn.onclick = () => window.electronAPI.backToDashboard();
-
-        // We only append the button now, no more trigger box!
         document.body.appendChild(btn);
       }
       `);
     }
   });
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    if (process.argv.includes('--dev')) {
+      mainWindow.webContents.openDevTools();
+    }
     if (IS_STEAM_DECK) mainWindow.maximize();
   });
 
-   // Set a global flag before quitting so we don't intercept the close
-  app.on('before-quit', () => {
-    app.isQuiting = true;
-  });
-
-  mainWindow.on('close', (e) => {
-    // FAILSAFE: Only hide if the tray object actually exists and wasn't destroyed
-    if (loadConfig().tray !== false && tray && !tray.isDestroyed() && !app.isQuiting) {
-      e.preventDefault();
-      mainWindow.hide();
-    } else {
-      // If there is no tray, we MUST let the app close, or it becomes a ghost.
-      app.isQuiting = true;
-    }
-  });
+    mainWindow.on('close', (e) => {
+      if (loadConfig().tray !== false && tray && !tray.isDestroyed() && !app.isQuiting) {
+        e.preventDefault();
+        mainWindow.hide();
+      } else {
+        app.isQuiting = true;
+      }
+    });
 }
 
 function createViewerWindow(sessionUrl, meta = {}) {
@@ -255,7 +268,7 @@ function createViewerWindow(sessionUrl, meta = {}) {
   viewerWindow = new BrowserWindow({
     width: 1280, height: 800, fullscreen: IS_STEAM_DECK, backgroundColor: '#000000',
     icon: path.join(ASSETS_DIR, 'NearsecTogether.png'), frame: false,
-                                   webPreferences: { preload: PRELOAD_VIEW, nodeIntegration: false, contextIsolation: true, autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false, enablePreferredSizeMode: true },
+                                   webPreferences: { preload: PRELOAD_VIEW, nodeIntegration: false, contextIsolation: true, autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false, enablePreferredSizeMode: true, webSecurity: false, preload: path.join(__dirname, 'electron-preload.js') },
   });
 
   viewerWindow.webContents.session.setPermissionRequestHandler((wc, permission, cb) => cb(['media', 'pointerLock', 'fullscreen', 'gamepad', 'notifications'].includes(permission)));
@@ -273,6 +286,17 @@ function createViewerWindow(sessionUrl, meta = {}) {
     };
     window.__NEARSEC_ELECTRON__ = true;
     window.__NEARSEC_STEAM_DECK__ = ${IS_STEAM_DECK};
+
+    if (!document.getElementById('ns-leave-btn')) {
+      const btn = document.createElement('button');
+      btn.id = 'ns-leave-btn';
+      btn.innerHTML = '← Leave Session';
+      btn.style.cssText = 'position:fixed;top:20px;left:0;opacity:0.8;z-index:999999;padding:12px 20px;background:#141414;color:#888;border:1px solid #333;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;transition:all 0.2s ease;';
+      btn.onmouseover = () => { btn.style.opacity = '1'; btn.style.color = '#ff4444'; btn.style.borderColor = '#ff4444'; };
+      btn.onmouseleave = () => { btn.style.opacity = '0.8'; btn.style.color = '#888'; btn.style.borderColor = '#333'; };
+      btn.onclick = () => { window.close(); };
+      document.body.appendChild(btn);
+    }
     `);
   });
 
@@ -370,56 +394,62 @@ ipcMain.handle('get-server-info', async () => {
 ipcMain.handle('ping-session', async (_e, url) => pingSessionUrl(url));
 
 // ── App Lifecycle ─────────────────────────────────────────────────────────────
-async function finalizeBootSequence() {
-  const port = await startServer();
-  serverPort = port;
-  createMainWindow(port);
-  if (loadConfig().tray !== false) createTray();
-  if (loadConfig().discordRPC !== false) initDiscord().catch(() => {});
+const gotTheLock = app.requestSingleInstanceLock();
 
-  let isPanicActive = false;
-  globalShortcut.register('CommandOrControl+Shift+Backspace', () => {
-    isPanicActive = !isPanicActive;
-    console.log(`\n[electron] PANIC MODE ${isPanicActive ? 'ACTIVATED (Inputs Frozen)' : 'DEACTIVATED (Inputs Resumed)'}`);
-    if (serverCore && serverCore.toUinput) {
-      serverCore.toUinput({ type: 'panic_toggle', enabled: isPanicActive });
+if (!gotTheLock) {
+  // If an instance of Nearsec is already running, violently kill this duplicate
+  console.log("\n[electron] Duplicate instance detected. Terminating ghost process.");
+  app.quit();
+} else {
+  // We are the primary instance. If someone clicks the shortcut again, bring us to the front!
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
     }
   });
-}
 
-// ── App Lifecycle (The Ultimate Bypass) ──────────────────────────────────
-// We are completely removing the Single Instance Lock for testing.
-// This guarantees the app will open, even if a ghost is running.
+  async function finalizeBootSequence() {
+    const port = await startServer();
+    serverPort = port;
+    createMainWindow(port);
+    if (loadConfig().tray !== false) createTray();
+    if (loadConfig().discordRPC !== false) initDiscord().catch(() => {});
 
-app.on('second-instance', () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    if (!mainWindow.isVisible()) mainWindow.show();
-    mainWindow.focus();
+    let isPanicActive = false;
+    globalShortcut.register('CommandOrControl+Shift+Backspace', () => {
+      isPanicActive = !isPanicActive;
+      console.log(`\n[electron] PANIC MODE ${isPanicActive ? 'ACTIVATED (Inputs Frozen)' : 'DEACTIVATED (Inputs Resumed)'}`);
+      if (serverCore && serverCore.toUinput) {
+        serverCore.toUinput({ type: 'panic_toggle', enabled: isPanicActive });
+      }
+    });
   }
-});
 
-app.on('ready', async () => {
-  // BYPASS: Always boot the dashboard.
-  // The yellow bar in dashboard.html will handle the setup now!
-  finalizeBootSequence();
-});
+  app.on('before-quit', () => {
+    app.isQuiting = true;
+  });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
-
-app.on('activate', () => {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    // BYPASS: Always boot the dashboard.
+  app.on('ready', async () => {
     finalizeBootSequence();
-  } else {
-    mainWindow.show();
-  }
-});
+  });
 
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
-  stopServer();
-  if (discordRPC) try { discordRPC.destroy(); } catch {}
-});
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+
+    app.on('activate', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        finalizeBootSequence();
+      } else {
+        mainWindow.show();
+      }
+    });
+
+    app.on('will-quit', () => {
+      globalShortcut.unregisterAll();
+      stopServer();
+      if (discordRPC) try { discordRPC.destroy(); } catch {}
+    });
+}

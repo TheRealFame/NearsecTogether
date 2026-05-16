@@ -3,7 +3,6 @@ const host = location.host;
 let ws, pc, myId = sessionStorage.getItem('ns_viewer_id');
 let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random() * 9000 + 1000);
 document.getElementById('nameInput').value = myName;
-const CLIENT_VERSION = "1.0.0";
 let enteredPin = '', audioMuted = false;
 let kbEnabled = false; // set true only when host grants KBM mode — gates pointer lock
 
@@ -817,6 +816,25 @@ function toggleFS() {
         document.getElementById('fsBtn').textContent = '[ ] Full';
     }
 }
+
+let clientRumbleEnabled = localStorage.getItem('ns_rumble') !== 'false';
+
+function toggleClientRumble() {
+    clientRumbleEnabled = !clientRumbleEnabled;
+    localStorage.setItem('ns_rumble', clientRumbleEnabled);
+    updateRumbleBtn();
+}
+
+function updateRumbleBtn() {
+    const rBtn = document.getElementById('rumbleBtn');
+    if (rBtn) {
+        rBtn.textContent = 'Rumble: ' + (clientRumbleEnabled ? 'ON' : 'OFF');
+        rBtn.style.color = clientRumbleEnabled ? '#777' : '#ff4444';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', updateRumbleBtn);
+
 // Removed auto-fullscreen on first touch to prevent accidental fullscreen triggers.
 // Fullscreen is now only accessible via:
 // 1. The fullscreen button (fsBtn)

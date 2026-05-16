@@ -6,7 +6,10 @@ if [[ "$EUID" -ne 0 ]]; then
   exit 1
 fi
 
-cp ../assets/NearsecTogether.png /usr/share/pixmaps/NearsecTogether.png
+# Find the exact folder this script lives in, then copy the icon
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+cp "$SCRIPT_DIR/../assets/NearsecTogether.png" /usr/share/pixmaps/NearsecTogether.png 2>/dev/null
+
 apt-get update
 apt-get install -y python3-pip libudev-dev libasound2-dev libpipewire-0.3-dev
 pip3 install python-uinput --break-system-packages

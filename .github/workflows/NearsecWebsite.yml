@@ -34,12 +34,15 @@ jobs:
           # 2. Copy the Arcade JS logic
           cp website/arcade.js dist/arcade/arcade.js
 
-          # 3. Copy assets (Images, sounds, icons)
+          # 3. Copy assets (Images, sounds, icons, AND locales!)
           cp -r assets dist/assets
           cp assets/NearsecTogether.png dist/NearsecTogether.png
 
           # 4. Copy auxiliary pages (like gamepad-popup.html)
           cp -r src/pages dist/pages
+
+          # 5. Copy the JS scripts folder (for i18n.js)
+          cp -r src/scripts dist/js
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

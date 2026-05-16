@@ -22,6 +22,10 @@ const ARCADE_ALLOWED_DOMAINS = [
 'localhost.run',
 'serveo.net',
 ];
+
+// Inside your web i18n script's targetLang definition:
+const urlParams = new URLSearchParams(window.location.search);
+const targetLang = urlParams.get('lang') || localStorage.getItem('ns_lang') || navigator.language.split('-')[0] || 'en';
 function isAllowedArcadeUrl(rawUrl) {
     try {
         const u = new URL(rawUrl);
@@ -246,9 +250,9 @@ function renderGrid() {
     if (loader) loader.classList.add('hidden');
 
     if (countEl) {
-        countEl.textContent = sessions.length === 0 ? 'No sessions' :
-        sessions.length === 1 ? '1 session live' :
-        sessions.length + ' sessions live';
+        countEl.textContent = sessions.length === 0 ? I18N.t('No sessions') :
+        sessions.length === 1 ? I18N.t('1 session live') :
+        sessions.length + ' ' + I18N.t('sessions live');
     }
 
     if (filteredSessions.length === 0) {
@@ -313,7 +317,7 @@ function buildCard(s, index) {
     <div class="card-title">${escHtml(s.game)}</div>
     <div class="card-info">
     ${s.region ? `<span class="tag">${escHtml(s.region)}</span>` : ''}
-    <span class="tag">${s.hasPin ? 'PIN Required' : 'Public'}</span>
+    <span class="tag">${s.hasPin ? I18N.t('PIN Required') : I18N.t('Public')}</span>
     ${customTagsHtml}
     </div>
     </div>`;
@@ -413,6 +417,7 @@ function showSecurityDisclaimer(onAccept) {
 async function _doJoin() {
     if (!activeSession || !activeSession.url) return;
     let joinUrl = activeSession.url;
+
     if (activeSession.hasPin) {
         const pin = document.getElementById('pinInput').value.trim();
         if (!pin) {
@@ -422,9 +427,12 @@ async function _doJoin() {
         }
         joinUrl += (joinUrl.includes('?') ? '&' : '?') + 'pin=' + encodeURIComponent(pin);
     }
+
+    const currentLang = localStorage.getItem('ns_lang') || 'en';
+    joinUrl += (joinUrl.includes('?') ? '&' : '?') + 'lang=' + currentLang;
+
     closeJoin();
 
-    // NEW: If loaded inside Electron Dashboard, pass it up instead of navigating
     const isElectron = new URLSearchParams(window.location.search).get('electron') === '1';
     if (isElectron && window.parent) {
         window.parent.postMessage({ type: 'JOIN_SESSION', url: joinUrl, game: activeSession.game }, '*');

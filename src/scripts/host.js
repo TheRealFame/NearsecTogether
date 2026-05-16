@@ -571,22 +571,27 @@ async function sendOfferToViewer(viewerId) {
 let selectedSourceId = null;
 
 async function showSourceSelectionModal() {
-    // Only show modal if electronAPI is available (Electron app)
     if (!window.electronAPI || !window.electronAPI.getWindowSources) {
-        log('Source selection not available on this platform', 'warn');
         startCapture();
         return;
     }
 
     try {
         const sources = await window.electronAPI.getWindowSources();
+
+        // Wayland Detection: Wayland aggressively blocks desktopCapturer, returning 0 sources.
         if (!sources || sources.length === 0) {
-            log('No sources available, using default capture', 'warn');
+            log('Wayland detected: Launching native OS screen picker.', 'info');
             startCapture();
             return;
         }
 
         const sourceGrid = document.getElementById('sourceGrid');
+        if (!sourceGrid) {
+            startCapture();
+            return;
+        }
+
         sourceGrid.innerHTML = '';
         selectedSourceId = null;
         document.getElementById('confirmSourceBtn').disabled = true;
@@ -599,54 +604,42 @@ async function showSourceSelectionModal() {
 
             const thumbnail = source.thumbnail || '';
             const imgHtml = thumbnail ? `<img src="${thumbnail}" class="source-thumbnail" alt="${source.name}">` : '<div class="source-thumbnail" style="background: #333; display: flex; align-items: center; justify-content: center; color: #888;">No Preview</div>';
-            
+
             const sourceType = source.isScreen ? '🖥️ Screen' : '🪟 Window';
             card.innerHTML = `
-                ${imgHtml}
-                <div class="source-name">${source.name}</div>
-                <div class="source-type">${sourceType}</div>
+            ${imgHtml}
+            <div class="source-name">${source.name}</div>
+            <div class="source-type">${sourceType}</div>
             `;
 
             sourceGrid.appendChild(card);
         });
 
-        // Show modal
-        const modal = document.getElementById('sourceModal');
-        modal.classList.remove('gone');
+        document.getElementById('sourceModal').classList.remove('gone');
     } catch (e) {
-        log('Error loading sources: ' + e.message, 'error');
+        log('Error loading sources: ' + e.message, 'err');
         startCapture();
     }
 }
 
-function selectSource(idx, sourceId) {
-    // Clear previous selection
-    document.querySelectorAll('.source-card').forEach(card => {
-        card.style.borderColor = '';
-        card.style.background = '';
-    });
-
-    // Highlight selected
-    const selectedCard = document.getElementById('source-' + idx);
-    selectedCard.style.borderColor = 'var(--ok)';
-    selectedCard.style.background = 'rgba(100, 200, 100, 0.1)';
-
-    selectedSourceId = sourceId;
+// Helper functions for the custom modal
+function selectSource(idx, id) {
+    document.querySelectorAll('.source-card').forEach(c => c.classList.remove('selected'));
+    document.getElementById('source-' + idx).classList.add('selected');
+    selectedSourceId = id;
     document.getElementById('confirmSourceBtn').disabled = false;
 }
 
+function confirmSource() {
+    document.getElementById('sourceModal').classList.add('gone');
+    startCapture();
+}
+
 function closeSourceModal() {
-    const modal = document.getElementById('sourceModal');
-    modal.classList.add('gone');
+    document.getElementById('sourceModal').classList.add('gone');
     selectedSourceId = null;
 }
 
-async function confirmSource() {
-    closeSourceModal();
-    await startCapture();
-}
-
-// ── CAPTURE & MEDIA ──────────────────────────────────────────────────────────
 async function startCapture() {
     document.getElementById('btnStart').disabled = true;
     document.getElementById('btnSwitch').disabled = true;
@@ -658,13 +651,12 @@ async function startCapture() {
     try {
         let screenStream;
 
-        // If we have a selected source from the modal, use it directly via chromeMediaSource
         if (selectedSourceId && window.electronAPI) {
+            // Path A: Windows / Mac / Linux X11 (Custom Modal was used)
             try {
-                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                screenStream = await navigator.mediaDevices.getUserMedia({
                     audio: false,
                     video: {
-                        frameRate: { ideal: 60, max: 60 },
                         mandatory: {
                             chromeMediaSource: 'desktop',
                             chromeMediaSourceId: selectedSourceId
@@ -673,34 +665,29 @@ async function startCapture() {
                 });
                 log('Using selected source: ' + selectedSourceId, 'ok');
             } catch (e) {
-                log('Source selection failed, falling back to system dialog: ' + e.message, 'warn');
-                selectedSourceId = null;
-                // Fall through to normal getDisplayMedia
-                screenStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { frameRate: { ideal: 60, max: 60 } },
-                    audio: audioSettings.forceAudioEnabled ? {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false,
-                        sampleRate: { ideal: 48000 },
-                        channelCount: { ideal: 2 },
-                    } : false,
-                    systemAudio: 'include',
-                    selfBrowserSurface: 'exclude',
-                    surfaceSwitching: 'include',
-                });
+                throw new Error('Could not capture selected source: ' + e.message);
             }
         } else {
-            // Normal browser getDisplayMedia flow (or modal not available)
-            screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { frameRate: { ideal: 60, max: 60 } },
-                // Wayland/PipeWire portals often reject complex audio objects.
-                // A simple boolean is required to trigger the portal's audio toggle.
-                audio: audioSettings.forceAudioEnabled
-            });
+            // Path B: Linux Wayland (Native OS Picker fallback)
+            try {
+                // First try capturing with audio requested
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { frameRate: { ideal: 60, max: 60 } },
+                    audio: audioSettings.forceAudioEnabled
+                });
+            } catch (e) {
+                // If the user manually clicked Cancel, respect it
+                if (e.name === 'NotAllowedError' || e.name === 'AbortError') throw e;
+
+                // Otherwise, PipeWire likely crashed because it rejected audio loopback. Try video-only!
+                log('Audio loopback rejected by OS, falling back to video-only...', 'warn');
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { frameRate: { ideal: 60, max: 60 } },
+                    audio: false
+                });
+            }
         }
 
-        // Clear selection after use
         selectedSourceId = null;
 
         const vTrack = screenStream.getVideoTracks()[0];
@@ -709,9 +696,7 @@ async function startCapture() {
             document.getElementById('btnStart').disabled = false; return;
         }
 
-        // LOW LATENCY TWEAK: contentHint 'detail' forces crisp frames, skipping heavy motion estimation
         vTrack.contentHint = 'motion';
-
         const settings = vTrack.getSettings();
         let aTrack = screenStream.getAudioTracks()[0] || null;
 
@@ -725,11 +710,11 @@ async function startCapture() {
         combined.addTrack(vTrack);
         if (aTrack) combined.addTrack(aTrack);
 
-        // Mic capture: mix host voice into stream if enabled in settings
-        if (appSettings.captureMic) {
+        // Mic capture
+        if (typeof appSettings !== 'undefined' && appSettings.captureMic) {
             try {
                 const micConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-                if (selectedMicDeviceId && selectedMicDeviceId !== 'default') {
+                if (typeof selectedMicDeviceId !== 'undefined' && selectedMicDeviceId !== 'default') {
                     micConstraints.deviceId = { exact: selectedMicDeviceId };
                 }
                 const micStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints, video: false });
@@ -746,14 +731,15 @@ async function startCapture() {
         currentStream = combined;
 
         const prev = document.getElementById('preview');
-        if (appSettings.hidePreviewOnStart) {
-            previewHidden = true;
+        if (typeof appSettings !== 'undefined' && appSettings.hidePreviewOnStart) {
+            if (typeof previewHidden !== 'undefined') previewHidden = true;
             prev.style.display = 'none';
             const btn = document.getElementById('btnPreviewToggle');
             if (btn) { btn.textContent = '▶ Show Preview'; btn.style.color = 'var(--warn)'; }
         } else {
             prev.srcObject = screenStream;
         }
+
         if (settings.width && settings.height) prev.style.aspectRatio = settings.width + '/' + settings.height;
         document.getElementById('prevOverlay').classList.add('hidden');
         document.getElementById('trackInfo').innerHTML =
@@ -763,27 +749,26 @@ async function startCapture() {
 
         setCapDot('live');
 
-        // Give the audio track a tiny bit of time to initialize
         setTimeout(() => {
             let aTrack = currentStream ? currentStream.getAudioTracks()[0] : null;
             if (aTrack) {
                 setAudDot('live', 'System Audio Active');
                 startAudioMeter(currentStream);
             } else {
-                // Silently clear the warning if we still can't find the track object
-                // even though PipeWire might be handling it behind the scenes
                 setAudDot('', '');
             }
         }, 500);
 
-        ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'host-stream-ready' }));
         sysChat('Stream started.');
-        [...knownViewers].forEach(id => sendOfferToViewer(id));
+        [...knownViewers].forEach(id => {
+            if (typeof sendOfferToViewer === 'function') sendOfferToViewer(id);
+        });
 
-        vTrack.onended = () => { log('Capture ended by OS', 'warn'); stopCapture(); };
-        document.getElementById('btnSwitch').disabled = false;
-        document.getElementById('btnStop').disabled = false;
-        document.getElementById('btnKbmPanic').disabled = false;
+            vTrack.onended = () => { log('Capture ended by OS', 'warn'); if (typeof stopCapture === 'function') stopCapture(); };
+            document.getElementById('btnSwitch').disabled = false;
+            document.getElementById('btnStop').disabled = false;
+            document.getElementById('btnKbmPanic').disabled = false;
     } catch (err) {
         if (err.name === 'NotAllowedError' || err.name === 'AbortError') log('Capture cancelled', 'warn');
         else { log('Capture failed: ' + err.message, 'err'); setCapDot('err'); }
@@ -1012,6 +997,32 @@ document.querySelectorAll('.provider-card').forEach(card => {
         document.querySelectorAll('.provider-card').forEach(c =>
         c.classList.toggle('selected', c.querySelector('input').checked));
     });
+});
+
+let currentHostName = "Guest";
+let isRumbleEnabled = true;
+
+window.addEventListener('DOMContentLoaded', async () => {
+    if (!window.electronAPI) return;
+    const cfg = await window.electronAPI.getSettings();
+
+    // 1. Language Sync (Cross-Origin Bridge!)
+    const hostLocalLang = localStorage.getItem('ns_lang') || 'en';
+    if (cfg.lang && cfg.lang !== hostLocalLang) {
+        localStorage.setItem('ns_lang', cfg.lang);
+        location.reload();
+        return;
+    }
+
+    // 2. Custom Name Sync
+    currentHostName = cfg.hostName || "Host_" + Math.floor(Math.random() * 1000);
+    const hostNameDisplay = document.getElementById('displayHostName');
+    if (hostNameDisplay) {
+        hostNameDisplay.textContent = "Host: " + currentHostName;
+    }
+
+    // 3. Rumble Sync
+    isRumbleEnabled = cfg.rumble !== false;
 });
 
 async function checkTunnelOnConnect() {

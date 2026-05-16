@@ -21,12 +21,6 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /*
-     * LAYOUT FIX: body is now a flex column so that #setup-notice sits
-     * above #app without disturbing the sidebar / main-content flexbox.
-     * #app uses flex:1 + min-height:0 instead of height:100vh so it
-     * fills whatever vertical space remains after the notice bar.
-     */
     html, body {
       width: 100%; height: 100%;
       background: var(--bg); color: var(--text);
@@ -35,33 +29,79 @@
       display: flex; flex-direction: column;
     }
 
-    /* ── Setup notice ─────────────────────────────────────────────────────
-       Sits OUTSIDE #app so it never affects the sidebar/content flex row.
-       flex-shrink:0 prevents it from being squashed by #app. */
-    #setup-notice {
-      display: none;
-      width: 100%;
-      flex-shrink: 0;
-      background: #facc15;
-      color: #000;
-      padding: 18px 24px;
-      font-size: 14px;
-      font-weight: 900;
-      cursor: pointer;
-      border-bottom: 4px solid #000;
-      text-align: center;
-      z-index: 2000;
-      position: relative;
-      /* use flex so pointer-events wrapper doesn't interfere */
+    #floating-setup-btn {
+      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+      background: #eab308; color: #000; border: none; border-radius: 6px;
+      padding: 8px 14px;
+      font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 11px;
+      display: flex; align-items: center; gap: 6px; cursor: pointer;
+      box-shadow: 0 4px 15px rgba(234, 179, 8, 0.3); transition: all 0.2s;
     }
+    #floating-setup-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(234, 179, 8, 0.5); }
+    #floating-setup-btn:active { transform: translateY(0); }
+
+    #floating-setup-btn.done {
+      background: #1a1e22; color: #666; box-shadow: none; border: 1px solid #333;
+    }
+    #floating-setup-btn.done:hover { color: #aaa; border-color: #555; background: #222; }
+    #floating-setup-btn svg { width: 14px; height: 14px; }
+
+    #setup-toast {
+      position: fixed; bottom: 85px; right: 24px; z-index: 9999;
+      background: #4ade80; color: #000; padding: 12px 24px; border-radius: 8px;
+      font-family: inherit; font-weight: 700; font-size: 13px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.3s;
+      transform: translateY(10px);
+    }
+    #setup-toast.show { opacity: 1; transform: translateY(0); }
+    #setup-toast.error { background: #f87171; color: #fff; }
 
     #titlebar {
       position: fixed; top: 0; left: 0; right: 0; height: 36px;
       -webkit-app-region: drag; z-index: 500;
     }
 
-    /* #app fills remaining height after the notice bar */
     #app { flex: 1; min-height: 0; display: flex; }
+
+    .lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px;
+      margin-top: 8px;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+    .globe-icon {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      filter: invert(0.6);
+      transition: filter 0.2s;
+    }
+    #langSelect {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      transition: opacity 0.2s, color 0.2s;
+    }
+    #langSelect option {
+      background: var(--surface);
+      color: var(--text);
+    }
+    #langSelect:hover { color: var(--text); }
+    .lang-switcher:hover .globe-icon { filter: invert(0.9); }
+
+    #sidebar.collapsed #langSelect {
+      opacity: 0;
+      pointer-events: none;
+    }
 
     #sidebar {
       width: var(--sidebar-width); background: var(--sidebar); border-right: 1px solid var(--border);
@@ -71,7 +111,7 @@
     }
     #sidebar.collapsed { width: 76px; }
 
-    .sidebar-header { display: flex; align-items: center; margin-bottom: 40px; padding: 0 4px; -webkit-app-region: no-drag; }
+    .sidebar-header { display: flex; align-items: center; margin-bottom: 40px; margin-top: 36px; padding: 0 4px; -webkit-app-region: no-drag; }
     .collapse-btn {
       background: transparent; border: none; color: var(--muted); cursor: pointer;
       display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
@@ -171,27 +211,10 @@
 </head>
 <body>
 
-  <!-- Drag region for the frameless titlebar -->
   <div id="titlebar"></div>
-
-  <!-- Virtual gamepad cursor -->
   <div id="virtual-cursor"></div>
 
-  <!--
-    SETUP NOTICE — lives OUTSIDE #app so it never pushes sidebar content
-    sideways. It stacks vertically above #app because body is now a flex
-    column. When hidden (display:none) it takes zero space.
-  -->
-  <div id="setup-notice" onclick="runInAppSetup()">
-    <div style="pointer-events:none;">
-      ⚠ DRIVERS REQUIRED — CLICK THIS BAR TO INSTALL (SUDO / ADMIN PROMPT WILL APPEAR)
-    </div>
-  </div>
-
-  <!-- ── Main layout: sidebar + content ───────────────────────────────── -->
   <div id="app">
-
-    <!-- Sidebar -->
     <div id="sidebar">
       <div class="sidebar-header">
         <button class="collapse-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
@@ -232,6 +255,16 @@
         <span class="btn-text">Host Session</span>
       </button>
 
+      <button class="nav-btn" onclick="switchTab('containers')" id="tab-containers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+          <line x1="6" y1="6" x2="6.01" y2="6"></line>
+          <line x1="6" y1="18" x2="6.01" y2="18"></line>
+        </svg>
+        <span class="btn-text">Auto-Hosts</span>
+      </button>
+
       <div class="spacer"></div>
 
       <button class="nav-btn" onclick="document.getElementById('gpModal').classList.add('open')">
@@ -249,12 +282,15 @@
         </svg>
         <span class="btn-text">App Settings</span>
       </button>
-    </div><!-- /#sidebar -->
 
-    <!-- Main content area — panels swap here -->
+      <div class="lang-switcher">
+        <img src="../../assets/icons/globe.svg" class="globe-icon" alt="Lang" onerror="this.style.display='none'">
+        <select id="langSelect" onchange="saveLangAndReload(this.value)">
+          </select>
+      </div>
+    </div>
+
     <div id="main-content">
-
-      <!-- HOME panel -->
       <div class="panel active" id="panel-connect">
         <div class="connect-container">
           <h1>Connect to Session</h1>
@@ -294,18 +330,45 @@
             </div>
           </div>
         </div>
-      </div><!-- /#panel-connect -->
+      </div>
 
-      <!-- LIVE ARCADE panel — iframe fills full panel -->
       <div class="panel" id="panel-arcade">
-        <iframe
-          src="https://nearsec.cutefame.net/arcade?electron=1"
-          style="width:100%; height:100%; border:none; flex:1;"
-          allow="gamepad"
-        ></iframe>
-      </div><!-- /#panel-arcade -->
+        <iframe src="https://nearsec.cutefame.net/arcade?electron=1" style="width:100%; height:100%; border:none; flex:1;" allow="gamepad"></iframe>
+      </div>
 
-      <!-- SETTINGS panel -->
+      <div class="panel" id="panel-containers">
+        <div class="settings-container">
+          <h1>Unattended Auto-Hosts</h1>
+          <p class="sub">Deploy and manage headless game sessions that auto-reset when empty.</p>
+
+          <div class="settings-section">
+            <h2>Deploy New Game</h2>
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+              <h4 style="margin: 0;">Game/Lobby Name</h4>
+              <input type="text" id="autoName" placeholder="e.g., Sonic the Fighters 24/7" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
+            </div>
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+              <h4 style="margin: 0;">Terminal Launch Command</h4>
+              <input type="text" id="autoCmd" placeholder="mame -rompath /home/fame/Downloads -joystick schamp" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
+            </div>
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+              <h4 style="margin: 0;">Dedicated Tunnel Provider</h4>
+              <select id="autoTunnel" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
+                <option value="default">Use Global App Default</option>
+                <option value="cloudflared">Cloudflare (Random URL)</option>
+                <option value="zrok">zrok.io (Best Performance)</option>
+                <option value="playit">playit.gg</option>
+              </select>
+            </div>
+            <button class="btn-confirm" onclick="saveAutoHost()" style="width: 100%; padding: 12px; margin-top: 12px; border-radius: 6px; cursor: pointer; background: var(--accent); color: #000; font-weight: bold; border: none;">Save Configuration</button>
+          </div>
+
+          <div class="settings-section" id="activeAutoHostsList">
+            <h2>Saved Configurations</h2>
+          </div>
+        </div>
+      </div>
+
       <div class="panel" id="panel-settings">
         <div class="settings-container">
           <h1>App Settings</h1>
@@ -313,31 +376,22 @@
 
           <div class="settings-section">
             <h2>General</h2>
-
-            <div class="setting-row" onclick="toggleAppSetting('tray')">
-              <div class="setting-info">
-                <h4>Start Minimized to Tray</h4>
-                <p>Keep the app running in the background when closing the window.</p>
+            <div class="setting-row">
+              <div class="setting-info" style="flex:1; margin-right: 20px;">
+                <h4>Host Display Name</h4>
+                <p>Your name shown in Discord link embeds. Leave blank to randomize.</p>
               </div>
-              <div class="toggle" id="settingTrackTray"><div class="toggle-thumb"></div></div>
-            </div>
-
-            <div class="setting-row" onclick="toggleAppSetting('alwaysOnTop')">
-              <div class="setting-info">
-                <h4>Always on Top</h4>
-                <p>Keep the Nearsec window above all other windows.</p>
+              <div class="input-wrapper" style="max-width: 200px;">
+                <input type="text" id="settingHostName" placeholder="Guest" onchange="saveHostName(this.value)" style="padding-right: 18px; text-align: center;">
               </div>
-              <div class="toggle" id="settingTrackAlwaysOnTop"><div class="toggle-thumb"></div></div>
             </div>
-
-            <div class="setting-row" onclick="toggleAppSetting('bootToHost')">
+            <div class="setting-row" onclick="toggleAppSetting('rumble')">
               <div class="setting-info">
-                <h4>Boot Directly to Host Session</h4>
-                <p>Skip the dashboard home screen and boot straight into the native Host interface.</p>
+                <h4>Controller Rumble</h4>
+                <p>Allow the host to send vibration data to connected clients.</p>
               </div>
-              <div class="toggle" id="settingTrackBootHost"><div class="toggle-thumb"></div></div>
+              <div class="toggle" id="settingTrackRumble"><div class="toggle-thumb"></div></div>
             </div>
-
             <div class="setting-row" onclick="toggleAppSetting('discordRPC')">
               <div class="setting-info">
                 <h4>Discord Rich Presence</h4>
@@ -349,7 +403,6 @@
 
           <div class="settings-section">
             <h2>Experimental (Requires App Restart)</h2>
-
             <div class="setting-row" onclick="toggleAppSetting('hwDecode')">
               <div class="setting-info">
                 <h4>Hardware Decoding</h4>
@@ -357,7 +410,6 @@
               </div>
               <div class="toggle" id="settingTrackHWDecode"><div class="toggle-thumb"></div></div>
             </div>
-
             <div class="setting-row" onclick="toggleAppSetting('fpsUnlock')">
               <div class="setting-info">
                 <h4>Unlock Framerate (120Hz+)</h4>
@@ -365,7 +417,6 @@
               </div>
               <div class="toggle" id="settingTrackFpsUnlock"><div class="toggle-thumb"></div></div>
             </div>
-
             <div class="setting-row" onclick="toggleAppSetting('vsyncOff')">
               <div class="setting-info">
                 <h4>Disable V-Sync</h4>
@@ -373,7 +424,6 @@
               </div>
               <div class="toggle" id="settingTrackVsyncOff"><div class="toggle-thumb"></div></div>
             </div>
-
             <div class="setting-row" onclick="toggleAppSetting('zeroCopy')">
               <div class="setting-info">
                 <h4>Zero-Copy Video Capture</h4>
@@ -383,12 +433,10 @@
             </div>
           </div>
         </div>
-      </div><!-- /#panel-settings -->
+      </div>
+    </div>
+  </div>
 
-    </div><!-- /#main-content -->
-  </div><!-- /#app -->
-
-  <!-- ── Controller tester modal ──────────────────────────────────────── -->
   <div class="modal-bg" id="gpModal">
     <div class="modal-content">
       <div class="modal-head">
@@ -404,22 +452,26 @@
     </div>
   </div>
 
+  <script src="../scripts/i18n.js"></script>
   <script>
-    // ── Sidebar collapse ───────────────────────────────────────────────────────
-    function toggleSidebar() {
-      document.getElementById('sidebar').classList.toggle('collapsed');
-    }
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
-    // ── Tab / panel switching ──────────────────────────────────────────────────
     function switchTab(name) {
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.nav-btn').forEach(t => t.classList.remove('active'));
       document.getElementById('panel-' + name).classList.add('active');
-      document.getElementById('tab-'   + name)?.classList.add('active');
+      document.getElementById('tab-' + name)?.classList.add('active');
     }
 
-    // ── Settings / config sync ─────────────────────────────────────────────────
     let appConfig = {};
+
+    function syncToNode() {
+        fetch('http://localhost:3000/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(appConfig)
+        }).catch(()=>{});
+    }
 
     async function loadAndSyncSettings() {
       if (!window.electronAPI) return;
@@ -428,6 +480,10 @@
     }
 
     function syncSettingsUI() {
+      if(document.getElementById('settingHostName')) {
+        document.getElementById('settingHostName').value = appConfig.hostName || '';
+      }
+      document.getElementById('settingTrackRumble')?.classList.toggle('on', appConfig.rumble !== false);
       document.getElementById('settingTrackTray')?.classList.toggle('on', appConfig.tray !== false);
       document.getElementById('settingTrackAlwaysOnTop')?.classList.toggle('on', !!appConfig.alwaysOnTop);
       document.getElementById('settingTrackBootHost')?.classList.toggle('on', !!appConfig.bootToHost);
@@ -436,10 +492,23 @@
       document.getElementById('settingTrackFpsUnlock')?.classList.toggle('on', !!appConfig.fpsUnlock);
       document.getElementById('settingTrackVsyncOff')?.classList.toggle('on', !!appConfig.vsyncOff);
       document.getElementById('settingTrackZeroCopy')?.classList.toggle('on', !!appConfig.zeroCopy);
+      renderAutoHosts();
+    }
+
+    function saveLangAndReload(val) {
+      appConfig.lang = val;
+      if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+      I18N.changeLanguage(val);
+    }
+
+    function saveHostName(val) {
+      appConfig.hostName = val.trim();
+      if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+      syncToNode();
     }
 
     function toggleAppSetting(key) {
-      if (['tray', 'hwDecode', 'discordRPC'].includes(key)) {
+      if (['tray', 'hwDecode', 'discordRPC', 'rumble'].includes(key)) {
         appConfig[key] = appConfig[key] === false ? true : false;
       } else {
         appConfig[key] = !appConfig[key];
@@ -449,9 +518,9 @@
         window.electronAPI.saveSettings(appConfig);
         if (key === 'alwaysOnTop') window.electronAPI.toggleAlwaysOnTop();
       }
+      syncToNode();
     }
 
-    // ── Direct-link join ───────────────────────────────────────────────────────
     async function pasteFromClipboard() {
       try {
         const text = await navigator.clipboard.readText();
@@ -463,12 +532,12 @@
     }
 
     async function joinDirectLink() {
-      const url    = document.getElementById('directLinkInput').value.trim();
-      const errEl  = document.getElementById('directLinkErr');
+      const url = document.getElementById('directLinkInput').value.trim();
+      const errEl = document.getElementById('directLinkErr');
       if (!url) { errEl.textContent = 'Please enter a valid URL.'; return; }
 
-      errEl.style.color  = 'var(--muted)';
-      errEl.textContent  = 'Verifying tunnel...';
+      errEl.style.color = 'var(--muted)';
+      errEl.textContent = 'Verifying tunnel...';
 
       try {
         const controller = new AbortController();
@@ -484,14 +553,12 @@
       }
     }
 
-    // Forward join events from the arcade iframe
     window.addEventListener('message', (event) => {
       if (event.origin.includes('nearsec.cutefame.net') && event.data?.type === 'JOIN_SESSION') {
         if (window.electronAPI) window.electronAPI.joinSession(event.data.url, { game: event.data.game });
       }
     });
 
-    // ── Gamepad virtual cursor (Steam Deck / couch play) ──────────────────────
     const cursor = document.getElementById('virtual-cursor');
     let cx = window.innerWidth / 2, cy = window.innerHeight / 2;
 
@@ -519,47 +586,214 @@
       }
       requestAnimationFrame(updateGamepad);
     }
-
     window.addEventListener('gamepadconnected', () => requestAnimationFrame(updateGamepad));
 
-    // ── In-app first-run setup flow ────────────────────────────────────────────
     async function checkFirstRun() {
       if (!window.electronAPI) return;
       const cfg = await window.electronAPI.getSettings();
-      if (appConfig.isPackaged && cfg.firstRunComplete !== true) {
-        document.getElementById('setup-notice').style.display = 'block';
+      const btn = document.getElementById('floating-setup-btn');
+      const txt = document.getElementById('setup-btn-text');
+
+      if (cfg.firstRunComplete === true) {
+        btn.classList.add('done');
+        txt.textContent = 'Drivers Installed';
       }
     }
 
-    async function runInAppSetup() {
-      const notice = document.getElementById('setup-notice');
-      notice.style.background = '#eab308';
-      notice.innerHTML = '<b>Launching Setup… Check your taskbar for an admin prompt.</b>';
+    function showSetupToast(msg, isError = false) {
+      const toast = document.getElementById('setup-toast');
+      toast.textContent = msg;
+      toast.className = isError ? 'error show' : 'show';
+      setTimeout(() => toast.classList.remove('show'), 4000);
+    }
 
+    async function runInAppSetup() {
+      const btn = document.getElementById('floating-setup-btn');
+      const txt = document.getElementById('setup-btn-text');
       if (!window.electronAPI) return;
+
+      txt.textContent = 'Installing...';
+      btn.style.pointerEvents = 'none';
+      btn.style.opacity = '0.7';
 
       window.electronAPI.runSetup();
 
       window.electronAPI.onSetupSuccess(() => {
-        notice.style.background = '#4ade80';
-        notice.innerHTML        = '<b>✓ Success! Saving and restarting…</b>';
+        showSetupToast('✓ Finished! Drivers installed.');
+        txt.textContent = 'Drivers Installed';
+        btn.classList.add('done');
+        btn.style.pointerEvents = 'auto';
+        btn.style.opacity = '1';
+
         appConfig.firstRunComplete = true;
         window.electronAPI.saveSettings(appConfig);
-        // Small delay so the user can read the success message
-        setTimeout(() => window.electronAPI.continueBoot(), 1500);
       });
 
       window.electronAPI.onSetupFailed(() => {
-        notice.style.background = '#f87171';
-        notice.innerHTML        = '<b>✗ Setup failed or was denied. Click here to try again.</b>';
+        showSetupToast('✗ Setup failed or was cancelled.', true);
+        txt.textContent = 'Install Drivers';
+        btn.style.pointerEvents = 'auto';
+        btn.style.opacity = '1';
       });
     }
 
-    // ── Boot ───────────────────────────────────────────────────────────────────
     window.addEventListener('DOMContentLoaded', () => {
+      const savedLang = localStorage.getItem('ns_lang') || navigator.language.split('-')[0] || 'en';
+      document.getElementById('langSelect').value = savedLang;
+
+      const arcadeFrame = document.querySelector('#panel-arcade iframe');
+      if (arcadeFrame) {
+        arcadeFrame.src = `https://nearsec.cutefame.net/arcade?electron=1&lang=${savedLang}`;
+      }
+
       loadAndSyncSettings();
       checkFirstRun();
     });
+
+    // ── Auto-Host Logic ────────────────────────────────────────────────────────
+    let currentGameStatus = { running: false, command: null, tunnelUrl: null, log: '' };
+
+    setInterval(() => {
+        fetch('/api/game-status').then(r => r.json()).then(status => {
+            if (status.running !== currentGameStatus.running || status.log !== currentGameStatus.log) {
+                currentGameStatus = status;
+                renderAutoHosts();
+            }
+        }).catch(()=>{});
+    }, 1000);
+
+    function openAutoHostEditor() {
+        const editorHtml = `
+            <div id="hostEditorModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:999999;">
+                <div style="background:var(--surface); padding:20px; border-radius:8px; width:600px; max-width:90%; border:1px solid var(--border);">
+                    <h3 style="margin-bottom:10px; color:var(--accent);">Edit Auto-Hosts (JSON)</h3>
+                    <textarea id="hostEditorText" style="width:100%; height:300px; background:#000; color:#0f0; font-family:monospace; padding:10px; border:1px solid #333;">${JSON.stringify(appConfig.autoHosts || [], null, 2)}</textarea>
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:15px;">
+                        <button style="padding: 8px 16px; cursor: pointer; background: transparent; border: 1px solid var(--border); color: #fff; border-radius: 4px;" onclick="document.getElementById('hostEditorModal').remove()">Cancel</button>
+                        <button style="padding: 8px 16px; cursor: pointer; background: var(--accent); border: none; color: #000; border-radius: 4px; font-weight: bold;" onclick="saveAutoHostConfig()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', editorHtml);
+    }
+
+    function saveAutoHostConfig() {
+        try {
+            const parsed = JSON.parse(document.getElementById('hostEditorText').value);
+            appConfig.autoHosts = parsed;
+            if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+            syncToNode();
+            document.getElementById('hostEditorModal').remove();
+            renderAutoHosts();
+        } catch (e) {
+            alert('Invalid JSON! Check for missing commas or quotes.');
+        }
+    }
+
+    function saveAutoHost() {
+        const name = document.getElementById('autoName').value.trim();
+        const cmd = document.getElementById('autoCmd').value.trim();
+        const tunnel = document.getElementById('autoTunnel').value;
+
+        if (!name || !cmd) return;
+        if (!appConfig.autoHosts) appConfig.autoHosts = [];
+        appConfig.autoHosts.push({ id: Date.now(), name, cmd, tunnel, status: 'offline' });
+
+        if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+        syncToNode();
+        renderAutoHosts();
+        document.getElementById('autoName').value = '';
+        document.getElementById('autoCmd').value = '';
+    }
+
+    function renderAutoHosts() {
+        const list = document.getElementById('activeAutoHostsList');
+        if (!list) return;
+
+        const hosts = appConfig.autoHosts || [];
+        if (hosts.length === 0) {
+            list.innerHTML = `<h2>Saved Configurations</h2><div style="padding: 30px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px;">No containers configured yet.</div><button style="width:100%; padding:10px; margin-top:10px; border-radius:6px; cursor:pointer; background:transparent; border:1px solid var(--border); color:var(--text);" onclick="openAutoHostEditor()">Edit Raw JSON</button>`;
+            return;
+        }
+
+        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h2 style="margin:0; border:none; padding:0;">Saved Configurations</h2>
+                        <button style="padding:4px 12px; font-size:11px; cursor:pointer; border-radius:4px; background:transparent; border:1px solid var(--border); color:#fff;" onclick="openAutoHostEditor()">Edit JSON</button>
+                    </div>`;
+
+        hosts.forEach(h => {
+            const isRunning = currentGameStatus.running && currentGameStatus.command === h.cmd;
+
+            let logDisplay = '';
+            if (currentGameStatus.command === h.cmd && currentGameStatus.log) {
+                const logColor = currentGameStatus.log.includes('ERROR') || currentGameStatus.log.includes('Crashed') ? '#ff4444' : '#eab308';
+                logDisplay = `<div style="margin-top:8px; padding:6px; background:#000; border:1px solid #333; border-radius:4px; font-family:monospace; font-size:10px; color:${logColor};">> ${currentGameStatus.log}</div>`;
+            }
+
+            const statusDot = isRunning
+                ? `<div style="width:10px; height:10px; border-radius:50%; background:#00ff88; box-shadow:0 0 8px #00ff88; animation: pulse 2s infinite; margin-right:10px;"></div>`
+                : `<div style="width:10px; height:10px; border-radius:50%; background:#444; margin-right:10px;"></div>`;
+
+            html += `
+            <div style="background: var(--surface); border: 1px solid ${isRunning ? 'var(--accent)' : 'var(--border)'}; padding: 16px; border-radius: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="overflow: hidden; padding-right: 16px; flex:1;">
+                    <div style="display:flex; align-items:center;">
+                        ${statusDot}
+                        <div style="font-weight: 600; color: ${isRunning ? '#fff' : 'var(--accent)'}; font-size: 14px;">${h.name}</div>
+                    </div>
+                    <div style="font-size: 11px; color: var(--muted); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top:6px;">> ${h.cmd}</div>
+                    ${logDisplay}
+                </div>
+                <div style="display:flex; gap: 8px;">
+                    <button style="padding: 8px 16px; min-width: 80px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; ${isRunning ? 'background:#ff4444; color:#fff;' : 'background:var(--accent); color:#000;'}" onclick="${isRunning ? 'killGame()' : `toggleAutoHost(${h.id})`}">${isRunning ? 'Stop' : 'Start'}</button>
+                </div>
+            </div>`;
+        });
+        list.innerHTML = html + `<style>@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }</style>`;
+    }
+
+    function toggleAutoHost(id) {
+        const host = appConfig.autoHosts.find(h => h.id === id);
+        if (!host) return;
+
+        if (confirm(`Start ${host.name}?`)) {
+            fetch('/api/restart-game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: host.cmd })
+            });
+
+            if (host.tunnel && host.tunnel !== 'default') {
+                fetch('/api/start-tunnel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: host.tunnel })
+                });
+            }
+        }
+    }
+
+    function killGame() {
+        if(confirm("Stop the running game?")) {
+            fetch('/api/restart-game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: 'KILL_ONLY' })
+            });
+        }
+    }
   </script>
+
+  <button id="floating-setup-btn" onclick="runInAppSetup()" title="Install System Drivers">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="7 10 12 15 17 10"></polyline>
+      <line x1="12" y1="15" x2="12" y2="3"></line>
+    </svg>
+    <span id="setup-btn-text">Install Drivers</span>
+  </button>
+
+  <div id="setup-toast">Finished!</div>
 </body>
 </html>
