@@ -54,16 +54,35 @@ function toUinput(msg) {
 }
 
 const projectRoot = path.join(__dirname, '..', '..');
-const envFile = path.join(projectRoot, '.env');
+
+// ── Safe App Data Pathing for Production ASAR ──
+function getSafeDataDir() {
+  const home = os.homedir();
+  let p;
+  if (process.platform === 'win32') p = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'NearsecTogether');
+  else if (process.platform === 'darwin') p = path.join(home, 'Library', 'Application Support', 'NearsecTogether');
+  else p = path.join(home, '.config', 'NearsecTogether');
+
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+  return p;
+}
+
+const dataDir = getSafeDataDir();
+const envFile = path.join(dataDir, '.env');
+
 if (!fs.existsSync(envFile)) {
-  fs.writeFileSync(envFile, `CF_TOKEN=\nCUSTOM_URL=\nZROK_RESERVED_NAME=\nUSE_VPS=false\nVPS_HOST=\nIS_VPS=false\n`);
+  try {
+    fs.writeFileSync(envFile, `CF_TOKEN=\nCUSTOM_URL=\nZROK_RESERVED_NAME=\nUSE_VPS=false\nVPS_HOST=\nIS_VPS=false\n`);
+  } catch (e) { console.warn("[env] Could not create .env file:", e.message); }
 }
 
 try {
-  fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
-    const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-    if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
-  });
+  if (fs.existsSync(envFile)) {
+    fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
+    });
+  }
 } catch (e) { }
 
 function getLanIP() {
@@ -414,7 +433,7 @@ function broadcastToArcade(msg) {
 }
 
 // ── Persistent config ────────────────────────────────────────────────────────
-const CONFIG_FILE = path.join(projectRoot, 'config', 'nearsectogether.config.json');
+const CONFIG_FILE = path.join(dataDir, 'nearsectogether.config.json');
 function loadConfig() {
   try {
     const data = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
