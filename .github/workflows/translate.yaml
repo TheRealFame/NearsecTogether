@@ -1,23 +1,20 @@
-name: Auto Translate README
+name: Translate README
 
 on:
   push:
-    branches:
-      - main # Change to 'master' if your default branch uses that name
-    paths:
-      - 'README.md' # Only runs when your root README actually changes
+    branches: [ main ]
+    paths: [ 'README.md' ]
 
 jobs:
   translate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Allows the action to save translated files to your repo
+      contents: write 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Auto Translate
-        uses: JunXiangLin/action-translate-readme@v2
+      - uses: actions/checkout@v4
+      
+      - name: Translate README
+        uses: dephraiim/translate-readme@main
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          languages: es, fr, de, pt, ja # Your target ISO codes (excluding 'en')
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          languages: es, fr, de, pt, ja
