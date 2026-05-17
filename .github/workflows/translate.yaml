@@ -22,3 +22,6 @@ jobs:
         with:
           token: ${{ secrets.Action_Bot }}
           langs: "es,fr,de,pt,ja"
+        env:
+          # This satisfies the code error and forces it to use the free model
+          OPENAI_API_KEY: "placeholder-value"

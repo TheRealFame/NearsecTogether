@@ -135,5 +135,4 @@ On unusual architectures you may need to build Electron from source via `electro
 
 ---
 
-
 *This project used LLMs for code generation.*
