@@ -12,15 +12,46 @@ jobs:
   translate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Allows the workflow to commit the files using your default token
+      contents: write # STRICTLY REQUIRED for the push to work
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Auto Translate Markdown
+      - name: Translate - Spanish
         uses: offensive-vk/auto-translate@master
         with:
-          # Your language array (excluding English)
-          languages: '["es", "fr", "de", "pt", "ja"]'
-          # Finds your root README.md
-          files: '["README.md"]'
+          file: 'README.md'
+          language: 'es'
+
+      - name: Translate - French
+        uses: offensive-vk/auto-translate@master
+        with:
+          file: 'README.md'
+          language: 'fr'
+
+      - name: Translate - German
+        uses: offensive-vk/auto-translate@master
+        with:
+          file: 'README.md'
+          language: 'de'
+
+      - name: Translate - Portuguese
+        uses: offensive-vk/auto-translate@master
+        with:
+          file: 'README.md'
+          language: 'pt'
+
+      - name: Translate - Japanese
+        uses: offensive-vk/auto-translate@master
+        with:
+          file: 'README.md'
+          language: 'ja'
+
+      # THIS IS THE MISSING STEP THAT SAVES THE FILES
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.*.md
+          git commit -m "docs: add automated translations" || echo "No changes to commit"
+          git push

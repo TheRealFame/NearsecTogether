@@ -609,22 +609,21 @@ async function main() {
   });
 
   // ── uinput sidecar ─────────────────────────────────────────────────────────
-  const sidecar = path.join(__dirname, "..", "sidecar", "input_driver.py");
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
-  if (fs.existsSync(sidecar)) {
+  // CRITICAL FIX: Use the ASAR-safe sidecarPath defined at the top of the file!
+  if (fs.existsSync(sidecarPath)) {
     try {
-      uinputProc = spawn(pythonCmd, [sidecar], { stdio: ["pipe", "inherit", "inherit"], detached: false });
+      uinputProc = spawn(pythonCmd, [sidecarPath], { stdio: ["pipe", "inherit", "inherit"], detached: false });
       uinputProc.stdin.on("error", () => { });
       uinputProc.on("error", e => console.log("[uinput] spawn error:", e.message));
       uinputProc.on("close", () => { uinputProc = null; console.log("[uinput] sidecar exited"); });
       console.log("[uinput] sidecar started");
     } catch (err) {
       console.warn("[uinput] Failed to start Python sidecar:", err.message);
-      uinputProc = null;
     }
   } else {
-    console.log("[uinput] sidecar not found at", sidecar);
+    console.log(`[uinput] Sidecar script not found at ${sidecarPath}. Input bridging disabled.`);
   }
 
   let hostStreaming = false;
@@ -633,8 +632,14 @@ async function main() {
   const viewerHasController = new Set();
   const hwIdToViewer = new Map();
 
-  const JOIN_SOUND = require('path').join(__dirname, '../../assets/joinsound.wav');
-  const LEAVE_SOUND = require('path').join(__dirname, '../../assets/leavesound.wav');
+  const JOIN_SOUND = __dirname.includes('app.asar')
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'joinsound.wav')
+  : path.join(__dirname, '../../assets/joinsound.wav');
+
+  const LEAVE_SOUND = __dirname.includes('app.asar')
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'leavesound.wav')
+  : path.join(__dirname, '../../assets/leavesound.wav');
+
   const { playSound: playSoundUtil } = require('./audio-util');
 
   function playSound(file) {
