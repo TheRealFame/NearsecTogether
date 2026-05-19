@@ -236,18 +236,20 @@ function setAudDot(state, label) {
     document.getElementById('audStatus').textContent = label;
 }
 
+// ── V3 UI UPDATE ──
 function renderUrls(d) {
     const el = document.getElementById('urlList');
     el.innerHTML = '';
     const tunnelUrl = d.tunnelUrl || null;
     const rows = [
         tunnelUrl
-        ? { url: tunnelUrl, label: 'HTTPS tunnel ← share this', color: 'var(--accent)' }
+        ? { url: tunnelUrl, label: 'HTTPS tunnel (v3) ← share this', color: 'var(--accent)' }
         : { url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true },
-        { url: `http://${d.lanIP}:${d.port}/`, label: 'LAN — same network only', color: '#555' },
+        { url: `http://${d.lanIP}:${d.port}/`, label: 'LAN (v3) — same network only', color: '#555' },
     ];
     if (!tunnelUrl && d.publicIP)
-        rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/`, label: 'Public IP (needs port forward)', color: '#666' });
+        rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/`, label: 'Public IP (v3) (needs port forward)', color: '#666' });
+
     rows.forEach(r => {
         const div = document.createElement('div');
         div.className = 'url-row';
@@ -481,8 +483,6 @@ function connectWS() {
 
 async function sendOfferToViewer(viewerId) {
     if (!currentStream) return;
-
-    // 1. THE BOUNCER: Brutally destroy any ghost connections for this viewer
     if (peerConnections[viewerId]) {
         try {
             peerConnections[viewerId].onicecandidate = null;
@@ -505,10 +505,8 @@ async function sendOfferToViewer(viewerId) {
 
     peerConnections[viewerId] = pc;
 
-    // 2. THE PIPELINE: Add tracks, but explicitly request a fresh sync
     currentStream.getTracks().forEach(track => {
         const sender = pc.addTrack(track, currentStream);
-        // Hint to the encoder to prioritize a new keyframe for this specific track
         if (track.kind === 'video' && sender.setParameters) {
             const params = sender.getParameters();
             if (params.encodings && params.encodings.length > 0) {
@@ -544,19 +542,17 @@ async function sendOfferToViewer(viewerId) {
             monitorCongestion(pc, viewerId);
         }
 
-        // 3. CLEAN RETRY: If it fails, instantly purge the bad connection from memory
         if (s === 'failed' || s === 'disconnected') {
             clearTimeout(connectTimeout);
             if (peerConnections[viewerId] === pc) {
                 log('Retrying offer to ' + viewerId, 'warn');
                 delete peerConnections[viewerId];
-                setTimeout(() => sendOfferToViewer(viewerId), 500); // Faster 0.5s retry
+                setTimeout(() => sendOfferToViewer(viewerId), 500);
             }
         }
     };
 
     try {
-        // Force the connection to explicitly offer 'recvonly' for the viewer
         const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
         await pc.setLocalDescription({ type: offer.type, sdp: offer.sdp });
         ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));
@@ -730,7 +726,6 @@ async function startCapture() {
                 console.warn('Linux audio loopback initialization failed:', audErr);
             }
         } else if (aTrack) {
-            // ── THIS IS THE FIX: Add the Windows/Mac audio track to the stream ──
             combined.addTrack(aTrack);
             log('System Audio Track Found: ' + (aTrack.label || 'default'), 'ok');
         }
@@ -770,33 +765,20 @@ async function startCapture() {
 
         if (settings.width && settings.height) prev.style.aspectRatio = settings.width + '/' + settings.height;
         document.getElementById('prevOverlay').classList.add('hidden');
-        const finalAudioTracks = currentStream.getAudioTracks();
 
+        const finalAudioTracks = currentStream.getAudioTracks();
         document.getElementById('trackInfo').innerHTML =
         '<strong>' + (vTrack.label || 'Screen') + '</strong><br>' +
         settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
         (finalAudioTracks.length > 0 ? 'Audio Mixed via Null Sink' : 'No system audio forward');
 
         setCapDot('live');
-
-        // CRITICAL FIX: Check the final combined stream for audio to correctly update the UI
         if (finalAudioTracks.length > 0) {
             setAudDot('live', 'Audio active');
             startAudioMeter(currentStream);
         } else {
             setAudDot('warn', 'No audio — Check source');
         }
-
-        ws.send(JSON.stringify({ type: 'host-stream-ready' }));
-        sysChat('Stream started.');
-        [...knownViewers].forEach(id => sendOfferToViewer(id));
-        '<strong>' + (vTrack.label || 'Screen') + '</strong><br>' +
-        settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
-        (aTrack ? 'Audio Mixed via Null Sink' : 'No system audio forward');
-
-        setCapDot('live');
-        if (aTrack) { setAudDot('live', 'Audio active'); startAudioMeter(combined); }
-        else setAudDot('warn', 'No audio — Check source');
 
         ws.send(JSON.stringify({ type: 'host-stream-ready' }));
         sysChat('Stream started.');
@@ -852,7 +834,6 @@ function stopCapture() {
     log('Capture stopped');
     sysChat('Host stopped sharing.');
 
-    // ── CRITICAL FIX: Arcade Worker Suicide Switch ──
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('auto') === '1') {
         console.log('[Headless] Stream terminated. Executing suicide protocol to restart worker.');
@@ -1110,17 +1091,6 @@ function closeArcadeModal() {
     document.getElementById('arcadeModal').classList.add('gone');
 }
 
-async function fetchGameThumbnail(gameTitle) {
-    try {
-        const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodeURIComponent(gameTitle)}`);
-        const data = await res.json();
-        return data.thumbnail || '';
-    } catch (e) {
-        console.warn('Could not fetch official thumbnail:', e);
-        return '';
-    }
-}
-
 async function startArcadeSession() {
     arcadeConfig.title = document.getElementById('arcadeGameTitle').value.trim() || 'Arcade Game';
     arcadeConfig.desc = document.getElementById('arcadeGameDesc').value.trim();
@@ -1334,7 +1304,6 @@ applyCtrlSettingsUI();
 connectWS();
 
 // ── AUTOMATED HEADLESS BOOT (Arcade Worker) ───────────────────────────
-// ── AUTOMATED HEADLESS BOOT (Arcade Worker) ───────────────────────────
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('auto') === '1') {
     let autoTitle = urlParams.get('title') || 'Arcade Game';
@@ -1342,15 +1311,19 @@ if (urlParams.get('auto') === '1') {
 
     console.log(`[Headless] Initializing automated boot for: ${autoTitle}`);
 
-    // 1. Force creation of the virtual audio cable so the game has a place to pipe audio!
     const isLinux = navigator.userAgent.includes('Linux') || navigator.platform.toLowerCase().includes('linux');
     if (isLinux) {
         console.log('[Headless] Auto-generating virtual audio sink...');
         fetch('/api/create-virtual-audio', { method: 'POST' }).catch(()=>{});
     }
 
-    // 2. Wait 1.5s for OS to register the audio cable, then proceed with the boot
     setTimeout(() => {
+        fetch('/api/start-tunnel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: autoTunnel, remember: true })
+        }).catch(()=>{});
+
         fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1381,12 +1354,16 @@ if (urlParams.get('auto') === '1') {
                     if (window.electronAPI) {
                         try {
                             const sources = await window.electronAPI.getWindowSources();
-                            let gameSource = sources.find(s => !s.isScreen && !s.name.includes('NearsecTogether') && !s.name.includes('mutter'));
-                            if (gameSource) {
-                                console.log(`[Headless] Locked onto specific game window: ${gameSource.name}`);
-                                selectedSourceId = gameSource.id;
+                            let virtualScreen = sources.find(s => s.isScreen);
+                            if (virtualScreen) {
+                                console.log(`[Headless] Locked onto isolated virtual display: ${virtualScreen.id}`);
+                                selectedSourceId = virtualScreen.id;
+                            } else {
+                                console.log('[Headless] No virtual display found, attempting fallback.');
                             }
-                        } catch (e) { }
+                        } catch (e) {
+                            console.log('[Headless] Failed to scan displays:', e);
+                        }
                     }
                     startArcadeSession();
                 }, 4000);

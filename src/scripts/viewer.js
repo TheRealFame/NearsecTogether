@@ -24,7 +24,6 @@ async function createPC() {
     }
 
     pc = new RTCPeerConnection({
-        // ── CRITICAL FIX: Removed dead TURN servers to fix 15-second timeouts ──
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
@@ -52,8 +51,6 @@ async function createPC() {
         if (track.kind === 'video') {
             startFrameProcessor(track);
         } else if (track.kind === 'audio') {
-            // THE FLUSH: Instead of just appending the track, forcefully reset the srcObject
-            // This tricks the browser into resetting its decoding timeline for late-joiners.
             const newStream = new MediaStream();
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(t => newStream.addTrack(t));
@@ -61,24 +58,24 @@ async function createPC() {
             newStream.addTrack(track);
             video.srcObject = newStream;
 
-            // Force playback initialization
             video.play().catch(e => console.log("Audio auto-play prevented until interaction"));
         }
     };
 
     pc.onconnectionstatechange = () => {
-        const s = pc.connectionState;
-        if (s === 'connected') {
-            setStatus('Live', true);
-            document.getElementById('overlay').classList.add('gone');
-            document.getElementById('spinner').style.display = 'none';
-        } else if (s === 'disconnected' || s === 'failed') {
-            setStatus('Connection lost...');
-            document.getElementById('overlay').classList.remove('gone');
-            document.getElementById('spinner').style.display = 'block';
+        log('Connection: ' + pc.connectionState);
+        if (pc.connectionState === 'connected') {
+            document.getElementById('videoOverlay').style.display = 'none';
+        }
+
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            log('Connection stalled. Demanding immediate stream refresh from host...');
+            if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'viewer-joined', viewerId: myId, name: myName }));
+            }
         }
     };
-}
+} // <--- THIS BRACKET WAS MISSING!
 
 const CODEC_PRIORITY = ['video/H264', 'video/VP8'];
 
@@ -534,6 +531,10 @@ window.addEventListener('gamepadconnected', (e) => {
     if (!cleanName) cleanName = "Standard Controller";
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'gpid', padIndex: e.gamepad.index, id: e.gamepad.id, name: cleanName }));
 });
+
+function log(msg) {
+    console.log(msg);
+}
 
 function setStatus(msg, live) {
     document.getElementById('overlayStatus').textContent = msg;

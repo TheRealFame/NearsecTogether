@@ -126,31 +126,39 @@ function getPublicIP() {
   });
 }
 
-// ── Windows binary path resolver ─────────────────────────────────────────────
-const WIN_BINARY_PATHS = {
+// ── Binary path resolver ─────────────────────────────────────────────
+const FALLBACK_PATHS = {
   cloudflared: [
     path.join(os.homedir(), 'cloudflared.exe'),
     path.join(os.homedir(), 'bin', 'cloudflared.exe'),
     'C:\\Program Files\\cloudflared\\cloudflared.exe',
+    path.join(os.homedir(), 'cloudflared'),
+    path.join(os.homedir(), 'bin', 'cloudflared'),
+    '/usr/local/bin/cloudflared',
+    '/usr/bin/cloudflared'
   ],
   zrok: [
     path.join(os.homedir(), 'zrok', 'zrok.exe'),
     path.join(os.homedir(), 'bin', 'zrok.exe'),
+    path.join(os.homedir(), 'zrok', 'zrok'),
+    path.join(os.homedir(), 'bin', 'zrok')
   ],
   playit: [
     path.join(os.homedir(), 'playit.exe'),
     path.join(os.homedir(), 'bin', 'playit.exe'),
+    path.join(os.homedir(), 'playit'),
+    path.join(os.homedir(), 'bin', 'playit')
   ],
   ssh: [
     'C:\\Windows\\System32\\OpenSSH\\ssh.exe',
     'C:\\Program Files\\Git\\usr\\bin\\ssh.exe',
+    '/usr/bin/ssh'
   ],
 };
 
 function findBinaryPath(name) {
   return which(name).then(p => p).catch(() => {
-    if (process.platform !== 'win32') return null;
-    const fallbacks = WIN_BINARY_PATHS[name] || [];
+    const fallbacks = FALLBACK_PATHS[name] || [];
     for (const p of fallbacks) {
       if (fs.existsSync(p)) {
         console.log(`  [tunnel] Found ${name} at fallback path: ${p}`);
@@ -160,42 +168,129 @@ function findBinaryPath(name) {
     return null;
   });
 }
-
 // ── Tunnel providers ─────────────────────────────────────────────────────────
+
+// Native fallback reader since dotenv is not in package dependencies
+function readEnv(key) {
+  if (process.env[key]) return process.env[key];
+  try {
+    const envPath = path.join(__dirname, '..', '..', '.env');
+    if (fs.existsSync(envPath)) {
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      for (let line of lines) {
+        if (line.trim().startsWith(key + '=')) {
+          return line.split('=')[1].trim();
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
 function startTunnelCloudflared(port) {
   return new Promise(resolve => {
     findBinaryPath('cloudflared').then(cloudflaredPath => {
       if (!cloudflaredPath) { resolve(null); return; }
 
-      if (process.env.CF_TOKEN) {
+      const cfToken = readEnv('CF_TOKEN');
+      if (cfToken) {
         console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Token)...");
-        const proc = spawn(cloudflaredPath, ["tunnel", "--no-autoupdate", "run", "--token", process.env.CF_TOKEN], { stdio: ["ignore", "pipe", "pipe"] });
-        const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
+        // Force HTTP2 to bypass UDP/QUIC blocks on Linux
+        const proc = spawn(cloudflaredPath, ["tunnel", "--no-autoupdate", "--url", "http://localhost:" + port], { stdio: ["ignore", "pipe", "pipe"] });
+        const url = (readEnv('CUSTOM_URL') || "https://your-custom-domain.com").replace(/\/$/, "") + '/?v3';
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
         activeTunnelProc = proc;
         return resolve({ url, proc });
       }
 
-      if (process.env.CF_TUNNEL_NAME) {
+      const cfName = readEnv('CF_TUNNEL_NAME');
+      if (cfName) {
         console.log("  \x1b[33m~\x1b[0m Starting persistent Cloudflare tunnel (Locally Managed)...");
-        const proc = spawn(cloudflaredPath, ["tunnel", "run", process.env.CF_TUNNEL_NAME], { stdio: ["ignore", "pipe", "pipe"] });
-        const url = process.env.CUSTOM_URL || "https://your-custom-domain.com";
+        const proc = spawn(cloudflaredPath, ["tunnel", "--no-autoupdate", "--protocol", "http2", "run", cfName], { stdio: ["ignore", "pipe", "pipe"] });
+        const url = (readEnv('CUSTOM_URL') || "https://your-custom-domain.com").replace(/\/$/, "") + '/?v3';
         console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
         activeTunnelProc = proc;
         return resolve({ url, proc });
       }
 
       console.log("  \x1b[33m~\x1b[0m Starting cloudflared tunnel...");
-      const proc = spawn(cloudflaredPath, ["tunnel", "--url", "http://localhost:" + port], { stdio: ["ignore", "pipe", "pipe"] });
+      // CRITICAL FIX: Force HTTP2 and strictly bind to 127.0.0.1 to avoid IPv6 mismatches and QUIC drops
+      const proc = spawn(cloudflaredPath, ["tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://127.0.0.1:" + port], { stdio: ["ignore", "pipe", "pipe"] });
       let done = false;
       const check = data => {
-        const m = data.toString().match(/https:\/\/[a-z0-9\-]+\.trycloudflare\.com/);
-        if (m && !done) { done = true; resolve({ url: m[0], proc }); console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + m[0] + "\x1b[0m"); }
+        const m = data.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+        if (m && !done) {
+          done = true;
+          activeTunnelProc = proc;
+          const url = m[0] + '/?v3';
+          console.log("  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m" + url + "\x1b[0m");
+          resolve({ url: url, proc });
+        }
       };
-      proc.stdout.on("data", check); proc.stderr.on("data", check);
-      proc.on("close", () => { if (!done) resolve(null); });
-      setTimeout(() => { if (!done) { done = true; resolve(null); console.log("  \x1b[33m!\x1b[0m cloudflared timeout"); } }, 20000);
-    }).catch(() => resolve(null));
+      proc.stderr.on("data", check);
+
+      proc.on("error", () => { if (!done) { done=true; resolve(null); } });
+      proc.on("close", () => { if (!done) { done=true; resolve(null); } });
+    });
+  });
+}
+
+function startTunnelVps(port, vpsHost) {
+  return new Promise((resolve) => {
+    if (!vpsHost || vpsHost.trim() === '') {
+      console.log("  \x1b[31m~\x1b[0m VPS Host missing. Check your .env or GUI settings.");
+      return resolve(null);
+    }
+
+    findBinaryPath('ssh').then(sshPath => {
+      if (!sshPath) { resolve(null); return; }
+
+      console.log(`  \x1b[33m~\x1b[0m Clearing ghost ports on VPS...`);
+
+      const killCmd = spawn(sshPath, [
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        vpsHost,
+        `fuser -k ${port}/tcp || true`
+      ]);
+
+      killCmd.on('close', () => {
+        console.log(`  \x1b[33m~\x1b[0m Starting VPS Reverse SSH Tunnel to ${vpsHost}...`);
+
+        const proc = spawn(sshPath, [
+          "-v", "-N", "-T",
+          "-o", "ExitOnForwardFailure=yes",
+          "-o", "StrictHostKeyChecking=no",
+          "-o", "UserKnownHostsFile=/dev/null",
+          "-o", "ServerAliveInterval=15",
+          "-o", "ServerAliveCountMax=3",
+          "-R", `0.0.0.0:${port}:127.0.0.1:${port}`, vpsHost
+        ], { stdio: ["ignore", "pipe", "pipe"] });
+
+        const customEnvUrl = readEnv('CUSTOM_URL');
+        let url = (customEnvUrl && customEnvUrl.trim() !== '')
+        ? customEnvUrl.trim().replace(/\/$/, "")
+        : `http://${vpsHost.split('@').pop().trim()}:${port}`;
+
+        // CRITICAL FIX: Append /?v3 for Discord Integration
+        url += '/?v3';
+
+        let done = false;
+
+        proc.stderr.on("data", data => {
+          const out = data.toString();
+          if ((out.includes("remote forward success") || out.includes("Forwarding address")) && !done) {
+            done = true;
+            activeTunnelProc = proc;
+            console.log("  \x1b[32m✓\x1b[0m VPS Tunnel URL: \x1b[1m" + url + "\x1b[0m");
+            resolve({ url, proc });
+          }
+        });
+
+        proc.on("error", () => { if (!done) { done=true; resolve(null); } });
+        proc.on("close", () => { if (!done) { done=true; resolve(null); } });
+      });
+    });
   });
 }
 
@@ -270,64 +365,6 @@ function startTunnelServeo(port) {
       proc.stdout.on("data", check); proc.stderr.on("data", check);
       proc.on("close", c => { if (!done) { resolve(null); console.log("  \x1b[33m!\x1b[0m serveo closed (code " + c + ")"); } });
       setTimeout(() => { if (!done) { done = true; proc.kill(); resolve(null); console.log("  \x1b[33m!\x1b[0m serveo timeout — port 22 may be blocked"); } }, 25000);
-    }).catch(() => resolve(null));
-  });
-}
-
-function startTunnelVps(port, vpsHost) {
-  return new Promise((resolve) => {
-    findBinaryPath('ssh').then(sshPath => {
-      if (!sshPath) { resolve(null); return; }
-
-      console.log(`  \x1b[33m~\x1b[0m Clearing ghost ports on VPS...`);
-
-      // 1. Force the VPS to kill any orphaned processes holding our port
-      const killCmd = spawn(sshPath, [
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        vpsHost,
-        `fuser -k ${port}/tcp || true`
-      ]);
-
-      killCmd.on('close', () => {
-        console.log(`  \x1b[33m~\x1b[0m Starting VPS Reverse SSH Tunnel to ${vpsHost}...`);
-
-        // 2. Start the tunnel with aggressive keep-alive heartbeats
-        const proc = spawn(sshPath, [
-          "-v", "-N", "-T",
-          "-o", "ExitOnForwardFailure=yes",
-          "-o", "StrictHostKeyChecking=no",
-          "-o", "UserKnownHostsFile=/dev/null",
-          "-o", "ServerAliveInterval=15",
-          "-o", "ServerAliveCountMax=3",
-          "-R", `0.0.0.0:${port}:localhost:${port}`, vpsHost
-        ], { stdio: ["ignore", "pipe", "pipe"] });
-
-        const url = process.env.CUSTOM_URL || `http://${vpsHost.split('@').pop().trim()}:${port}`;
-        let done = false;
-
-        proc.stderr.on("data", data => {
-          const out = data.toString();
-          // Hide the verbose SSH logs unless debugging is needed to keep terminal clean
-          if ((out.includes("remote forward success") || out.includes("Forwarding address")) && !done) {
-            done = true;
-            process.env.USING_TUNNEL = "true";
-            activeTunnelProc = proc;
-            resolve({ url, proc });
-          }
-        });
-
-        proc.on("close", () => { if (!done) resolve(null); });
-
-        setTimeout(() => {
-          if (!done) {
-            done = true;
-            process.env.USING_TUNNEL = "true";
-            activeTunnelProc = proc;
-            resolve({ url, proc });
-          }
-        }, 5000);
-      });
     }).catch(() => resolve(null));
   });
 }
@@ -564,47 +601,69 @@ async function main() {
       const spawnEnv = Object.assign({}, process.env);
       spawnEnv.PULSE_SINK = "NearsecAppAudio";
 
-      // Detached execution allows the game to run independently of the Node thread
+      // ── LIFECYCLE MONITORING: Do NOT detach. Monitor the game and crash if it dies. ──
       activeGameProc = spawn(cmd, parts, {
         stdio: 'ignore',
-        detached: true,
         env: spawnEnv
       });
-      activeGameProc.unref();
+
+      activeGameProc.on('exit', (code) => {
+        console.log(`[server] Game process exited with code ${code}.`);
+        activeGameProc = null;
+        if (process.argv.includes('--arcade-worker')) {
+          console.log("[server] Arcade Worker: Game terminated externally. Executing suicide protocol...");
+          process.exit(0);
+        }
+      });
     }
     res.json({ success: true });
   });
   app.post("/api/start-tunnel", express.json(), async (req, res) => {
-    if (tunnelUrl) {
-      const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
-      if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
-      return res.json({ url: tunnelUrl });
+
+    if (activeTunnelProc) {
+      console.log("  \x1b[33m~\x1b[0m Stopping existing tunnel process before switching...");
+      try { activeTunnelProc.kill(); } catch(e){}
+      activeTunnelProc = null;
     }
+    tunnelUrl = null;
+
     const provider = (req.body && req.body.provider) || "cloudflared";
     if (req.body && req.body.remember) saveConfig({ tunnelProvider: provider, neverAsk: true });
+
     res.json({ ok: true, starting: true });
+
+    // CRITICAL FIX: Use readEnv to catch the host if the GUI fails to pass it!
+    const resolvedVpsHost = (req.body && req.body.vpsHost)
+    ? req.body.vpsHost.trim()
+    : (readEnv('VPS_HOST') || '').trim();
 
     const fn = {
       zrok: startTunnelZrok,
       cloudflared: startTunnelCloudflared,
       playit: startTunnelPlayit,
       localhostrun: startTunnelLocalhostRun,
-      vps: (p) => startTunnelVps(p, ((req.body && req.body.vpsHost) || process.env.VPS_HOST || '').trim()),
+      serveo: startTunnelServeo,
+      vps: (p) => startTunnelVps(p, resolvedVpsHost),
            portforward: async () => null
     }[provider] || startTunnel;
 
-    if (provider === 'vps' && req.body && req.body.vpsHost) {
-      saveConfig({ vpsHost: req.body.vpsHost });
+    if (provider === 'vps' && resolvedVpsHost) {
+      saveConfig({ vpsHost: resolvedVpsHost });
     }
 
-    const tun = await fn(PORT);
-    if (tun) {
-      tunnelUrl = tun.url;
-      const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
-      if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
-      viewers.forEach(vws => { if (vws.readyState === 1) vws.send(msg); });
-    } else {
-      if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider }));
+    try {
+      const tun = await fn(PORT);
+      if (tun) {
+        tunnelUrl = tun.url;
+        const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
+        if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
+      } else {
+        console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${provider}' failed.`);
+        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
+      }
+    } catch (e) {
+      console.log(`  \x1b[31m~\x1b[0m Tunnel error:`, e.message);
+      if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
     }
   });
 
@@ -1142,9 +1201,10 @@ async function main() {
   }, 30000);
   wss.on('close', () => clearInterval(interval));
 
-  server.listen(PORT, "0.0.0.0", async () => {
+  server.listen(PORT, async () => {
     console.log("Listening on port " + PORT);
     if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + PORT + "/host");
+
       const cfg = loadConfig();
 
     if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
@@ -1152,13 +1212,16 @@ async function main() {
       const tun = await startTunnelVps(PORT, process.env.VPS_HOST.trim());
       if (tun) {
         tunnelUrl = tun.url;
-        if (hostWS && hostWS.readyState === 1)
-          hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
+        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
+      } else {
+        console.log(`  \x1b[31m~\x1b[0m VPS Tunnel failed to start on boot.`);
+        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: 'vps' }));
       }
     } else if (cfg.neverAsk && cfg.tunnelProvider === 'portforward') {
       console.log("  ~ Tunnel: port forward mode (saved).");
     } else if (cfg.neverAsk && cfg.tunnelProvider) {
       console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "'");
+
       const fn = {
         zrok: startTunnelZrok,
         cloudflared: startTunnelCloudflared,
@@ -1167,11 +1230,14 @@ async function main() {
         serveo: startTunnelServeo,
         vps: (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || '')
       }[cfg.tunnelProvider] || startTunnel;
+
       const tun = await fn(PORT);
       if (tun) {
         tunnelUrl = tun.url;
-        if (hostWS && hostWS.readyState === 1)
-          hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
+        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
+      } else {
+        console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${cfg.tunnelProvider}' failed to start on boot.`);
+        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: cfg.tunnelProvider }));
       }
     } else {
       console.log("  ~ Tunnel: waiting for host to choose provider...");

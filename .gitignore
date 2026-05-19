@@ -1,3 +1,5 @@
+electron-main.js
+translate.js
 nearsectogether.config.json
 node_modules/
 .env

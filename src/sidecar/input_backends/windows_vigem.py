@@ -53,9 +53,15 @@ def run():
             # Cleanup Disconnected Viewers
             if msg_type in ["flush_neutral", "disconnect_viewer"]:
                 vid = str(msg.get("viewer_id", ""))
-                keys = [k for k in devices if str(k).startswith(vid + "_") or str(k) == vid]
+                keys = [k for k in list(devices.keys()) if str(k).startswith(vid + "_") or str(k) == vid]
+
                 for k in keys:
-                    devices.pop(k, None)
+                    gp = devices.pop(k, None)
+                    if gp:
+                        del gp
+
+                import gc
+                gc.collect()
                 continue
 
             # ── KBM Handling ──
@@ -86,16 +92,14 @@ def run():
             pad_id = str(msg.get("pad_id", "default"))
             vid = str(msg.get("viewer_id", pad_id.split("_")[0]))
 
-            # Skip if the user is locked out or in pure KBM mode
             if viewer_modes.get(vid, "gamepad") != "gamepad":
                 continue
 
             if msg_type == "gamepad":
                 if pad_id not in devices:
                     try:
-                        # Universal Xbox360 Profile to prevent silent byte corruption
                         devices[pad_id] = vg.VX360Gamepad()
-                        devices[pad_id].update() # Send initial wake-up state to OS
+                        devices[pad_id].update()
                     except Exception as e:
                         print(f"[input] ERROR creating virtual gamepad: {e}", flush=True)
                         continue
@@ -110,7 +114,6 @@ def run():
                             if btns[idx]["pressed"]: gp.press_button(button=const)
                             else: gp.release_button(button=const)
 
-                    # Strict W3C -> XUSB mapping
                     apply_btn(0, vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
                     apply_btn(1, vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
                     apply_btn(2, vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
@@ -127,7 +130,6 @@ def run():
                     apply_btn(15, vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT)
                     apply_btn(16, vg.XUSB_BUTTON.XUSB_GAMEPAD_GUIDE)
 
-                    # Analog Sticks (Y-axis inverted to match XInput standard)
                     if len(axes) >= 2:
                         lx = min(1.0, max(-1.0, axes[0] / 32767.0))
                         ly = min(1.0, max(-1.0, axes[1] / 32767.0))
@@ -138,14 +140,12 @@ def run():
                         ry = min(1.0, max(-1.0, axes[3] / 32767.0))
                         gp.right_joystick_float(x_value_float=rx, y_value_float=-ry)
 
-                    # Triggers
                     if len(axes) >= 6:
                         lt = min(1.0, max(0.0, axes[4] / 255.0))
                         rt = min(1.0, max(0.0, axes[5] / 255.0))
                         gp.left_trigger_float(value_float=lt)
                         gp.right_trigger_float(value_float=rt)
 
-                    # Flush byte array to OS
                     gp.update()
                 except Exception as e:
                     print(f"[input] Error updating gamepad: {e}", flush=True)
