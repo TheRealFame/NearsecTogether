@@ -140,7 +140,7 @@ async function createWindow() {
     // ── Dashboard Button Injection ──
     win.webContents.on('did-finish-load', () => {
       const currentURL = win.webContents.getURL();
-      if (currentURL.includes('/host')) {
+      if (currentURL.includes('/old_host')) {
         win.webContents.executeJavaScript(`
         if (!document.getElementById('ns-dash-btn') && window.electronAPI) {
           const btn = document.createElement('button');
@@ -218,6 +218,14 @@ async function createWindow() {
 
     win.webContents.on('media-started-playing', () => { win.focus(); win.webContents.focus(); });
 
+    // If the renderer crashes, ensure virtual audio is cleaned up so sinks don't persist
+    win.webContents.on('render-process-gone', (_event, details) => {
+      console.warn('[electron] Renderer process gone:', details.reason);
+      if (details.reason !== 'clean-exit' && serverCore && serverCore.cleanup) {
+        serverCore.cleanup(true);
+      }
+    });
+
     ipcMain.handle('get-settings', () => settings);
     ipcMain.handle('save-settings', (_, s) => {
       settings = Object.assign(settings, s); saveSettings(settings);
@@ -237,13 +245,20 @@ async function createWindow() {
       } catch (err) { return []; }
     });
 
-    ipcMain.on('open-host', () => {
-      if (win && !win.isDestroyed()) win.loadURL(`http://localhost:${serverPort}/host`);
+    ipcMain.on('open-host', (event, version) => {
+      const route = version === 'old' ? '/old_host' : '/host';
+      if (win && !win.isDestroyed()) {
+        win.loadURL(`http://localhost:${serverPort}${route}`);
+      }
     });
 
     // CRITICAL FIX: Fixed IPC event name to match preload script
     ipcMain.on('back-to-dashboard-from-host', () => {
-      if (win && !win.isDestroyed()) win.loadFile(path.join(__dirname, 'src', 'pages', 'dashboard.html'), { query: { port: String(serverPort) } });
+      if (win && !win.isDestroyed()) {
+        win.loadFile(path.join(__dirname, 'src', 'pages', 'dashboard.html'), {
+          query: { port: String(serverPort), noAutoHost: '1' }
+        });
+      }
     });
 
     // CRITICAL FIX: Add listener for the Headless suicide switch
@@ -272,6 +287,12 @@ app.on('will-quit', () => {
     const { globalShortcut } = require('electron');
     globalShortcut.unregisterAll();
   }
+  if (serverCore && serverCore.cleanup) serverCore.cleanup(true);
+});
+
+// Belt-and-braces: also fire cleanup on before-quit so audio is gone
+// even if the window is force-closed before will-quit runs
+app.on('before-quit', () => {
   if (serverCore && serverCore.cleanup) serverCore.cleanup(true);
 });
 

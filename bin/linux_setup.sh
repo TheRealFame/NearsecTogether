@@ -2,17 +2,27 @@
 # NearsecTogether Linux Setup & Input Fixes
 echo "Checking Linux dependencies..."
 if [[ "$EUID" -ne 0 ]]; then
-  echo "Please run as root (or with sudo) to install system dependencies."
-  exit 1
+  if sudo -n true 2>/dev/null; then
+    echo "Using cached sudo credentials..."
+    exec sudo "$0" "$@"
+  else
+    echo "Sudo requires a password or failed. Skipping setup."
+    exit 0 # Use exit 1 if you want to flag a hard failure to a calling program
+  fi
 fi
 
 # Find the exact folder this script lives in, then copy the icon
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE}" )" &> /dev/null && pwd )"
 cp "$SCRIPT_DIR/../assets/NearsecTogether.png" /usr/share/pixmaps/NearsecTogether.png 2>/dev/null
 
 apt-get update
-apt-get install -y python3-pip libudev-dev libasound2-dev libpipewire-0.3-dev
-pip3 install python-uinput --break-system-packages
+apt-get install -y python3-pip libudev-dev libasound2-dev libpipewire-0.3-dev portaudio19-dev
+pip3 install python-uinput pyaudio --break-system-packages
+# Verify PyAudio installed correctly
+if ! python3 -c "import pyaudio" &> /dev/null; then
+    echo "[WARN] PyAudio failed to build. The OS-level audio fallback will not work."
+    echo "       Ensure portaudio19-dev is installed."
+fi
 if ! modprobe uinput 2>/dev/null; then
   if [ -e /dev/uinput ]; then
     echo "[OK] uinput is built into this kernel (modprobe not needed)"

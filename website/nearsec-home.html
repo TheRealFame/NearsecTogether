@@ -1,129 +1,686 @@
+# Nearsec Arcade Homepage Redesign
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Open Graph / Discord Social Preview -->
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="Nearsec Arcade - Play Local Co-op Anywhere">
-  <meta property="og:description" content="Connect to high-performance gaming hosts globally. Play local co-op titles in your browser with ultra-low latency via NearsecTogether.">
-  <meta property="og:url" content="https://nearsec.cutefame.net">
-  <meta property="og:image" content="https://nearsec.cutefame.net">
-  <meta property="og:site_name" content="Nearsec Arcade">
-
-  <!-- Theme Color for the Discord sidebar line -->
-  <meta name="theme-color" content="#ff5d3d">
-
-  <!-- Twitter/X specific (optional but recommended) -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Nearsec Arcade">
-  <meta name="twitter:description" content="Low latency community-driven local co-op streaming.">
-  <link rel="icon" type="image/png" href="NearsecTogether.png">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nearsec Arcade - Play Local Co-op Anywhere</title>
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Nearsec Arcade - Play Local Co-op Anywhere">
+  <meta property="og:description" content="Jump into community-hosted local multiplayer sessions directly from your browser.">
+  <meta property="og:url" content="https://nearsec.cutefame.net">
+  <meta property="og:site_name" content="Nearsec Arcade">
+
+  <meta name="theme-color" content="#ff5d3d">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Nearsec Arcade">
+  <meta name="twitter:description" content="Ultra-low latency local co-op streaming.">
+
+  <title>Nearsec Arcade</title>
+
+  <link rel="icon" type="image/png" href="NearsecTogether.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+
   <style>
     :root {
-      --bg: #0b0d0f;
-      --surface: #121518;
-      --accent: #ff5d3d; /* Stadia Orange */
-      --accent-dim: #ff5d3d22;
-      --text: #f0f3f5;
-      --muted: #88929b;
-      --border: #22282d;
+      --bg: #090a0c;
+      --surface: #171a1f;
+      --surface-hover: #20242b;
+      --accent: #ff5d3d;
+      --accent-soft: rgba(255,93,61,0.12);
+      --text: #ffffff;
+      --muted: #9aa1a9;
+      --border: rgba(255,255,255,0.06);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-pill: 999px;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
-      background-color: var(--bg);
+      background: var(--bg);
       color: var(--text);
       font-family: 'Outfit', sans-serif;
-      line-height: 1.6;
       overflow-x: hidden;
     }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at top left, rgba(255,93,61,0.10), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(255,93,61,0.08), transparent 30%);
+      z-index: -1;
+    }
+
     .top-bar {
-      height: 72px;
-      padding: 0 40px;
+      position: fixed;
+      top: 0;
+      width: 100%;
+      height: 76px;
+      padding: 0 32px;
       display: flex;
       align-items: center;
-      background: rgba(11, 13, 15, 0.8);
-      backdrop-filter: blur(10px);
-      position: fixed;
-      top: 0; width: 100%;
+      justify-content: space-between;
+      background: rgba(9,10,12,0.85);
+      backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
       z-index: 1000;
     }
-    .logo {
-      display: flex; align-items: center; gap: 12px;
-      font-weight: 800; font-size: 20px; letter-spacing: -0.02em;
-    }
-    .logo img { height: 32px; }
-    .hero {
-      min-height: 100vh;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      text-align: center; padding: 120px 20px;
-      background: radial-gradient(circle at 50% 50%, #ff5d3d11 0%, transparent 60%);
-    }
-    .hero h1 {
-      font-size: 64px; font-weight: 800; margin-bottom: 24px;
-      line-height: 1.1; letter-spacing: -0.03em;
-    }
-    .hero p {
-      font-size: 20px; color: var(--muted); max-width: 600px; margin-bottom: 40px;
-    }
-    .btn {
-      background: var(--accent);
-      color: white; border: none; padding: 16px 32px;
-      border-radius: 40px; font-weight: 600; font-size: 18px;
-      cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      text-decoration: none;
-    }
-    .btn:hover { transform: scale(1.05); box-shadow: 0 0 30px var(--accent-dim); }
 
-    .features {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 32px; padding: 80px 40px; max-width: 1200px; margin: 0 auto;
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      font-size: 20px;
     }
-    .feat-card {
-      background: var(--surface); padding: 40px; border-radius: 24px;
+
+    .logo img {
+      height: 34px;
+    }
+
+    .logo span span {
+      color: var(--accent);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .nav-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      transition: 0.2s ease;
+    }
+
+    .nav-link:hover {
+      color: var(--text);
+    }
+
+    .nav-btn {
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      border-radius: var(--radius-pill);
+      padding: 12px 20px;
+      font-weight: 700;
+      transition: 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(255,93,61,0.25);
+    }
+
+    .hero {
+      padding: 160px 24px 120px;
+      position: relative;
+    }
+
+    .hero-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 56px;
+      align-items: center;
+    }
+
+    .hero-text {
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
       border: 1px solid var(--border);
+      color: var(--accent);
+      padding: 10px 18px;
+      border-radius: var(--radius-pill);
+      margin-bottom: 24px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
-    .feat-card h3 { font-size: 24px; margin-bottom: 16px; color: var(--accent); }
-    .feat-card p { color: var(--muted); }
+
+    .hero-title {
+      font-size: 72px;
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+      margin-bottom: 24px;
+      font-weight: 800;
+    }
+
+    .hero-title span {
+      color: var(--accent);
+    }
+
+    .hero-desc {
+      max-width: 620px;
+      font-size: 20px;
+      line-height: 1.6;
+      color: var(--muted);
+      margin-bottom: 36px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 40px;
+    }
+
+    .primary-btn,
+    .secondary-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 26px;
+      border-radius: var(--radius-pill);
+      text-decoration: none;
+      font-weight: 700;
+      transition: 0.2s ease;
+    }
+
+    .primary-btn {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 15px 40px rgba(255,93,61,0.22);
+    }
+
+    .primary-btn:hover {
+      transform: translateY(-3px);
+    }
+
+    .secondary-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .secondary-btn:hover {
+      background: var(--surface-hover);
+    }
+
+    .stat-pills {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .stat-pill {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 10px 16px;
+      border-radius: var(--radius-pill);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .hero-preview {
+      position: relative;
+    }
+
+    .hero-preview::before {
+      content: "";
+      position: absolute;
+      inset: -40px;
+      background: radial-gradient(circle, rgba(255,93,61,0.18), transparent 60%);
+      z-index: 0;
+    }
+
+    .preview-card {
+      position: relative;
+      z-index: 2;
+      background: linear-gradient(180deg, #1b1f25 0%, #121417 100%);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 32px;
+      overflow: hidden;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+    }
+
+    .preview-topbar {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .preview-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .preview-dots div {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+    }
+
+    .preview-body {
+      padding: 28px;
+    }
+
+    .preview-banner {
+      background: linear-gradient(135deg, #31171b 0%, #1c100d 100%);
+      border: 1px solid rgba(255,93,61,0.16);
+      border-radius: 22px;
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+
+    .preview-banner h3 {
+      font-size: 30px;
+      margin-bottom: 10px;
+    }
+
+    .preview-banner p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+
+    .session-card {
+      background: #111418;
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 20px;
+      overflow: hidden;
+      transition: 0.2s ease;
+    }
+
+    .session-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255,93,61,0.4);
+    }
+
+    .session-thumb {
+      height: 110px;
+      background:
+        linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.5)),
+        linear-gradient(135deg, #ff5d3d 0%, #442017 100%);
+    }
+
+    .session-info {
+      padding: 16px;
+    }
+
+    .session-info h4 {
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+
+    .session-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .session-tags span {
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .section {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px 120px;
+    }
+
+    .section-title {
+      font-size: 42px;
+      letter-spacing: -0.05em;
+      margin-bottom: 18px;
+    }
+
+    .section-sub {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.6;
+      max-width: 720px;
+      margin-bottom: 42px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      padding: 32px;
+      transition: 0.2s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(255,93,61,0.25);
+    }
+
+    .feature-icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 18px;
+      background: var(--accent-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      margin-bottom: 22px;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .feature-card h3 {
+      font-size: 24px;
+      margin-bottom: 14px;
+    }
+
+    .feature-card p {
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .cta-panel {
+      background: linear-gradient(135deg, #1d0f0d 0%, #15181d 100%);
+      border: 1px solid rgba(255,93,61,0.18);
+      border-radius: 34px;
+      padding: 72px 32px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-panel::before {
+      content: "";
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(255,93,61,0.15), transparent 70%);
+      top: -250px;
+      right: -120px;
+    }
+
+    .cta-panel h2 {
+      font-size: 56px;
+      letter-spacing: -0.05em;
+      margin-bottom: 18px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cta-panel p {
+      color: var(--muted);
+      max-width: 720px;
+      margin: 0 auto 34px;
+      line-height: 1.7;
+      font-size: 18px;
+      position: relative;
+      z-index: 2;
+    }
+
+    footer {
+      padding: 40px 24px 60px;
+      text-align: center;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 120px;
+    }
+
+    @media (max-width: 1100px) {
+      .hero-inner,
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-title {
+        font-size: 56px;
+      }
+    }
 
     @media (max-width: 768px) {
-      .hero h1 { font-size: 40px; }
-      .top-bar { padding: 0 20px; }
+      .top-bar {
+        padding: 0 18px;
+      }
+
+      .nav-links .nav-link {
+        display: none;
+      }
+
+      .hero {
+        padding-top: 130px;
+      }
+
+      .hero-title {
+        font-size: 44px;
+      }
+
+      .hero-desc {
+        font-size: 17px;
+      }
+
+      .preview-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .section-title {
+        font-size: 34px;
+      }
+
+      .cta-panel h2 {
+        font-size: 40px;
+      }
     }
   </style>
 </head>
 <body>
+
   <nav class="top-bar">
     <div class="logo">
-      <img src="NearsecTogether.png" alt="logo">
-      <span>NEARSEC <span style="color:var(--accent)">ARCADE</span></span>
+      <img src="NearsecTogether.png" alt="Nearsec">
+      <span>NEAR<span>SEC</span> ARCADE</span>
+    </div>
+
+    <div class="nav-links">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="https://github.com/TheRealFame/NearsecTogether" class="nav-link">GitHub</a>
+      <a href="/arcade/" class="nav-btn">Open Arcade</a>
     </div>
   </nav>
 
   <section class="hero">
-    <h1>The Community Arcade<br>for Local Co-op.</h1>
-    <p>Nearsec Arcade connects you to high-performance gaming hosts around the world. Play your favorite local co-op titles with 0ms added input lag.</p>
-    <a href="/arcade/" class="btn">Enter the Arcade</a>
+    <div class="hero-inner">
+
+      <div class="hero-text">
+        <div class="hero-tag">
+          Browser Based Local Co-op Streaming
+        </div>
+
+        <h1 class="hero-title">
+          Play Together.<br>
+          <span>Anywhere.</span>
+        </h1>
+
+        <p class="hero-desc">
+          Nearsec Arcade lets players host and join local multiplayer sessions remotely through ultra-low latency browser streaming powered by WebRTC.
+        </p>
+
+        <div class="hero-actions">
+          <a href="/arcade/" class="primary-btn">Enter the Arcade</a>
+          <a href="https://github.com/TheRealFame/NearsecTogether" class="secondary-btn">View Project</a>
+        </div>
+
+        <div class="stat-pills">
+          <div class="stat-pill">WebRTC Powered</div>
+          <div class="stat-pill">Self Hosted</div>
+          <div class="stat-pill">Low Latency</div>
+          <div class="stat-pill">Browser Based</div>
+        </div>
+      </div>
+
+      <div class="hero-preview">
+        <div class="preview-card">
+
+          <div class="preview-topbar">
+            <div class="preview-dots">
+              <div></div>
+              <div></div>
+              <div></div>
+            </div>
+          </div>
+
+          <div class="preview-body">
+            <div class="preview-banner">
+              <h3>Jump Into Live Sessions</h3>
+              <p>Discover community-hosted games with integrated voice chat, controller support, and instant browser access.</p>
+            </div>
+
+            <div class="preview-grid">
+              <div class="session-card">
+                <div class="session-thumb"></div>
+                <div class="session-info">
+                  <h4>Party Night</h4>
+                  <div class="session-tags">
+                    <span>2ms</span>
+                    <span>Party</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="session-card">
+                <div class="session-thumb"></div>
+                <div class="session-info">
+                  <h4>Retro Arcade</h4>
+                  <div class="session-tags">
+                    <span>5ms</span>
+                    <span>Retro</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="session-card">
+                <div class="session-thumb"></div>
+                <div class="session-info">
+                  <h4>Co-op Campaign</h4>
+                  <div class="session-tags">
+                    <span>4 Players</span>
+                    <span>Online</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="session-card">
+                <div class="session-thumb"></div>
+                <div class="session-info">
+                  <h4>Fighting Lobby</h4>
+                  <div class="session-tags">
+                    <span>Ranked</span>
+                    <span>Live</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
   </section>
 
-  <section class="features">
-    <div class="feat-card">
-      <h3>Low Latency</h3>
-      <p>Powered by NearsecTogether's WebRTC core, arcade sessions use direct peer-to-peer tunnels to ensure your controls feel like they're plugged in locally.</p>
-    </div>
-    <div class="feat-card">
-      <h3>Global Reach</h3>
-      <p>Browse a community-driven list of available hosts, categorized by region and measured by real-time millisecond latency.</p>
-    </div>
-    <div class="feat-card">
-      <h3>Plug and Play</h3>
-      <p>No software to install. Just plug in your gamepad, choose a session, and start playing directly in your browser.</p>
+  <section class="section" id="features">
+    <h2 class="section-title">Built for Real Local Multiplayer</h2>
+    <p class="section-sub">
+      NearsecTogether focuses on local co-op streaming without the heavy cloud infrastructure. Host directly from your own PC and let friends join instantly.
+    </p>
+
+    <div class="feature-grid">
+
+      <div class="feature-card">
+        <div class="feature-icon">01</div>
+        <h3>Ultra-Low Latency</h3>
+        <p>
+          Powered by direct WebRTC transport and hardware accelerated encoding for responsive controls and fast session startup.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">02</div>
+        <h3>Instant Browser Access</h3>
+        <p>
+          Friends can join directly from their browser without complicated setup or dedicated client installs.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">03</div>
+        <h3>Community Arcade</h3>
+        <p>
+          Browse public sessions, discover multiplayer games, and jump into active co-op lobbies around the world.
+        </p>
+      </div>
+
     </div>
   </section>
+
+  <section class="section">
+    <div class="cta-panel">
+      <h2>Ready to Join the Arcade?</h2>
+
+      <p>
+        Launch a session, invite your friends, and start playing local multiplayer games remotely with NearsecTogether.
+      </p>
+
+      <a href="/arcade/" class="primary-btn">Open Nearsec Arcade</a>
+    </div>
+  </section>
+
+  <footer>
+    Nearsec Arcade • Powered by NearsecTogether
+  </footer>
+
 </body>
 </html>
+```

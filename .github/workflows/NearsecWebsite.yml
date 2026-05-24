@@ -42,7 +42,7 @@ jobs:
           cp -r src/pages dist/pages
 
           # 5. Copy the JS scripts folder (for i18n.js)
-          cp -r src/scripts dist/js
+          cp -r src/scripts dist/scripts
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

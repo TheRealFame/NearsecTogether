@@ -152,16 +152,19 @@ def run():
             current_mode = viewer_modes.get(vid, "gamepad")
 
             if msg_type == "gamepad" and current_mode == "gamepad":
-                if pad_id not in devices:
-                    # Append _pad to keep the name short but distinct
+                # Destroy the old pad if we are swapping profiles to prevent flooding
+                if device_profiles.get(pad_id) != "gamepad":
+                    old_gp = devices.pop(pad_id, None)
+                    if old_gp:
+                        try:
+                            old_gp.destroy()
+                        except:
+                            pass
+
                     safe_name = f"Nearsec_{pad_id[:10]}_pad"
                     devices[pad_id] = make_gamepad(safe_name)
                     device_profiles[pad_id] = "gamepad"
                     print(f"[input] Created xbox360 device: {safe_name}", flush=True)
-
-                if device_profiles.get(pad_id) != "gamepad":
-                    devices[pad_id] = make_gamepad(f"Nearsec_{pad_id[:10]}_pad")
-                    device_profiles[pad_id] = "gamepad"
 
                 gp = devices[pad_id]
                 btns = msg.get("buttons", [])
@@ -196,10 +199,19 @@ def run():
                 if event_type in ["keydown", "keyup"]:
                     kbm_binds = load_emulated_kbm_profile("fighting_classic")
                     if kbm_binds:
+                        # Destroy old pad before creating the emulator to prevent flooding
                         if pad_id not in devices or device_profiles.get(pad_id) != "fighting_classic":
+                            old_gp = devices.pop(pad_id, None)
+                            if old_gp:
+                                try:
+                                    old_gp.destroy()
+                                except:
+                                    pass
+
                             fallback = f"Nearsec_{pad_id[:10]}_emu"
                             devices[pad_id] = make_gamepad(fallback)
                             device_profiles[pad_id] = fallback
+
                         gp = devices[pad_id]
                         key = msg.get("key")
                         is_down = 1 if event_type == "keydown" else 0

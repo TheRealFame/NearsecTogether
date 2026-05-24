@@ -2,7 +2,7 @@
   <img src="assets/NearsecTogether.png" width="160" height="140">
 <h1>NearsecTogether</h1>
 
-[English](README.md) | [Español](assets/locales/readmes/README.es.md) | [Français](assets/locales/readmes/README.fr.md) | [Deutsch](assets/locales/readmes/README.de.md) | [Português](assets/locales/readmes/README.pt.md) | [日本語](assets/locales/readmes/README.ja.md)
+[English](README.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português](README.pt.md) | [日本語](README.ja.md)
 ## Screenshots -- Dashboard, Viewer Page, Arcade
 
 <div align="center">
@@ -39,8 +39,13 @@ Unlike traditional cloud gaming solutions that relied on massive data center pip
 
 ¹ Windows gamepad requires [ViGEmBus driver](https://github.com/nefarius/ViGEmBus/releases)
 
-📖 **[→ Detailed Platform Setup Guide](PLATFORM_SETUP.md)** — Step-by-step instructions, troubleshooting, and workarounds for each platform.
+## Documentation
+All technical setup, usage guides, and advanced logic explanations have been moved to the `/src/docs/` directory. You can also view these directly within the application's Host Dashboard by clicking the Book icon.
 
+* [Getting Started](src/docs/GETTING_STARTED.md)
+* [Host Usage](src/docs/HOST_USAGE.md)
+* [API & Setup](src/docs/API_AND_SETUP.md)
+* [Advanced Logic Architecture](src/docs/ADVANCED_LOGIC.md)
 ---
 
 ## Getting Started
@@ -128,7 +133,7 @@ On unusual architectures you may need to build Electron from source via `electro
 - Core Host UI with integrated WebRTC capture controls.
 - Port forwarding, Cloudflared, and automatic tunneling integration.
 - Controller input virtualization via `uinput` for seamless Steam Input bypassing.
-- Dynamic bitrate scaling with user-selectable degradation preference.
+- Complete PipeWire audio loopback and Voice-over-IP isolation.
 - Mobile touch UI with virtual joystick and optional gyro aiming.
 - Arcade Mode — list your session publicly on Nearsec Arcade for others to discover and join.
 

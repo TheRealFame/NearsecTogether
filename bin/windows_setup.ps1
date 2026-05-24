@@ -43,7 +43,11 @@ if (Test-Path $reqFile) {
 } else {
     # If the text file gets lost in compilation, fallback to direct installs
     Write-Host "Requirements file not found, installing defaults..." -ForegroundColor Yellow
-    pip install pyautogui vgamepad
+    try {
+        pip install pyautogui vgamepad pyaudio
+    } catch {
+        Write-Host "[WARN] PyAudio failed to install. The OS-level audio fallback will not work." -ForegroundColor Red
+    }
 }
 
 # 4. Tunnels

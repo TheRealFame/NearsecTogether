@@ -3,6 +3,14 @@ let ws, currentStream, peerConnections = {}, knownViewers = new Set(), viewerCou
 let audioCtx, analyser, animFrame;
 let pinEnabled = true, currentPin = '----';
 let kbmPanicActive = false;
+const viewerAudioStates = {}; // Tracks { volume: 100, state: 0 } per viewer
+
+// ── NULL-SAFE DOM HELPERS ─────────────────────────────────────────────────────
+// Prevents TypeError crashes when an element ID is missing after a layout refactor.
+function _elDisabled(id, val) { const e = document.getElementById(id); if (e) e.disabled = val; }
+function _elText(id, val)     { const e = document.getElementById(id); if (e) e.textContent = val; }
+function _elClass(id, cls, add) { const e = document.getElementById(id); if (e) e.classList[add ? 'add' : 'remove'](cls); }
+// ─────────────────────────────────────────────────────────────────────────────
 
 let audioSettings = {
     forceAudioEnabled: localStorage.getItem('ns_force_audio_enabled') !== 'false',
@@ -124,6 +132,25 @@ const savedFps = localStorage.getItem('ns_fps');
 if (savedFps) document.getElementById('fpsSelect').value = savedFps;
 document.getElementById('fpsSelect').addEventListener('change', (e) => localStorage.setItem('ns_fps', e.target.value));
 
+function toggleStreamState() {
+    const btn = document.getElementById('btnStartStop');
+    const iconPath = document.getElementById('iconPath');
+
+    if (!currentStream) {
+        // We are currently stopped, so we want to START
+        showSourceSelectionModal();
+        // Note: startCapture() is called after modal confirms
+    } else {
+        // We are currently live, so we want to STOP
+        stopCapture();
+
+        // Update UI to "Start" state
+        btn.classList.remove('danger-btn');
+        iconPath.setAttribute('d', 'M5 3l14 9-14 9V3z'); // Play Icon
+        log('Session stopped by user', 'ok');
+    }
+}
+
 (function detectIGPU() {
     try {
         const canvas = document.createElement('canvas');
@@ -141,6 +168,41 @@ document.getElementById('fpsSelect').addEventListener('change', (e) => localStor
         }
     } catch (e) {}
 })();
+
+// Example modification for your host.js WebRTC setup
+async function captureSystemAudio() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+
+        // 1. Look for the EXACT source name we created in server.js
+        const virtualMic = devices.find(d =>
+        d.kind === 'audioinput' &&
+        (d.label.includes('Nearsec_App_Mic') ||
+         d.label.includes('Nearsec_Virtual_Mic') ||
+         d.label.includes('NearsecAppMic'))
+        );
+
+        // 2. If found, explicitly disable processing.
+        // If not found, falling back to 'true' usually grabs the system default,
+        // which might be your actual microphone (don't want that!).
+        const audioConstraints = virtualMic ? {
+            deviceId: { exact: virtualMic.deviceId },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+        } : true;
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: false
+        });
+
+        console.log("✅ Successfully captured:", virtualMic ? virtualMic.label : "Default Audio");
+        return stream.getAudioTracks()[0];
+    } catch (err) {
+        console.error("❌ Audio capture failed. Check PipeWire routing:", err);
+    }
+}
 
 async function fetchGameThumbnail(gameTitle) {
     try {
@@ -268,6 +330,49 @@ function renderUrls(d) {
 
 const savedViewerModes = JSON.parse(localStorage.getItem('ns_saved_modes') || '{}');
 
+// ── VIEWER AUDIO STATES ───────────────────────────────────────────────────────
+// State 0: Normal 100%   — volume 1.0, muted false
+// State 1: Quiet  50%    — volume 0.5, muted false
+// State 2: Local  mute   — muted true locally, viewer still transmits
+// State 3: Global mute   — muted locally + WS command stops viewer transmission
+
+let _globalMicKillActive = false;
+
+// Inline SVG builders — no external mic icon file needed
+function _micSvg(state) {
+    // Colors per state
+    const colors = [
+        'var(--text)',    // 0: normal
+        'var(--warn)',    // 1: quiet
+        'var(--danger)',  // 2: local mute
+        'var(--muted)',   // 3: global mute
+    ];
+    const c = colors[state] || colors[0];
+    const slashed = state >= 2;
+
+    const basePaths = `
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="23"/>
+      <line x1="8" y1="23" x2="16" y2="23"/>`;
+    const slash = slashed
+        ? `<line x1="2" y1="2" x2="22" y2="22" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`
+        : '';
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14"
+      fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+      style="flex-shrink:0;display:block;">
+      ${basePaths}${slash}
+    </svg>`;
+}
+
+const _micTitles = [
+    'Mic Normal (100%)',
+    'Mic Quiet (50%)',
+    'Locally Muted',
+    'Globally Muted',
+];
+
 function renderRoster(list) {
     const c = document.getElementById('roster');
     const o = document.getElementById('rosterEmpty');
@@ -301,23 +406,39 @@ function renderRoster(list) {
         if (currentMode === 'kbm') iconSrc = '/assets/icons/keyboard.svg';
         if (currentMode === 'kbm_emulated') iconSrc = '/assets/icons/arrow-up-from-line.svg';
 
+        if (!viewerAudioStates[v.id]) viewerAudioStates[v.id] = { vol: 100, state: 0 };
+        const audState = _globalMicKillActive ? 3 : viewerAudioStates[v.id].state;
+        const micSvg   = _micSvg(audState);
+        const micTitle = _micTitles[audState];
+
         r.innerHTML = `
         <div class="rnum">${index + 1}</div>
         <div style="flex:1; overflow:hidden;">
-        <div class="rname">${v.name}</div>
-        <div style="display:flex; align-items:center; gap: 6px; margin-top: 4px;">
-        <img src="${iconSrc}" style="width: 14px; height: 14px; filter: invert(0.8);" id="icon-${v.id}" />
-        <select class="form-select" style="padding: 2px 4px; font-size: 9px; width: auto;" onchange="changeInputMode('${v.id}', this.value, '${v.name.replace(/'/g, "\\'")}')">
-        <option value="gamepad" ${currentMode === 'gamepad' ? 'selected' : ''}>Gamepad</option>
-        <option value="kbm" ${currentMode === 'kbm' ? 'selected' : ''}>Raw KBM</option>
-        <option value="kbm_emulated" ${currentMode === 'kbm_emulated' ? 'selected' : ''}>Emulated KBM</option>
-        <option value="disabled" ${currentMode === 'disabled' ? 'selected' : ''}>Disabled</option>
-        </select>
-        </div>
+          <div class="rname">${v.name}</div>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+            <img src="${iconSrc}" style="width:14px;height:14px;filter:invert(0.8);" id="icon-${v.id}" />
+            <select class="form-select" style="padding:2px 4px;font-size:9px;width:auto;"
+              onchange="changeInputMode('${v.id}', this.value, '${v.name.replace(/'/g, "\\'")}')">
+              <option value="gamepad"       ${currentMode === 'gamepad'       ? 'selected' : ''}>Gamepad</option>
+              <option value="kbm"           ${currentMode === 'kbm'           ? 'selected' : ''}>Raw KBM</option>
+              <option value="kbm_emulated"  ${currentMode === 'kbm_emulated'  ? 'selected' : ''}>Emulated KBM</option>
+              <option value="disabled"      ${currentMode === 'disabled'      ? 'selected' : ''}>Disabled</option>
+            </select>
+            <div style="width:1px;height:12px;background:var(--border2);margin:0 2px;"></div>
+            <button onclick="cycleViewerMic('${v.id}')" title="${micTitle}"
+              id="mic-btn-${v.id}"
+              style="background:none;border:none;cursor:pointer;display:flex;align-items:center;padding:2px;${_globalMicKillActive ? 'opacity:0.4;pointer-events:none;' : ''}">
+              ${micSvg}
+            </button>
+            <input type="range" min="0" max="100" value="${viewerAudioStates[v.id].vol}"
+              oninput="setViewerVolume('${v.id}', this.value)"
+              style="width:38px;accent-color:var(--accent);height:3px;" title="Viewer voice volume">
+          </div>
         </div>
         <div class="rstat">${v.slot !== null ? '(Assigned)' : ''}</div>
-        <button class="rlock" onclick="toggleSlotLock('${v.id}')" title="Lock this slot" style="background:none; border:none; cursor:pointer; padding:0 4px; width:20px; height:20px; display:flex; align-items:center;">
-        <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;filter:invert(0.5);" />
+        <button class="rlock" onclick="toggleSlotLock('${v.id}')" title="Lock slot"
+          style="background:none;border:none;cursor:pointer;padding:0 4px;width:20px;height:20px;display:flex;align-items:center;">
+          <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;filter:invert(0.5);" />
         </button>
         <button class="rkick" onclick="killGp('${v.id}')" title="Revoke input">×</button>
         `;
@@ -325,6 +446,95 @@ function renderRoster(list) {
     });
     attachDragDrop(c);
 }
+
+// ── 4-STATE MIC CYCLE ─────────────────────────────────────────────────────────
+function cycleViewerMic(viewerId) {
+    if (_globalMicKillActive) return; // master kill overrides individual buttons
+
+    const s = viewerAudioStates[viewerId] || (viewerAudioStates[viewerId] = { vol: 100, state: 0 });
+    const prev = s.state;
+    s.state = (s.state + 1) % 4;
+
+    const audioEl = document.getElementById('remote-audio-' + viewerId);
+
+    switch (s.state) {
+        case 0: // Normal — restore everything
+            if (audioEl) { audioEl.volume = s.vol / 100; audioEl.muted = false; }
+            // If coming from state 3 (global mute), tell viewer to resume transmitting
+            if (prev === 3 && ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'host-voice-cmd', targetViewerId: viewerId, action: 'unmute' }));
+            }
+            break;
+        case 1: // Quiet 50%
+            if (audioEl) { audioEl.volume = 0.5; audioEl.muted = false; }
+            break;
+        case 2: // Local mute — host can't hear, viewer still transmits
+            if (audioEl) audioEl.muted = true;
+            break;
+        case 3: // Global mute — stop viewer transmitting entirely
+            if (audioEl) audioEl.muted = true;
+            if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'host-voice-cmd', targetViewerId: viewerId, action: 'mute' }));
+            }
+            break;
+    }
+
+    // Update just the mic button in-place without re-rendering the whole roster
+    const btn = document.getElementById('mic-btn-' + viewerId);
+    if (btn) {
+        btn.innerHTML = _micSvg(s.state);
+        btn.title     = _micTitles[s.state];
+    }
+}
+
+// ── VIEWER VOICE VOLUME ───────────────────────────────────────────────────────
+function setViewerVolume(viewerId, vol) {
+    if (!viewerAudioStates[viewerId]) viewerAudioStates[viewerId] = { vol: 100, state: 0 };
+    viewerAudioStates[viewerId].vol = parseInt(vol, 10);
+    const audioEl = document.getElementById('remote-audio-' + viewerId);
+    // Only apply volume if not muted (states 2 & 3)
+    if (audioEl && viewerAudioStates[viewerId].state < 2) {
+        audioEl.volume = vol / 100;
+    }
+}
+
+// ── GLOBAL MIC KILL-SWITCH ────────────────────────────────────────────────────
+function toggleGlobalMicKill() {
+    _globalMicKillActive = !_globalMicKillActive;
+
+    // Mute/unmute every remote audio element
+    document.querySelectorAll('[id^="remote-audio-"]').forEach(el => {
+        el.muted = _globalMicKillActive;
+    });
+
+    // Broadcast to all viewers
+    if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({
+            type:   'host-voice-broadcast',
+            action: _globalMicKillActive ? 'mute' : 'unmute',
+        }));
+    }
+
+    log(
+        _globalMicKillActive
+            ? 'Global mic kill: all viewer mics disabled'
+            : 'Global mic kill lifted: viewer mics restored',
+        _globalMicKillActive ? 'warn' : 'ok'
+    );
+
+    // Visual update
+    const btn = document.getElementById('btnMasterMic');
+    if (btn) {
+        btn.classList.toggle('master-mic-kill', _globalMicKillActive);
+        btn.title = _globalMicKillActive ? 'All Viewer Mics Killed (click to restore)' : 'Mute All Viewer Mics';
+    }
+
+    // Re-render roster so per-viewer buttons show disabled state
+    if (typeof _lastRosterList !== 'undefined') renderRoster(_lastRosterList);
+}
+
+// Cache last roster so toggleGlobalMicKill can re-render without a server round-trip
+let _lastRosterList = [];
 
 function changeInputMode(viewerId, newMode, viewerName) {
     if (ws && ws.readyState === 1) {
@@ -440,8 +650,10 @@ function connectWS() {
             log('Viewer ' + msg.viewerId + ' left');
         }
         if (msg.type === 'roster') {
-            renderRoster(msg.viewers);
-            document.getElementById('viewerCount').textContent = msg.controllerCount ?? msg.viewers.length;
+            _lastRosterList = msg.viewers || [];
+            renderRoster(_lastRosterList);
+            const vc = document.getElementById('viewerCount');
+            if (vc) vc.textContent = msg.controllerCount ?? msg.viewers.length;
         }
         if (msg.type === 'answer') {
             const pc = peerConnections[msg._viewerId];
@@ -503,6 +715,9 @@ async function sendOfferToViewer(viewerId) {
         sdpSemantics: 'unified-plan',
     });
 
+    // THIS is the correct spot for the monitor!
+    monitorCongestion(pc, viewerId);
+
     peerConnections[viewerId] = pc;
 
     currentStream.getTracks().forEach(track => {
@@ -517,7 +732,8 @@ async function sendOfferToViewer(viewerId) {
     });
 
     const codec = preferVideoCodec(pc);
-    if (codec) document.getElementById('codecBadge').textContent = codec.split('/')[1];
+    const cb = document.getElementById('codecBadge');
+    if (codec && cb) cb.textContent = codec.split('/')[1];
 
     let connectTimeout = setTimeout(() => {
         if (pc.connectionState !== 'connected' && peerConnections[viewerId] === pc) {
@@ -532,6 +748,24 @@ async function sendOfferToViewer(viewerId) {
         }
     };
 
+    pc.ontrack = (e) => {
+        if (e.track.kind === 'audio') {
+            let audioEl = document.getElementById('remote-audio-' + viewerId);
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.id = 'remote-audio-' + viewerId;
+                audioEl.autoplay = true;
+
+                // Apply the saved volume/mute state immediately
+                const state = viewerAudioStates[viewerId] || { vol: 100, state: 0 };
+                audioEl.volume = state.vol / 100;
+                audioEl.muted = state.state >= 2 || _globalMicKillActive;
+                document.body.appendChild(audioEl);
+            }
+            audioEl.srcObject = e.streams[0];
+            log(`Incoming voice stream attached for ${viewerId}`, 'ok');
+        }
+    };
     pc.onconnectionstatechange = () => {
         const s = pc.connectionState;
         log('Viewer ' + viewerId + ': ' + s, s === 'connected' ? 'ok' : s === 'failed' ? 'err' : '');
@@ -553,7 +787,7 @@ async function sendOfferToViewer(viewerId) {
     };
 
     try {
-        const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
         await pc.setLocalDescription({ type: offer.type, sdp: offer.sdp });
         ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));
         log('Offer → viewer ' + viewerId, 'ok');
@@ -579,13 +813,40 @@ async function showSourceSelectionModal() {
         return;
     }
 
-    try {
-        const sources = await window.electronAPI.getWindowSources();
+    // Show modal immediately while sources load
+    document.getElementById('sourceModal').classList.remove('gone');
+    await _populateSourceGrid();
+}
 
-        const sourceGrid = document.getElementById('sourceGrid');
+async function refreshSourceModal() {
+    await _populateSourceGrid();
+}
+
+async function _populateSourceGrid() {
+    const sourceGrid   = document.getElementById('sourceGrid');
+    const noSources    = document.getElementById('sourceNoSources');
+    const confirmBtn   = document.getElementById('confirmSourceBtn');
+
+    sourceGrid.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:11px;">Scanning sources…</div>';
+    if (noSources) noSources.style.display = 'none';
+    if (confirmBtn) confirmBtn.disabled = true;
+    selectedSourceId = null;
+
+    try {
+        // Request both windows AND screens from Electron
+        const sources = await window.electronAPI.getWindowSources({
+            types: ['window', 'screen'],
+            thumbnailSize: { width: 320, height: 180 },
+            fetchWindowIcons: true
+        });
+
         sourceGrid.innerHTML = '';
-        selectedSourceId = null;
-        document.getElementById('confirmSourceBtn').disabled = true;
+
+        if (!sources || sources.length === 0) {
+            if (noSources) noSources.style.display = 'flex';
+            log('No capture sources found — try clicking Refresh or opening a window', 'warn');
+            return;
+        }
 
         sources.forEach((source, idx) => {
             const card = document.createElement('div');
@@ -594,22 +855,27 @@ async function showSourceSelectionModal() {
             card.onclick = () => selectSource(idx, source.id);
 
             const thumbnail = source.thumbnail || '';
-            const imgHtml = thumbnail ? `<img src="${thumbnail}" class="source-thumbnail" alt="${source.name}">` : '<div class="source-thumbnail" style="background: #333; display: flex; align-items: center; justify-content: center; color: #888;">No Preview</div>';
+            const imgHtml = thumbnail
+                ? `<img src="${thumbnail}" class="source-thumbnail" alt="${source.name}">`
+                : '<div class="source-thumbnail" style="background:#2a2a2a;display:flex;align-items:center;justify-content:center;color:#666;font-size:10px;">No Preview</div>';
 
             const sourceType = source.isScreen ? '🖥️ Screen' : '🪟 Window';
-            card.innerHTML = `
-            ${imgHtml}
+            card.innerHTML = `${imgHtml}
             <div class="source-name">${source.name}</div>
-            <div class="source-type">${sourceType}</div>
-            `;
+            <div class="source-type">${sourceType}</div>`;
 
             sourceGrid.appendChild(card);
         });
 
-        document.getElementById('sourceModal').classList.remove('gone');
+        log(`Found ${sources.length} capture source(s)`, 'ok');
     } catch (e) {
-        log('Error loading sources: ' + e.message, 'error');
-        startCapture();
+        log('Error loading sources: ' + e.message, 'err');
+        sourceGrid.innerHTML = '';
+        if (noSources) {
+            noSources.style.display = 'flex';
+            const detail = noSources.querySelector('div:last-child');
+            if (detail) detail.textContent = 'Error: ' + e.message + ' — try Refresh.';
+        }
     }
 }
 
@@ -638,15 +904,14 @@ async function confirmSource() {
 }
 
 async function startCapture() {
-    document.getElementById('btnStart').disabled = true;
-    document.getElementById('btnSwitch').disabled = true;
+    _elDisabled('btnStart', true);
+    _elDisabled('btnSwitch', true);
 
     if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); stopAudioMeter(); currentStream = null; }
     Object.values(peerConnections).forEach(pc => pc.close());
     peerConnections = {};
 
     const isLinux = navigator.userAgent.includes('Linux') || navigator.platform.toLowerCase().includes('linux');
-
     const fpsVal = parseInt(document.getElementById('fpsSelect')?.value) || 60;
     const resVal = document.getElementById('resSelect')?.value || '1080p';
 
@@ -658,6 +923,14 @@ async function startCapture() {
 
     try {
         let screenStream;
+        const displayMediaOptions = { video: videoConstraints };
+
+        if (!isLinux && audioSettings.forceAudioEnabled) {
+            displayMediaOptions.audio = true;
+            displayMediaOptions.systemAudio = 'include';
+        } else {
+            displayMediaOptions.audio = false;
+        }
 
         if (selectedSourceId && window.electronAPI) {
             try {
@@ -667,20 +940,12 @@ async function startCapture() {
                 });
                 log('Using selected source: ' + selectedSourceId, 'ok');
             } catch (e) {
-                log('Source selection failed, falling back to system dialog: ' + e.message, 'warn');
+                log('Source selection failed, falling back: ' + e.message, 'warn');
                 selectedSourceId = null;
-                screenStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: videoConstraints,
-                    audio: isLinux ? false : audioSettings.forceAudioEnabled,
-                    systemAudio: 'include'
-                });
+                screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
             }
         } else {
-            screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: videoConstraints,
-                audio: isLinux ? false : audioSettings.forceAudioEnabled,
-                systemAudio: 'include'
-            });
+            screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
         }
 
         selectedSourceId = null;
@@ -696,38 +961,68 @@ async function startCapture() {
         const combined = new MediaStream();
         combined.addTrack(vTrack);
 
-        // ── RESTORED LINUX LOOPBACK CODE ──
         let aTrack = screenStream.getAudioTracks()[0] || null;
+
         if (isLinux) {
             try {
-                // Hunt for the PipeWire virtual sink or Monitor
+                // Force permission prompt to un-hide device labels
+                try {
+                    const unlockStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    unlockStream.getTracks().forEach(t => t.stop());
+                } catch(e) { log('Audio permission missing, loopback labels hidden', 'warn'); }
+
                 const devices = await navigator.mediaDevices.enumerateDevices();
-                const loopbackDevice = devices.find(d => d.kind === 'audioinput' &&
-                (d.label.includes('NearsecAppAudio') || d.label.toLowerCase().includes('monitor of')));
+                const audioInputs = devices.filter(d => d.kind === 'audioinput');
+
+                // Print all seen devices to console for debugging
+                console.log("Available Audio Inputs:", audioInputs.map(d => d.label || 'Hidden/Unknown'));
+
+                // Look for the system audio capture source
+                const loopbackDevice = audioInputs.find(d =>
+                  d.label.includes('Nearsec_App_Mic') ||
+                  d.label.includes('Nearsec_Virtual_Mic') ||
+                  d.label.includes('NearsecAppMic') ||
+                  d.label.includes('Nearsec_App_Audio') ||
+                  d.label.includes('NearsecAppAudio')
+                );
 
                 if (loopbackDevice) {
                     const audioStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
                             deviceId: { exact: loopbackDevice.deviceId },
-                            echoCancellation: false, noiseSuppression: false, autoGainControl: false
+                            echoCancellation: false,
+                            noiseSuppression: false,
+                            autoGainControl: false,
+                            channelCount: 2
                         }
                     });
                     aTrack = audioStream.getAudioTracks()[0];
-                    if (aTrack) {
-                        combined.addTrack(aTrack);
-                        log('System Audio Mixed via Native Loopback: ' + loopbackDevice.label, 'ok');
-                    }
+                    if (aTrack) log('System audio captured', 'ok');
+                } else {
+                    const labels = audioInputs.map(d => d.label || 'Hidden').join(', ');
+                    log('Virtual cable not found. Seen labels: ' + labels, 'warn');
                 }
             } catch (audErr) {
                 console.warn('Linux audio loopback initialization failed:', audErr);
             }
-        } else if (aTrack) {
-            combined.addTrack(aTrack);
-            log('System Audio Track Found: ' + (aTrack.label || 'default'), 'ok');
         }
 
-        if (!aTrack) {
-            log('No audio track selected in capture prompt', 'warn');
+        // FORCE DISABLE PYTHON FALLBACK - We rely strictly on PipeWire now
+        const disableFallback = true;
+
+        if (aTrack) {
+            combined.addTrack(aTrack);
+            // Link the slider node to the track so the Host can change the volume!
+            if (typeof attachDesktopGain === 'function') attachDesktopGain(combined);
+            log('System Audio Track Found: ' + (aTrack.label || 'default'), 'ok');
+            if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stop-audio-fallback' }));
+        } else {
+            if (!disableFallback) {
+                log('Browser capture failed. Engaging Python OS-level audio fallback...', 'warn');
+                if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'start-audio-fallback' }));
+            } else {
+                log('Browser capture failed. (Python Fallback disabled)', 'err');
+            }
         }
 
         if (appSettings.captureMic) {
@@ -742,19 +1037,23 @@ async function startCapture() {
                     combined.addTrack(micTrack);
                     log('Microphone added: ' + (micTrack.label || 'default'), 'ok');
                 }
-            } catch (e) {
-                log('Mic capture failed: ' + e.message, 'warn');
-            }
+            } catch (e) { log('Mic capture failed: ' + e.message, 'warn'); }
         }
 
         currentStream = combined;
+
+        // Instantly display the selected codec instead of waiting for a viewer
+        const cb = document.getElementById('codecBadge');
+        if (cb) {
+            cb.textContent = document.getElementById('codecSelect').value;
+        }
 
         const prev = document.getElementById('preview');
         if (appSettings.hidePreviewOnStart) {
             previewHidden = true;
             prev.style.display = 'none';
             const btn = document.getElementById('btnPreviewToggle');
-            if (btn) { btn.textContent = '▶ Show Preview'; btn.style.color = 'var(--warn)'; }
+            if (btn) { btn.innerHTML = SVG_EYE_CLOSED; btn.style.color = 'var(--warn)'; }
         } else {
             prev.srcObject = screenStream;
         }
@@ -764,17 +1063,41 @@ async function startCapture() {
 
         const finalAudioTracks = currentStream.getAudioTracks();
         document.getElementById('trackInfo').innerHTML =
-        '<strong>' + (vTrack.label || 'Screen') + '</strong><br>' +
+        '<strong>' + (vTrack.label?.split('(')[0].trim() || 'Screen') + '</strong><br>' +
         settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
-        (finalAudioTracks.length > 0 ? 'Audio: ' + finalAudioTracks[0].label : 'No system audio forward');
+        (finalAudioTracks.length > 0 ? 'Audio: active' : (disableFallback && !aTrack ? 'No audio' : 'Audio: OS fallback'));
+
+        // ── Dynamic resolution tracking (updates if resolution changes) ──
+        const liveResEl   = document.getElementById('liveResDisplay');
+        const liveResText = document.getElementById('liveResText');
+        function _updateRes() {
+            if (!currentStream) { clearInterval(_resInterval); return; }
+            const vt = currentStream.getVideoTracks()[0];
+            if (!vt) return;
+            const s = vt.getSettings();
+            const label = (s.width && s.height)
+                ? s.width + '×' + s.height + ' @ ' + Math.round(s.frameRate || 0) + ' fps'
+                : '';
+            if (label) {
+                if (liveResText) liveResText.textContent = label;
+                if (liveResEl) liveResEl.style.display = 'block';
+                // Also update trackInfoAlt directly so the hyphen is never shown while live
+                const alt = document.getElementById('trackInfoAlt');
+                if (alt && !alt.innerHTML.includes('<strong>')) {
+                    alt.textContent = label;
+                }
+            }
+        }
+        _updateRes();
+        window._resInterval = setInterval(_updateRes, 2000);
 
         setCapDot('live');
 
         setTimeout(() => {
             const checkTrack = currentStream ? currentStream.getAudioTracks()[0] : null;
-            if (checkTrack) {
+            if (checkTrack || (!aTrack && !disableFallback)) {
                 setAudDot('live', 'Audio active');
-                startAudioMeter(currentStream);
+                if (checkTrack) startAudioMeter(currentStream);
             } else {
                 setAudDot('warn', 'No audio — Check source');
             }
@@ -785,27 +1108,41 @@ async function startCapture() {
         [...knownViewers].forEach(id => sendOfferToViewer(id));
 
         vTrack.onended = () => { log('Capture ended by OS', 'warn'); stopCapture(); };
-        document.getElementById('btnSwitch').disabled = false;
-        document.getElementById('btnStop').disabled = false;
-        document.getElementById('btnKbmPanic').disabled = false;
+        _elDisabled('btnSwitch', false);
+        _elDisabled('btnStop', false);
+        _elDisabled('btnKbmPanic', false);
     } catch (err) {
         if (err.name === 'NotAllowedError' || err.name === 'AbortError') log('Capture cancelled', 'warn');
         else { log('Capture failed: ' + err.message, 'err'); setCapDot('err'); }
-        document.getElementById('btnStart').disabled = false;
+        _elDisabled('btnStart', false);
     }
 }
 
 function stopCapture() {
     if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+    if (window._resInterval) { clearInterval(window._resInterval); window._resInterval = null; }
     stopAudioMeter();
-    document.getElementById('preview').srcObject = null;
-    document.getElementById('prevOverlay').classList.remove('hidden');
+    const prevEl = document.getElementById('preview');
+    if (prevEl) prevEl.srcObject = null;
+    _elClass('prevOverlay', 'hidden', false);
     setCapDot(''); setAudDot('', 'No audio');
-    document.getElementById('trackInfo').textContent = '—';
-    document.getElementById('btnStart').disabled = false;
-    document.getElementById('btnSwitch').disabled = true;
-    document.getElementById('btnStop').disabled = true;
-    document.getElementById('btnKbmPanic').disabled = true;
+    _elText('trackInfo', '');
+    // Reset Live Status
+    const alt = document.getElementById('trackInfoAlt');
+    if (alt) alt.textContent = 'No stream active';
+    const liveResEl = document.getElementById('liveResDisplay');
+    if (liveResEl) liveResEl.style.display = 'none';
+    // Reset preview button to eye-open SVG
+    previewHidden = false;
+    const prevBtn = document.getElementById('btnPreviewToggle');
+    if (prevBtn) { prevBtn.innerHTML = SVG_EYE_OPEN; prevBtn.style.color = ''; }
+    // Restore "Click Start" overlay text
+    const overlaySpan = document.querySelector('#prevOverlay span');
+    if (overlaySpan) overlaySpan.textContent = 'Click Start to begin sharing';
+    _elDisabled('btnStart', false);
+    _elDisabled('btnSwitch', true);
+    _elDisabled('btnStop', true);
+    _elDisabled('btnKbmPanic', true);
     kbmPanicActive = false;
     updateKbmPanicButton();
     Object.values(peerConnections).forEach(pc => pc.close());
@@ -846,15 +1183,17 @@ function stopCapture() {
 function updateKbmPanicButton() {
     const btn = document.getElementById('btnKbmPanic');
     if (!btn) return;
-
+    const SPAN_STYLE = 'font-size:10px;font-weight:bold;color:inherit;letter-spacing:0.5px;line-height:1.1;text-align:center;';
     if (kbmPanicActive) {
-        btn.textContent = 'Release KBM';
-        btn.style.background = '#FF0000';
-        btn.style.borderColor = '#FFF';
+        btn.innerHTML = `<span style="${SPAN_STYLE}">RESUME<br>KBM</span>`;
+        btn.style.background = 'rgba(220,50,50,0.2)';
+        btn.style.border = '1px solid var(--danger)';
+        btn.style.color = 'var(--danger)';
     } else {
-        btn.textContent = 'KBM Panic';
-        btn.style.background = '#8B0000';
-        btn.style.borderColor = '#FF0000';
+        btn.innerHTML = `<span style="${SPAN_STYLE}">KBM<br>PANIC</span>`;
+        btn.style.background = 'transparent';
+        btn.style.border = 'none';
+        btn.style.color = '';
     }
 }
 
@@ -1151,6 +1490,7 @@ function _doArcadeRegister() {
 
         arcadeChannel.trigger('client-session-ping', getPingData());
         sysChat('Arcade Mode started: ' + arcadeConfig.title);
+        document.getElementById('btnArcade').innerHTML = '<span style="color:var(--green); font-weight:bold; font-size: 10px;">ARCADE<br>LIVE</span>';
 
         if (arcadePingInterval) clearInterval(arcadePingInterval);
         arcadePingInterval = setInterval(() => {
@@ -1160,25 +1500,36 @@ function _doArcadeRegister() {
     }).catch(() => log('Arcade: Could not read server info', 'err'));
 }
 
+const SVG_EYE_OPEN   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const SVG_EYE_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
 let previewHidden = false;
 function togglePreview() {
     previewHidden = !previewHidden;
     const prev = document.getElementById('preview');
-    const btn = document.getElementById('btnPreviewToggle');
+    const btn  = document.getElementById('btnPreviewToggle');
+    const overlay = document.getElementById('prevOverlay');
+
     if (previewHidden) {
         prev.srcObject = null;
         prev.style.display = 'none';
-        document.getElementById('prevOverlay').classList.remove('hidden');
-        document.getElementById('prevOverlay').querySelector('span').textContent = 'Preview hidden — stream still active';
-        if (btn) { btn.textContent = '▶ Show Preview'; btn.style.color = 'var(--warn)'; }
+        // Only say "stream still active" if there actually IS a stream
+        if (overlay) {
+            overlay.classList.remove('hidden');
+            const sp = overlay.querySelector('span');
+            if (sp) sp.textContent = currentStream
+                ? 'Preview hidden — stream still active'
+                : 'Click Start to begin sharing';
+        }
+        if (btn) { btn.innerHTML = SVG_EYE_CLOSED; btn.style.color = 'var(--warn)'; }
         log('Preview hidden — stream unaffected', 'ok');
     } else {
         prev.style.display = 'block';
         if (currentStream) {
             prev.srcObject = currentStream;
-            document.getElementById('prevOverlay').classList.add('hidden');
+            if (overlay) overlay.classList.add('hidden');
         }
-        if (btn) { btn.textContent = '◼ Hide Preview'; btn.style.color = ''; }
+        if (btn) { btn.innerHTML = SVG_EYE_OPEN; btn.style.color = ''; }
         log('Preview restored', 'ok');
     }
 }
@@ -1282,6 +1633,21 @@ function sysChat(text) {
     ws.send(JSON.stringify({ type: 'chat', from: 'Nearsec', msg: text }));
     appendChat('Nearsec', text, false);
 }
+
+let globalViewerVolume = 1.0;
+window.setGlobalViewerVolume = function(val) {
+    globalViewerVolume = val / 100;
+    const valDisplay = document.getElementById('globalViewerVolVal');
+    if (valDisplay) valDisplay.textContent = val;
+
+    Object.keys(viewerAudioStates).forEach(vid => {
+        const audioEl = document.getElementById('remote-audio-' + vid);
+        // Only apply if the individual viewer isn't locally or globally muted (states 0 and 1)
+        if (audioEl && viewerAudioStates[vid].state < 2) {
+            audioEl.volume = (viewerAudioStates[vid].vol / 100) * globalViewerVolume;
+        }
+    });
+};
 
 function createVirtualAudioCable() {
     log('Creating virtual audio cable...', 'ok');

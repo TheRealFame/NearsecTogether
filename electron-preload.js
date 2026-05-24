@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer, desktopCapturer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // ── Session & Navigation ──
+  backToDashboard: () => ipcRenderer.send('back-to-dashboard-from-host'),
   joinSession: (url, meta)        => ipcRenderer.invoke('join-session', { url, meta }),
   pingSession: (url)              => ipcRenderer.invoke('ping-session', url),
   getServerInfo: ()               => ipcRenderer.invoke('get-server-info'),

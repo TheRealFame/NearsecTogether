@@ -29,6 +29,17 @@
       display: flex; flex-direction: column;
     }
 
+    /* Disable highlighting on the app UI */
+    html, body {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    /* But keep it enabled for text inputs and chat boxes */
+    input, textarea, [contenteditable] {
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+
     #floating-setup-btn {
       position: fixed; bottom: 24px; right: 24px; z-index: 9999;
       background: #eab308; color: #000; border: none; border-radius: 6px;
@@ -210,7 +221,31 @@
   </style>
 </head>
 <body>
+<div id="docsFloatBtn" style="position: fixed; top: 24px; right: 24px; z-index: 999; display: flex;">
+    <button onclick="openDocs()" title="Documentation & Help" style="background: var(--accent); border: none; border-radius: 8px; padding: 10px; cursor: pointer;">
+      <img src="../../assets/icons/book.svg" style="width: 20px; filter: invert(1);" />
+    </button>
+  </div>
 
+  <div id="docsModal" onclick="if(event.target === this) closeDocs()" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: var(--surface); border: 1px solid var(--border); width: 80%; max-width: 800px; height: 80vh; border-radius: 12px; display: flex; flex-direction: column;">
+      <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;">
+        <h3 style="margin: 0;">Nearsec Documentation</h3>
+        <button onclick="closeDocs()" style="background: transparent; border: none; color: var(--text); cursor: pointer; font-size: 18px;">×</button>
+      </div>
+      <div style="display: flex; flex: 1; overflow: hidden;">
+        <div style="width: 200px; border-right: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+          <button onclick="loadDoc('GETTING_STARTED.md')" style="text-align: left; background: none; border: none; color: var(--accent); cursor: pointer;">Getting Started</button>
+          <button onclick="loadDoc('HOST_USAGE.md')" style="text-align: left; background: none; border: none; color: var(--accent); cursor: pointer;">Host Usage</button>
+          <button onclick="loadDoc('API_AND_SETUP.md')" style="text-align: left; background: none; border: none; color: var(--accent); cursor: pointer;">API & Setup</button>
+          <button onclick="loadDoc('ADVANCED_LOGIC.md')" style="text-align: left; background: none; border: none; color: var(--accent); cursor: pointer;">Advanced Logic</button>
+        </div>
+        <div id="docContent" style="flex: 1; padding: 24px; overflow-y: auto; line-height: 1.6; white-space: pre-wrap; font-family: sans-serif;">
+          Select a document to read.
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="titlebar"></div>
   <div id="virtual-cursor"></div>
 
@@ -400,7 +435,21 @@
               <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
             </div>
           </div>
+          <div class="ctrl-modal-row" id="settingRowOldUI" onclick="toggleOldUI()">
+        <div class="ctrl-toggle-track" id="settingTrackOldUI"><div class="ctrl-toggle-thumb"></div></div>
+        <div class="ctrl-row-text">
+          <div class="ctrl-row-label">Use Classic Host UI</div>
+          <div class="ctrl-row-desc">Switches the host dashboard to the legacy layout.</div>
+        </div>
+      </div>
 
+      <div class="ctrl-modal-row" id="settingRowAutoHost" onclick="toggleAutoHost()" style="margin-top:8px;">
+        <div class="ctrl-toggle-track" id="settingTrackAutoHost"><div class="ctrl-toggle-thumb"></div></div>
+        <div class="ctrl-row-text">
+          <div class="ctrl-row-label">Auto-Start Host Mode</div>
+          <div class="ctrl-row-desc">Skips this dashboard and jumps straight into hosting on startup.</div>
+        </div>
+      </div>
           <div class="settings-section">
             <h2>Experimental (Requires App Restart)</h2>
             <div class="setting-row" onclick="toggleAppSetting('hwDecode')">
@@ -759,25 +808,35 @@
         list.innerHTML = html + `<style>@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }</style>`;
     }
 
-    function toggleAutoHost(id) {
-        const host = appConfig.autoHosts.find(h => h.id === id);
-        if (!host) return;
+    // Load saved settings on boot
+    document.addEventListener('DOMContentLoaded', () => {
+      if (localStorage.getItem('ns_ui_version') === 'old') {
+        document.getElementById('settingTrackOldUI').classList.add('on');
+      }
+      if (localStorage.getItem('ns_auto_host') === 'true') {
+        document.getElementById('settingTrackAutoHost').classList.add('on');
+        // Auto-launch after 500ms to ensure the Express server is fully bound
+        setTimeout(launchHostSession, 500);
+      }
+    });
 
-        if (confirm(`Start ${host.name}?`)) {
-            fetch('/api/restart-game', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: host.cmd })
-            });
+    function launchHostSession() {
+    const uiVer = localStorage.getItem('ns_ui_version') || 'new';
+    console.log("Launching UI version:", uiVer);
+    window.electronAPI.send('open-host', uiVer);
+    }
 
-            if (host.tunnel && host.tunnel !== 'default') {
-                fetch('/api/start-tunnel', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ provider: host.tunnel })
-                });
-            }
-        }
+    // Toggle Functions
+    function toggleOldUI() {
+      const track = document.getElementById('settingTrackOldUI');
+      const isOld = track.classList.toggle('on');
+      localStorage.setItem('ns_ui_version', isOld ? 'old' : 'new');
+    }
+
+    function toggleAutoHost() {
+      const track = document.getElementById('settingTrackAutoHost');
+      const isAuto = track.classList.toggle('on');
+      localStorage.setItem('ns_auto_host', isAuto ? 'true' : 'false');
     }
 
     function killGame() {
@@ -801,5 +860,68 @@
   </button>
 
   <div id="setup-toast">Finished!</div>
-</body>
+<script>
+    function toggleUIVersion() {
+      const current = localStorage.getItem('ns_ui_version') || 'new';
+      const next = current === 'new' ? 'old' : 'new';
+      localStorage.setItem('ns_ui_version', next);
+      alert(`Host UI set to: ${next.toUpperCase()} version. This will apply next time you launch a Host session.`);
+    }
+
+    function openDocs() {
+      document.getElementById('docsModal').style.display = 'flex';
+      loadDoc('GETTING_STARTED.md');
+    }
+    function closeDocs() { document.getElementById('docsModal').style.display = 'none'; }
+
+    async function loadDoc(filename) {
+      const contentDiv = document.getElementById('docContent');
+      contentDiv.innerHTML = '<span style="color:var(--muted)">Loading...</span>';
+
+      // Dashboard is loaded as file:// by Electron; build an absolute URL to the
+      // express server using the port injected as a query parameter.
+      const port = new URLSearchParams(window.location.search).get('port') || '3000';
+      const url  = `http://localhost:${port}/docs/${filename}`;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const raw = await res.text();
+
+        // Render markdown: escape HTML first, then apply formatting rules in the
+        // correct order (block elements before inline, newlines last).
+        const html = raw
+          // 1. Escape HTML special chars so raw file content is safe
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          // 2. Fenced code blocks  ```...```
+          .replace(/```[\s\S]*?```/g, m => {
+            const inner = m.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '');
+            return `<pre style="background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;overflow-x:auto;font-size:11px;line-height:1.6;margin:8px 0;">${inner}</pre>`;
+          })
+          // 3. Headings
+          .replace(/^# (.+)$/gm,   '<h2 style="color:var(--accent);font-size:16px;font-weight:700;margin:16px 0 6px;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:6px;">$1</h2>')
+          .replace(/^## (.+)$/gm,  '<h3 style="color:var(--text);font-size:13px;font-weight:600;margin:12px 0 4px;">$1</h3>')
+          .replace(/^### (.+)$/gm, '<h4 style="color:var(--muted);font-size:11px;font-weight:600;margin:10px 0 3px;text-transform:uppercase;letter-spacing:.08em;">$1</h4>')
+          // 4. Inline code  `...`
+          .replace(/`([^`\n]+)`/g, '<code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;font-size:11px;font-family:monospace;">$1</code>')
+          // 5. Bold  **...**
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          // 6. Italic  *...*
+          .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+          // 7. Horizontal rules  ---
+          .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:12px 0;">')
+          // 8. Bullet lists  - item
+          .replace(/^[-*] (.+)$/gm, '<li style="margin:3px 0 3px 16px;color:var(--muted);">$1</li>')
+          // 9. Newlines to <br> (but not inside <pre> blocks — already wrapped above)
+          .replace(/\n/g, '<br>');
+
+        contentDiv.innerHTML = `<div style="line-height:1.7;font-size:13px;color:var(--muted);">${html}</div>`;
+      } catch (e) {
+        contentDiv.innerHTML =
+          `<span style="color:var(--danger)">Could not load <strong>${filename}</strong> from <code style="font-size:11px;">${url}</code>.<br><br>` +
+          `<span style="color:var(--muted);font-size:11px;">Error: ${e.message}</span></span>`;
+      }
+    }
+  </script>
+  </body>
 </html>

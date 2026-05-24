@@ -1,8 +1,8 @@
-# 🌐 Nearsec Arcade: The Matchmaking Core
+# Nearsec Arcade: The Matchmaking Core
 
 Nearsec Arcade is a decentralized, public matchmaking directory designed to connect hosts with players for local-multiplayer gaming. Unlike the private "Direct Share" mode, the Arcade is built for discovery, community testing, and low-friction co-op.
 
-## 🎯 The Mission
+## The Mission
 
 * **For Hosts**: To provide a platform to share unique local co-op experiences without requiring players to own the hardware or software.
 * **For Players**: To discover high-performance, low-latency gaming sessions globally while maintaining a "browser-first" security posture.
