@@ -92,8 +92,13 @@ const pusher = new Pusher('a93f5405058cd9fc7967', {
 const arcadeChannel = pusher.subscribe('private-arcade-global');
 
 arcadeChannel.bind('client-session-ping', (data) => {
-    // Only allow trusted URLs
-    if (!isAllowedArcadeUrl(data.url)) return;
+    console.log(`[Arcade Debug] 📥 INCOMING PING | ID: ${data.id} | Game: ${data.game || data.gameTitle}`);
+    console.debug('[Arcade Debug] Raw Payload:', JSON.stringify(data));
+
+    if (!isAllowedArcadeUrl(data.url)) {
+        console.warn(`[Arcade Debug] 🛑 REJECTED: Unapproved tunnel domain -> ${data.url}`);
+        return;
+    }
 
     const existing = sessions.find(s => s.id === data.id);
     if (existing) {
@@ -135,7 +140,20 @@ setTimeout(() => {
 setInterval(() => {
     const now = Date.now();
     const initialCount = sessions.length;
-    sessions = sessions.filter(s => (now - s.lastSeen) < 25000);
+
+    // Log before pruning if we have active sessions
+    if (initialCount > 0) {
+        console.log(`[Arcade Debug] 🧹 Running heartbeat check on ${initialCount} active sessions...`);
+    }
+
+    sessions = sessions.filter(s => {
+        const ageMs = now - s.lastSeen;
+        const isAlive = ageMs < 25000;
+        if (!isAlive) {
+            console.log(`[Arcade Debug] 💀 Dropped session ${s.id} (No ping for ${Math.round(ageMs/1000)}s)`);
+        }
+        return isAlive;
+    });
 
     if (sessions.length !== initialCount) {
         if (typeof filterCards === 'function') filterCards();
@@ -228,20 +246,21 @@ function updateLiveDot(ok) {
 async function pingSession(session) {
     if (latencyMap[session.id]) return;
     try {
+        console.log(`[Arcade Debug] 🏓 Pinging tunnel: ${session.url}`);
         const t0 = performance.now();
-        // Hit a valid, lightweight endpoint instead of a 404
         await fetch(session.url + '/api/info', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
         const rawMs = performance.now() - t0;
 
-        // HTTP takes ~3 round trips (TCP + TLS + HTTP). WebRTC UDP takes 1.
-        // Divide by 2.5 to estimate the true direct connection latency.
         const ms = Math.max(1, Math.round(rawMs / 2.5));
-
         let color = ms < 60 ? 'green' : ms < 120 ? 'yellow' : 'red';
+
+        console.log(`[Arcade Debug] ⏱️ Latency to ${session.id}: ${ms}ms (${color})`);
         latencyMap[session.id] = { ms, color };
-    } catch {
+    } catch (err) {
+        console.warn(`[Arcade Debug] ⚠️ Ping failed for ${session.id} - Host might be offline or tunnel dropped.`);
         latencyMap[session.id] = { ms: null, color: 'pending' };
     }
+
     const tag = document.getElementById('lat-' + session.id);
     if (tag) updateLatencyTag(tag, session.id);
 }

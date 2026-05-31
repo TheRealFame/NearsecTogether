@@ -838,6 +838,25 @@
     #chatCloseBtn svg { width: 13px; height: 13px; }
     #chatCloseBtn:hover { border-color: var(--danger); color: var(--danger); background: rgba(248,113,113,0.08); }
   </style>
+<script>
+// ── CLIENT-ONLY BUILD FLAG ────────────────────────────────────────────────────
+// Set window.IS_CLIENT_ONLY = true before this script, or add ?client=1 to URL,
+// to strip all host-specific UI. Used for the Capacitor mobile/TV build.
+window.IS_CLIENT_ONLY = window.IS_CLIENT_ONLY
+    || new URLSearchParams(location.search).get('client') === '1'
+    || false;
+
+if (window.IS_CLIENT_ONLY) {
+    document.addEventListener('DOMContentLoaded', () => {
+        // Hide everything marked host-only
+        document.querySelectorAll('.host-only').forEach(el => el.style.display = 'none');
+        // In client mode: the nsBar never shows host-specific sections
+        // The connect flow goes straight to the direct link or arcade
+        document.body.classList.add('client-only');
+        console.log('[Build] Client-only mode active — host UI hidden');
+    });
+}
+</script>
 </head>
 
 <body>
@@ -968,6 +987,17 @@
       </button>
 
       <div class="ns-bar-divider"></div>
+      <div class="ns-bar-divider"></div>
+      <div class="ns-bar-section">Stream Quality</div>
+      <div style="display:flex;gap:4px;padding:0 2px;">
+        <button class="ns-bar-btn ns-btn-active" data-bw="auto" onclick="setBandwidthProfile('auto')"
+          style="flex:1;justify-content:center;font-size:10px;padding:7px 4px;">Auto</button>
+        <button class="ns-bar-btn" data-bw="low" onclick="setBandwidthProfile('low')"
+          style="flex:1;justify-content:center;font-size:10px;padding:7px 4px;">Low</button>
+        <button class="ns-bar-btn" data-bw="high" onclick="setBandwidthProfile('high')"
+          style="flex:1;justify-content:center;font-size:10px;padding:7px 4px;">High</button>
+      </div>
+
       <div class="ns-bar-section">Session</div>
 
       <button class="ns-bar-btn" id="guideBtn" onclick="openControllerGuide()">
@@ -1109,6 +1139,14 @@
   <script>
     // ── showOverlay patch: switch status pill to LIVE when stream starts ──
     // viewer.js defines showOverlay as a plain function; we wrap it here.
+    // Restore saved bandwidth profile button state
+    (function restoreBwProfile() {
+        const saved = localStorage.getItem('ns_bw_profile') || 'auto';
+        document.querySelectorAll('[data-bw]').forEach(btn => {
+            btn.classList.toggle('ns-btn-active', btn.dataset.bw === saved);
+        });
+    })();
+
     (function patchShowOverlay() {
       const orig = window.showOverlay;
       if (typeof orig !== 'function') return;

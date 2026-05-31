@@ -38,7 +38,7 @@ const { execFile, exec } = require('child_process');
 // Lower-case, fuzzy — "discord" catches "Discord", "Vesktop (Discord)", etc.
 // ── Default blacklist ─────────────────────────────────────────────────────────
 const DEFAULT_BLACKLIST = [
-  'discord', 'vesktop', 'armcord', 'webcord', 'legcord',
+  'firefox', 'discord', 'vesktop', 'armcord', 'webcord', 'legcord',
 'teamspeak', 'ts3client', 'mumble',
 'slack', 'zoom', 'teams', 'telegram-desktop',
 'spotify',

@@ -14,3 +14,5 @@ kbm_bindings.json
 !.dev.vars.example
 !.env.example
 dist/
+# CocoIndex Code (ccc)
+/.cocoindex_code/

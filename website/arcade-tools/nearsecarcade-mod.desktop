@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Nearsec Mod Console
+Comment=Arcade Moderator CLI
+Exec=bash -c "cd $(dirname %k) && node mod_console.js bash"
+Icon=utilities-terminal
+Terminal=true
+StartupNotify=true
+Categories=Utility;Network;

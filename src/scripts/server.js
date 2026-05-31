@@ -322,12 +322,12 @@ const globalArcadeChannel = pusher.subscribe('private-arcade-global');
 const AUDIO_BLACKLIST = [
   // Voice/chat apps — never route these
   'WEBRTC VoiceEngine', 'teamspeak', 'ts3client', 'mumble', 'slack',
-  'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
-  // Web browsers — their audio is their own business, not game audio
-  'firefox', 'firefox-bin', 'firefox-esr',
-  'chromium', 'chromium-browser', 'google-chrome', 'chrome',
-  'brave', 'brave-browser', 'vivaldi', 'opera', 'epiphany',
-  'waterfox', 'librewolf', 'ungoogled-chromium',
+'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
+// Web browsers — their audio is their own business, not game audio
+'firefox', 'firefox-bin', 'firefox-esr',
+'chromium', 'chromium-browser', 'google-chrome', 'chrome',
+'brave', 'brave-browser', 'vivaldi', 'opera', 'epiphany',
+'waterfox', 'librewolf', 'ungoogled-chromium',
 ];
 let linkedStreams = new Set(); // Tracks active wires so we don't spam the console
 
@@ -960,7 +960,26 @@ async function main() {
   // FIX: Serve the favicon explicitly so the browser finds it
   app.get("/favicon.ico", (req, res) => res.sendFile(path.join(projectRoot, "favicon.ico")));
 
-  app.get("/", (req, res) => res.sendFile(path.join(pagesDir, "index.html")));
+  app.get("/", (req, res) => {
+    const indexPath = path.join(pagesDir, "index.html");
+    let html;
+    try { html = fs.readFileSync(indexPath, "utf8"); } catch(_) { return res.sendFile(indexPath); }
+    const sess = arcadeSessions.size > 0 ? [...arcadeSessions.values()][0] : null;
+
+    // Grab the host name from the URL query, fallback to "A player"
+    const hostName = req.query.host || "A player";
+
+    // Inject the host name dynamically into the Discord tags
+    const ogTitle = sess ? sess.game : `${hostName} is looking to play!`;
+    const ogDesc  = sess ? `Join the live ${sess.game} session on Nearsec.` : `${hostName} is hosting a peer-to-peer gaming session on Nearsec.`;
+    const ogImage = (sess && sess.thumbnail) ? sess.thumbnail : "https://nearsec.cutefame.net/assets/NearsecTogether.png";
+
+    html = html
+    .replace(/(<meta property="og:title"\s+content=")[^"]*"/, `$1${ogTitle}"`)
+    .replace(/(<meta property="og:description"\s+content=")[^"]*"/, `$1${ogDesc}"`)
+    .replace(/(<meta property="og:image"\s+content=")[^"]*"/, `$1${ogImage}"`);
+    res.type("html").send(html);
+  });
   app.get("/host", (req, res) => res.sendFile(path.join(pagesDir, "host.html")));
 
   app.get("/old_host", (req, res) => {
@@ -969,6 +988,12 @@ async function main() {
   app.get("/gamepad-popup.html", (req, res) => res.sendFile(path.join(pagesDir, "gamepad-popup.html")));
   app.use('/css', express.static(path.join(__dirname, '..', 'css')));
   app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
+  app.post("/api/fe-log", express.json(), (req, res) => {
+    const { msg, src, line } = req.body || {};
+    console.error(`[renderer] ${msg} @ ${src}:${line}`);
+    res.json({ ok: true });
+  });
+
   app.get("/api/pin-required", (req, res) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
@@ -998,6 +1023,16 @@ async function main() {
   app.get("/api/arcade/sessions", (req, res) => {
     res.json([...arcadeSessions.values()]);
   });
+  app.post("/api/open-terminal", express.json(), (req, res) => {
+    if (process.platform !== "linux") return res.status(400).json({ ok:false, reason:"Linux only" });
+    const { cmd, name } = req.body || {};
+    if (!cmd) return res.status(400).json({ ok:false });
+    const title = (name||"Auto-Host").replace(/"/g,"'");
+    const terms = [`gnome-terminal --title="${title}" -- bash -c "${cmd}; exec bash"`,`xterm -title "${title}" -e bash -c "${cmd}; exec bash"`,`konsole --title "${title}" -e bash -c "${cmd}; exec bash"`];
+    const { exec: _exec } = require("child_process");
+    let i=0; (function t(){ if(i>=terms.length) return res.json({ok:false,reason:"no terminal found"}); _exec(terms[i++], err=>{ if(err) t(); else res.json({ok:true}); }); })();
+  });
+
   let activeGameProc = null;
 
   app.post("/api/force-route", express.json(), (req, res) => {
@@ -1160,6 +1195,7 @@ async function main() {
 
   function broadcastRoster() {
     const roster = [];
+    roster.push({ id:'host_0', name:'Host', gp:false, kb:false, slot:0, locked:true, inputMode:'host' });
     viewers.forEach((vws, id) => {
       const pads = viewerGamepads.get(id) || new Set([0]);
       pads.forEach(padIdx => {
@@ -1306,12 +1342,47 @@ async function main() {
 
           if (msg.type === "chat") { broadcast(JSON.stringify(msg)); return; }
 
+          // FIX 1: Catch the direct profile change from the UI and send to Python
+          if (msg.type === "set-ctrl-type") {
+            global.currentCtrlType = msg.ctrlType;
+            toUinput(msg);
+            return;
+          }
+
           if (msg.type === "ctrl-settings") {
             toUinput({ type: 'set_force_xboxone',    value: !!msg.forceXboxOne });
             toUinput({ type: 'set_enable_dualshock', value: !!msg.enableDualShock });
             toUinput({ type: 'set_enable_motion',    value: !!msg.enableMotion });
-            console.log("[host] ctrl-settings: forceXboxOne=%s enableDualShock=%s enableMotion=%s",
-                        !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion);
+            toUinput({ type: 'ctrl-settings-hybrid', enabled: !!msg.hybridInput });
+
+            // Save global states
+            global.currentCtrlType = msg.ctrlType || 'xbox360';
+            global.hybridInputActive = msg.hybridInput;
+
+            viewers.forEach((_, vid) => {
+              toUinput({ type: 'set-ctrl-type', viewerId: vid, ctrlType: global.currentCtrlType });
+            });
+
+            // FIX: Correctly toggle BOTH ON and OFF states in memory for the viewers
+            if (msg.hybridInput) {
+              viewers.forEach((vws, vid) => {
+                const p0 = vid + '_0';
+                const cur = inputPerms.get(p0) || { gp:true, kb:false, slot:null };
+                inputPerms.set(p0, { ...cur, gp:true, kb:true });
+                if (vws.readyState === 1) vws.send(JSON.stringify({ type:'input-state', gp:true, kb:true, mode:'hybrid' }));
+              });
+            } else {
+              viewers.forEach((vws, vid) => {
+                const p0 = vid + '_0';
+                const cur = inputPerms.get(p0) || { gp:true, kb:false, slot:null };
+                // Default back to gamepad-only when hybrid is disabled
+                inputPerms.set(p0, { ...cur, gp:true, kb:false });
+                if (vws.readyState === 1) vws.send(JSON.stringify({ type:'input-state', gp:true, kb:false, mode:'gamepad' }));
+              });
+            }
+
+            console.log("[host] ctrl-settings: forceXboxOne=%s enableDualShock=%s enableMotion=%s hybrid=%s ctrlType=%s",
+                        !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion, !!msg.hybridInput, global.currentCtrlType);
             return;
           }
 
@@ -1321,6 +1392,11 @@ async function main() {
             return;
           }
 
+          // Auto-map: host notifies which window is focused → uinput picks preset from CSV
+          if (msg.type === "window-focus") {
+            toUinput({ type: "window-focus", title: msg.title });
+            return;
+          }
           if (msg.type === "set-input-mode") {
             const modeMap = {
               gamepad:      { gp: true,  kb: false },
@@ -1357,19 +1433,18 @@ async function main() {
 
           if (msg.type === "arcade-session-start") {
             const arcadeUrl = msg.tunnelUrl || tunnelUrl;
-            if (!arcadeUrl) {
-              if (hostWS && hostWS.readyState === 1)
-                hostWS.send(JSON.stringify({ type: 'arcade-session-error', reason: 'No tunnel URL active. Start a tunnel first.' }));
-              return;
-            }
+            if (!arcadeUrl) { /* error logic */ return; }
+
+            const cfg = loadConfig(); // Fetch live config
+            const sessionName = cfg.hostName || 'Host';
             const sessionId = 'ns-' + Date.now() + '-' + (++arcadeHostId);
             const session = {
               id: sessionId,
-            game: msg.config?.title || 'Arcade Game',
-            thumbnail: msg.config?.thumbnail || null,
-            region: 'Nearsec Arcade',
-            hasPin: !!msg.config?.requirePin,
-            maxPlayers: parseInt(msg.config?.maxPlayers || 4),
+              game: msg.config?.title || 'Arcade Game',
+              thumbnail: msg.config?.thumbnail || null,
+              region: `${sessionName}'s Arcade`, // FIXED: Uses actual name for Rich Presence
+              hasPin: !!msg.config?.requirePin,
+              maxPlayers: parseInt(msg.config?.maxPlayers || 4),
             url: arcadeUrl,
             startedAt: Date.now(),
             isStreaming: true,
@@ -1454,11 +1529,18 @@ async function main() {
       const defaultName = "Guest" + (1000 + Math.floor(Math.random() * 9000));
       viewers.set(id, ws);
       viewerNames.set(id, defaultName);
-      inputPerms.set(id + '_0', { gp: true, kb: false, slot: null });
+
+      // FIX: Apply global hybrid state to new viewers joining
+      const startKb = !!global.hybridInputActive;
+      inputPerms.set(id + '_0', { gp: true, kb: startKb, slot: null });
+
       console.log("[viewer]", id, "(" + defaultName + ") joined (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
 
+      // Immediately tell Python to apply the correct profile to this new viewer
+      toUinput({ type: 'set-ctrl-type', viewerId: id, ctrlType: global.currentCtrlType || 'xbox360' });
+
       ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: defaultName }));
-      ws.send(JSON.stringify({ type: "input-state", gp: true, kb: false }));
+      ws.send(JSON.stringify({ type: "input-state", gp: true, kb: startKb, mode: startKb ? 'hybrid' : 'gamepad' }));
 
       if (hostWS && hostWS.readyState === 1) {
         hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: defaultName }));
@@ -1477,7 +1559,8 @@ async function main() {
         try {
           const msg = JSON.parse(raw);
 
-          if (msg.type === "answer" || msg.type === "ice-viewer") {
+          // Inject viewer ID for answers AND mic renegotiation requests
+          if (msg.type === "answer" || msg.type === "ice-viewer" || msg.type === "viewer-mic-ready") {
             msg._viewerId = id;
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify(msg));
             return;
@@ -1543,7 +1626,11 @@ async function main() {
 
             const totalPads = [...viewerGamepads.values()].reduce((sum, s) => sum + s.size, 0);
             if (totalPads >= 16) {
-              console.log("[viewer] slot cap reached (16 total pads), ignoring controller from", id);
+              console.log("[viewer] global slot cap (16) reached, ignoring from", id);
+              return;
+            }
+            if ((viewerGamepads.get(id) || new Set()).size >= 4) {
+              console.log("[viewer] per-viewer cap (4) reached for", id);
               return;
             }
 
@@ -1616,6 +1703,14 @@ async function main() {
             const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
             if (msg.type === "gamepad" && !perms.gp) return;
             if (msg.type === "kbm" && !perms.kb) return;
+
+            // If viewer's primary slot is kbm_emulated, suppress any extra gamepad devices
+            // (e.g. touch padIndex:99) to prevent a second virtual gamepad appearing in the OS.
+            if (msg.type === "gamepad" && padIdx !== 0) {
+              const primaryPerms = inputPerms.get(id + '_0') || {};
+              const primaryMode  = primaryPerms.gp && primaryPerms.kb ? 'kbm_emulated' : 'gamepad';
+              if (primaryMode === 'kbm_emulated') return;
+            }
 
             msg.pad_id = rosterId;
             toUinput(msg);

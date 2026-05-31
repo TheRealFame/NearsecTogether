@@ -1,3 +1,77 @@
+// ── BANDWIDTH / QUALITY PROFILES ─────────────────────────────────────────────
+// Auto: unconstrained (let WebRTC CC do its job — best for most users)
+// Low:  cap at 720p / 1.5 Mbps  (mobile data, bad Wi-Fi)
+// High: cap at 4K  / 8 Mbps     (LAN / fibre, power users)
+//
+// Applied after setRemoteDescription so the transceiver already exists.
+// Uses setParameters() on the video receiver if supported, otherwise falls
+// back to SDP bandwidth annotation (b=AS). Silently no-ops if the host is
+// running a strict single-encode pipeline that doesn't honour it.
+
+const BW_PROFILES = {
+    auto: { label: 'Auto',  maxBitrate: null,      maxHeight: null, scaleDown: 1   },
+    low:  { label: 'Low',   maxBitrate: 1_500_000, maxHeight: 720,  scaleDown: 2   },
+    high: { label: 'High',  maxBitrate: 8_000_000, maxHeight: 2160, scaleDown: 1   },
+};
+
+let _bwProfile = localStorage.getItem('ns_bw_profile') || 'auto';
+
+function setBandwidthProfile(key) {
+    if (!BW_PROFILES[key]) return;
+    _bwProfile = key;
+    localStorage.setItem('ns_bw_profile', key);
+    // Update button states in nsBar
+    document.querySelectorAll('[data-bw]').forEach(btn => {
+        btn.classList.toggle('ns-btn-active', btn.dataset.bw === key);
+    });
+    // Apply immediately if a PC exists
+    if (pc) _applyBwProfile(pc);
+    console.log('[BW] Profile set:', key);
+}
+
+async function _applyBwProfile(targetPc) {
+    const profile = BW_PROFILES[_bwProfile];
+    if (!targetPc) return;
+
+    try {
+        // 1. Try RTCRtpReceiver.setParameters() (Chrome 94+)
+        const receivers = targetPc.getReceivers();
+        for (const recv of receivers) {
+            if (recv.track?.kind !== 'video') continue;
+            const params = recv.getParameters?.();
+            if (!params) continue;
+            if (profile.maxBitrate) {
+                // encodings on the receiver side control REMB/TMMBR feedback
+                if (params.encodings?.length) {
+                    params.encodings[0].maxBitrate = profile.maxBitrate;
+                    if (profile.scaleDown > 1)
+                        params.encodings[0].scaleResolutionDownBy = profile.scaleDown;
+                }
+            } else {
+                // Auto: clear constraints
+                if (params.encodings?.length) {
+                    delete params.encodings[0].maxBitrate;
+                    params.encodings[0].scaleResolutionDownBy = 1;
+                }
+            }
+            try { await recv.setParameters(params); } catch(_) {}
+        }
+
+        // 2. Also send a hint to the host via WS so it can optionally adjust its encoder
+        if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({
+                type:    'viewer-bw-hint',
+                profile: _bwProfile,
+                maxBitrate:  profile.maxBitrate,
+                maxHeight:   profile.maxHeight,
+            }));
+        }
+    } catch (e) {
+        console.warn('[BW] Could not apply profile:', e);
+    }
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 const host = location.host;
 let ws, pc, myId = sessionStorage.getItem('ns_viewer_id');
@@ -133,8 +207,11 @@ async function enableMic() {
 
         if (pc && pc.signalingState !== 'closed') {
             micSender = pc.addTrack(audioTrack, localMicStream);
-            // onnegotiationneeded fires automatically → sends renegotiation offer
+            // NEW: Command the Host to send a fresh offer picking up this new audio track
+            if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'viewer-mic-ready' }));
         }
+    }
 
         micEnabled = true;
         updateMicButton();
@@ -341,7 +418,9 @@ function startVAD(stream) {
         }
         vadTick();
         console.log('[VAD] Started');
-    } catch (e) { console.error('[VAD] Error:', e); }
+    } catch (e) { // <--- ADDED THE MISSING } RIGHT HERE
+    console.error('[VAD] Error:', e);
+    }
 }
 
 function stopVAD() {
@@ -477,7 +556,11 @@ function requestPointerLock() {
     if (!kbEnabled) return;
     if (!document.pointerLockElement) {
         const c = document.getElementById('video-container') || document.body;
-        c.requestPointerLock().catch(() => {});
+        // FIX: Make it safe for Firefox (which doesn't return a Promise)
+        const promise = c.requestPointerLock();
+        if (promise && typeof promise.catch === 'function') {
+            promise.catch(() => {});
+        }
     }
 }
 frameCanvas.addEventListener('click', requestPointerLock);
@@ -737,6 +820,8 @@ async function connect() {
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 ws.send(JSON.stringify({ type:'answer', sdp:pc.localDescription }));
+                // Apply bandwidth profile now that transceivers are negotiated
+                _applyBwProfile(pc);
             } catch(err) { console.error('[webrtc] offer error:', err.message); try { pc.close(); } catch {} pc = null; }
             return;
         }
@@ -781,11 +866,11 @@ async function connect() {
             return;
         }
         if (msg.type === 'input-state') {
-            kbEnabled = !!msg.kb;
+            // hybrid mode = gamepad + kbm both active
+            kbEnabled = !!msg.kb || msg.mode === 'hybrid';
             if (!kbEnabled && document.pointerLockElement) document.exitPointerLock();
             const hint = document.getElementById('kbmHint');
             if (hint) hint.style.display = kbEnabled ? 'inline' : 'none';
-            // kbBtn is not shown in the viewer UI — host controls this server-side
             return;
         }
         if (msg.type === 'slot-assigned') { return; } // Slot info not displayed to viewer

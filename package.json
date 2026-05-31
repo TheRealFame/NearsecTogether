@@ -1,6 +1,6 @@
 {
   "name": "NearsecTogether",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "author": "Fame <support@cutefame.net>",
   "description": "Browser-based game streaming host",
   "main": "electron-main.js",
@@ -16,6 +16,9 @@
     "dist:linux": "electron-builder --linux --publish always"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/filesystem": "^8.1.2",
     "discord-rpc": "^4.0.1",
     "electron-updater": "^6.8.3",
     "express": "^4.18.0",
@@ -27,6 +30,8 @@
     "ws": "^8.0.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.3.4",
     "electron": "^28.0.0",
     "electron-builder": "^24.13.3",
     "wrangler": "^4.90.0"

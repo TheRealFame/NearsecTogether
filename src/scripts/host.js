@@ -23,9 +23,117 @@ const pusher = new Pusher('a93f5405058cd9fc7967', {
     authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth'
 });
 const arcadeChannel = pusher.subscribe('private-arcade-global');
+
+// ── NEW: Catch the Ban 403 error and alert the Host ──
+arcadeChannel.bind('pusher:subscription_error', (status) => {
+    if (status === 403) {
+        log('Arcade Error: Your IP is banned from the network.', 'err');
+
+        // Change the Arcade Live button to show the ban
+        const btnArcade = document.getElementById('btnArcade');
+        if (btnArcade) {
+            btnArcade.innerHTML = '<span style="color:var(--danger); font-weight:bold; font-size: 11px;">BANNED</span>';
+        }
+
+        // Stop the ping interval so it doesn't spam the banned endpoint
+        if (arcadePingInterval) {
+            clearInterval(arcadePingInterval);
+            arcadePingInterval = null;
+        }
+    }
+});
+// ─────────────────────────────────────────────────────
+
 let arcadePingInterval = null;
 let arcadeOverrodePin = false;
 const hostSessionId = 'ns-' + Math.random().toString(36).substr(2, 9);
+
+
+// ── AUDIO STATE & MASTER MUTE ────────────────────────────────────────────────
+// Declared here so host.html inline scripts can reference them without redeclaring.
+let _desktopGainNode = null;
+let _hostMicGainNode  = null;
+window._masterMuteActive = false;
+window._savedDesktopGain = 1.0;
+window._savedMicGain     = 1.0;
+
+function setDesktopVolume(val) {
+    const v = parseInt(val, 10);
+    const el = document.getElementById('desktopVolVal');
+    if (el) el.textContent = v;
+    localStorage.setItem('ns_host_desktop_vol', v);
+    if (!window._masterMuteActive && _desktopGainNode)
+        _desktopGainNode.gain.value = v / 100;
+}
+
+function setHostMicGain(val) {
+    const v = parseInt(val, 10);
+    const el = document.getElementById('hostMicVal');
+    if (el) el.textContent = v;
+    localStorage.setItem('ns_host_mic_gain', v);
+    if (!window._masterMuteActive && _hostMicGainNode)
+        _hostMicGainNode.gain.value = v / 100;
+}
+
+function attachDesktopGain(stream) {
+    const aTrack = stream.getAudioTracks()[0];
+    if (!aTrack) return;
+    try {
+        const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+        const src  = ctx.createMediaStreamSource(new MediaStream([aTrack]));
+        const gain = ctx.createGain();
+        const dst  = ctx.createMediaStreamDestination();
+        const savedVol = parseInt(localStorage.getItem('ns_host_desktop_vol') ?? '100', 10) / 100;
+        gain.gain.value = window._masterMuteActive ? 0 : savedVol;
+        src.connect(gain);
+        gain.connect(dst);
+        _desktopGainNode = gain;
+        stream.removeTrack(aTrack);
+        stream.addTrack(dst.stream.getAudioTracks()[0]);
+    } catch(e) { console.warn('[HostAudio] Gain node failed:', e); }
+}
+
+function toggleMasterMute() {
+    window._masterMuteActive = !window._masterMuteActive;
+    const active = window._masterMuteActive;
+    const btn  = document.getElementById('btnMasterAudioKill');
+    const icon = document.getElementById('speakerIcon');
+
+    if (active) {
+        window._savedDesktopGain = _desktopGainNode ? _desktopGainNode.gain.value : 1.0;
+        window._savedMicGain     = _hostMicGainNode  ? _hostMicGainNode.gain.value  : 1.0;
+        if (_desktopGainNode) _desktopGainNode.gain.value = 0;
+        if (_hostMicGainNode)  _hostMicGainNode.gain.value  = 0;
+        if (typeof currentStream !== 'undefined' && currentStream)
+            currentStream.getAudioTracks().forEach(t => t.enabled = false);
+        if (btn)  { btn.classList.add('master-mic-kill'); btn.title = 'Audio MUTED — click to restore'; }
+        if (icon) { icon.src = '/assets/icons/speaker-off.svg'; icon.style.filter = 'invert(0.4) sepia(1) saturate(6) hue-rotate(-20deg)'; }
+        if (typeof log === 'function') log('Master mute: desktop audio cut', 'warn');
+    } else {
+        if (_desktopGainNode) _desktopGainNode.gain.value = window._savedDesktopGain;
+        if (_hostMicGainNode)  _hostMicGainNode.gain.value  = window._savedMicGain;
+        if (typeof currentStream !== 'undefined' && currentStream)
+            currentStream.getAudioTracks().forEach(t => t.enabled = true);
+        if (btn)  { btn.classList.remove('master-mic-kill'); btn.title = 'Cut Desktop Audio to Stream'; }
+        if (icon) { icon.src = '/assets/icons/speaker.svg'; icon.style.filter = 'invert(0.6)'; }
+        if (typeof log === 'function') log('Master mute: audio restored', 'ok');
+    }
+}
+
+let _globalViewerVolumeLevel = 1.0;
+function setGlobalViewerVolume(val) {
+    _globalViewerVolumeLevel = val / 100;
+    const el = document.getElementById('globalViewerVolVal');
+    if (el) el.textContent = val;
+    if (typeof viewerAudioStates !== 'undefined') {
+        Object.keys(viewerAudioStates).forEach(vid => {
+            const audioEl = document.getElementById('remote-audio-' + vid);
+            if (audioEl && viewerAudioStates[vid].state < 2)
+                audioEl.volume = (viewerAudioStates[vid].vol / 100) * _globalViewerVolumeLevel;
+        });
+    }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const congestionControl = {
     enabled: true,
@@ -238,7 +346,10 @@ async function setLowLatencyParams(pc) {
     try {
         const params = sender.getParameters();
         const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
-        const fpsVal = parseInt(document.getElementById('fpsSelect')?.value) || 60;
+        const _appFpsUnlock = (typeof appConfig !== 'undefined') && appConfig.fpsUnlock;
+    const fpsVal = _appFpsUnlock
+      ? Math.max(parseInt(document.getElementById('fpsSelect')?.value) || 60, 120)
+      : (parseInt(document.getElementById('fpsSelect')?.value) || 60);
         if (params.encodings?.length) {
             if (bitVal > 0) {
                 params.encodings[0].maxBitrate = bitVal;
@@ -248,7 +359,10 @@ async function setLowLatencyParams(pc) {
             params.encodings[0].maxFramerate = fpsVal;
             params.encodings[0].networkPriority = 'high';
             params.encodings[0].priority = 'high';
-            params.encodings[0].degradationPreference = 'maintain-framerate';
+
+            // FIX: Actually read the UI dropdown so you can choose Crisp vs Smooth
+            const degPref = document.getElementById('degSelect')?.value || 'maintain-framerate';
+            params.encodings[0].degradationPreference = degPref;
         }
         await sender.setParameters(params);
     } catch { }
@@ -299,33 +413,53 @@ function setAudDot(state, label) {
 }
 
 // ── V3 UI UPDATE ──
-function renderUrls(d) {
-    const el = document.getElementById('urlList');
-    el.innerHTML = '';
-    const tunnelUrl = d.tunnelUrl || null;
-    const rows = [
-        tunnelUrl
-        ? { url: tunnelUrl, label: 'HTTPS tunnel (v3) ← share this', color: 'var(--accent)' }
-        : { url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true },
-        { url: `http://${d.lanIP}:${d.port}/`, label: 'LAN (v3) — same network only', color: '#555' },
-    ];
-    if (!tunnelUrl && d.publicIP)
-        rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/`, label: 'Public IP (v3) (needs port forward)', color: '#666' });
+async function renderUrls(d) {
+    // 1. Fetch the REAL host name from your backend config FIRST
+    let hostName = 'A player';
+    try {
+        const cfg = await fetch('/api/config').then(r => r.json());
+        if (cfg && cfg.hostName) hostName = cfg.hostName;
+    } catch (e) {}
 
-    rows.forEach(r => {
-        const div = document.createElement('div');
-        div.className = 'url-row';
-        div.style.color = r.color;
-        div.textContent = r.url;
-        if (!r.noclick) div.onclick = () => {
-            navigator.clipboard.writeText(r.url).catch(() => { });
-            const tmp = div.textContent; div.textContent = '✓ copied!';
-            setTimeout(() => div.textContent = tmp, 1500);
-        };
-        const sub = document.createElement('div');
-        sub.className = 'url-label'; sub.textContent = '↑ ' + r.label;
-        el.appendChild(div); el.appendChild(sub);
-    });
+    const encodedName = encodeURIComponent(hostName);
+
+    // 2. Append it to the tunnel URL
+    let finalTunnelUrl = null;
+    if (d.tunnelUrl) {
+        const separator = d.tunnelUrl.includes('?') ? '&' : '?';
+        finalTunnelUrl = `${d.tunnelUrl}${separator}host=${encodedName}`;
+    }
+
+    const rows = [
+        finalTunnelUrl
+        ? { url: finalTunnelUrl, label: 'HTTPS tunnel (v3) ← share this', color: 'var(--accent)' }
+        : { url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true },
+
+        { url: `http://${d.lanIP}:${d.port}/?v3&host=${encodedName}`, label: 'LAN (v3) — same network only', color: '#555' },
+    ];
+
+    if (!finalTunnelUrl && d.publicIP)
+        rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/?v3&host=${encodedName}`, label: 'Public IP (v3) (needs port forward)', color: '#666' });
+
+    // 3. NOW clear the HTML and append (prevents the async duplication bug)
+    const el = document.getElementById('urlList');
+    if (el) {
+        el.innerHTML = '';
+        rows.forEach(r => {
+            const div = document.createElement('div');
+            div.className = 'url-row';
+            div.style.color = r.color;
+            div.textContent = r.url;
+            if (!r.noclick) div.onclick = () => {
+                navigator.clipboard.writeText(r.url).catch(() => { });
+                const tmp = div.textContent; div.textContent = '✓ copied!';
+                setTimeout(() => div.textContent = tmp, 1500);
+            };
+            const sub = document.createElement('div');
+            sub.className = 'url-label'; sub.textContent = '↑ ' + r.label;
+            el.appendChild(div); el.appendChild(sub);
+        });
+    }
 }
 
 const savedViewerModes = JSON.parse(localStorage.getItem('ns_saved_modes') || '{}');
@@ -340,30 +474,11 @@ let _globalMicKillActive = false;
 
 // Inline SVG builders — no external mic icon file needed
 function _micSvg(state) {
-    // Colors per state
-    const colors = [
-        'var(--text)',    // 0: normal
-        'var(--warn)',    // 1: quiet
-        'var(--danger)',  // 2: local mute
-        'var(--muted)',   // 3: global mute
-    ];
-    const c = colors[state] || colors[0];
-    const slashed = state >= 2;
-
-    const basePaths = `
-      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-      <line x1="12" y1="19" x2="12" y2="23"/>
-      <line x1="8" y1="23" x2="16" y2="23"/>`;
-    const slash = slashed
-        ? `<line x1="2" y1="2" x2="22" y2="22" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`
-        : '';
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14"
-      fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-      style="flex-shrink:0;display:block;">
-      ${basePaths}${slash}
-    </svg>`;
+    const icon  = state >= 2 ? 'mic-off' : 'mic';
+    const style = state === 1 ? 'filter:sepia(1) saturate(4) hue-rotate(10deg);'
+                : state >= 2  ? 'filter:invert(0.4) sepia(1) saturate(6) hue-rotate(-20deg);'
+                : 'filter:invert(0.75);';
+    return `<img src="/assets/icons/${icon}.svg" style="width:14px;height:14px;flex-shrink:0;display:block;${style}" alt="">`;
 }
 
 const _micTitles = [
@@ -601,10 +716,10 @@ function toggleSlotLock(rosterId) {
 }
 
 function togglePin() {
+    if (arcadePingInterval) { log('Cannot change PIN during active Arcade session', 'warn'); return; }
     pinEnabled = !pinEnabled;
     const btn = document.getElementById('pinToggle');
-    btn.textContent = pinEnabled ? 'ON' : 'OFF';
-    btn.className = 'tog-btn' + (pinEnabled ? ' on' : '');
+    if (btn) { btn.textContent = pinEnabled ? 'ON' : 'OFF'; btn.classList.toggle('on', pinEnabled); }
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: pinEnabled }));
 }
 
@@ -619,6 +734,13 @@ function connectWS() {
     ws = new WebSocket(proto + '://' + location.host + '/ws/host');
     ws.onopen = () => {
         log('Connected to server', 'ok');
+
+        // NEW: Fetch host name for UI
+        fetch('/api/config').then(r => r.json()).then(cfg => {
+            const hostNameEl = document.getElementById('displayHostName');
+            if (hostNameEl) hostNameEl.textContent = cfg.hostName || 'Guest';
+        }); // <--- THIS WAS MISSING. IT CLOSES THE FETCH.
+
         fetch('/api/info').then(r => r.json()).then(d => {
             currentPin = d.pin;
             document.getElementById('pinVal').textContent = d.pin;
@@ -668,6 +790,12 @@ function connectWS() {
         if (msg.type === 'ice-viewer') {
             const pc = peerConnections[msg._viewerId];
             if (pc && msg.candidate) { try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { } }
+        }
+
+        // NEW: Intercept viewer mic trigger
+        if (msg.type === 'viewer-mic-ready') {
+            log('Viewer ' + msg._viewerId + ' enabled microphone. Re-syncing tracks...', 'ok');
+            sendOfferToViewer(msg._viewerId);
         }
 
         if (msg.type === 'tunnel-url') {
@@ -918,7 +1046,10 @@ async function startCapture() {
     peerConnections = {};
 
     const isLinux = navigator.userAgent.includes('Linux') || navigator.platform.toLowerCase().includes('linux');
-    const fpsVal = parseInt(document.getElementById('fpsSelect')?.value) || 60;
+    const _appFpsUnlock = (typeof appConfig !== 'undefined') && appConfig.fpsUnlock;
+    const fpsVal = _appFpsUnlock
+      ? Math.max(parseInt(document.getElementById('fpsSelect')?.value) || 60, 120)
+      : (parseInt(document.getElementById('fpsSelect')?.value) || 60);
     const resVal = document.getElementById('resSelect')?.value || '1080p';
 
     let videoConstraints = { frameRate: { ideal: fpsVal } };
@@ -929,6 +1060,7 @@ async function startCapture() {
 
     try {
         let screenStream;
+        videoConstraints.cursor = 'never';
         const displayMediaOptions = { video: videoConstraints };
 
         if (!isLinux && audioSettings.forceAudioEnabled) {
@@ -1165,15 +1297,33 @@ function stopCapture() {
         arcadePingInterval = null;
         arcadeChannel.trigger('client-session-stop', { id: hostSessionId });
         log('Arcade Mode: Session ended on Arcade', 'warn');
+
+        // Restore the Arcade button SVG icon
+        const btnArcade = document.getElementById('btnArcade');
+        if (btnArcade) {
+            btnArcade.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+        }
     }
 
     if (arcadeOverrodePin) {
         arcadeOverrodePin = false;
         pinEnabled = true;
         const btn = document.getElementById('pinToggle');
-        if (btn) { btn.textContent = 'ON'; btn.className = 'tog-btn on'; }
+        if (btn) { btn.textContent = 'ON'; btn.className = 'pin-toggle-btn on'; }
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: true }));
         log('PIN re-enabled after Arcade session', 'ok');
+    }
+
+    // NEW: Unlock PIN UI when session ends (MOVED HERE SO IT ALWAYS RUNS)
+    const pinSwitch = document.getElementById('arcadeRequirePin');
+    const pinDisplay = document.getElementById('pinVal');
+
+    if (pinSwitch) {
+        pinSwitch.disabled = false;
+        pinSwitch.title = '';
+    }
+    if (pinDisplay && pinDisplay.dataset.originalPin) {
+        pinDisplay.textContent = pinDisplay.dataset.originalPin;
     }
 
     log('Capture stopped');
@@ -1345,10 +1495,12 @@ async function checkTunnelOnConnect() {
 }
 
 const ctrlSettings = {
-    forceXboxOne: localStorage.getItem('ns_ctrl_forceXboxOne') === 'true',
-        enableDualShock: localStorage.getItem('ns_ctrl_enableDualShock') === 'true',
-        enableMotion: localStorage.getItem('ns_ctrl_enableMotion') === 'true',
-        defaultInputMode: localStorage.getItem('ns_ctrl_defaultInputMode') || 'gamepad'
+    forceXboxOne:     localStorage.getItem('ns_ctrl_forceXboxOne')    === 'true',
+    enableDualShock:  localStorage.getItem('ns_ctrl_enableDualShock')  === 'true',
+    enableMotion:     localStorage.getItem('ns_ctrl_enableMotion')     === 'true',
+    defaultInputMode: localStorage.getItem('ns_ctrl_defaultInputMode') || 'gamepad',
+    hybridInput:      localStorage.getItem('ns_ctrl_hybridInput')      === 'true',
+    ctrlType:         localStorage.getItem('ns_ctrl_ctrlType')         || 'xbox360',
 };
 
 function applyCtrlSettingsUI() {
@@ -1364,6 +1516,10 @@ function applyCtrlSettingsUI() {
 
     const modeSelect = document.getElementById('defaultInputModeSelect');
     if (modeSelect) modeSelect.value = ctrlSettings.defaultInputMode;
+    const trackHybrid = document.getElementById('ctrlTrackHybrid');
+    if (trackHybrid) trackHybrid.classList.toggle('on', !!ctrlSettings.hybridInput);
+    const ctrlTypeSelect = document.getElementById('ctrlTypeSelect');
+    if (ctrlTypeSelect) ctrlTypeSelect.value = ctrlSettings.ctrlType || 'xbox360';
 
     const btn = document.getElementById('ctrlSettingsBtn');
 
@@ -1389,6 +1545,35 @@ function toggleCtrlSetting(key) {
     log('ctrl-settings: ' + key + ' = ' + ctrlSettings[key], 'ok');
 }
 
+
+function toggleHybridInput() {
+    ctrlSettings.hybridInput = !ctrlSettings.hybridInput;
+    localStorage.setItem('ns_ctrl_hybridInput', ctrlSettings.hybridInput);
+    applyCtrlSettingsUI();
+    sendCtrlSettings();
+    if (ws && ws.readyState === 1 && ctrlSettings.hybridInput) {
+        (_lastRosterList || []).forEach(v => {
+            ws.send(JSON.stringify({ type: 'set-input', viewerId: v.id, gp: true, kb: true }));
+        });
+        log('Hybrid Input ON — Gamepad + KBM active for all viewers', 'ok');
+    } else {
+        log('Hybrid Input OFF', 'warn');
+    }
+}
+
+function changeCtrlType(type) {
+    ctrlSettings.ctrlType = type;
+    localStorage.setItem('ns_ctrl_ctrlType', type);
+    applyCtrlSettingsUI();
+    sendCtrlSettings();
+    if (ws && ws.readyState === 1) {
+        (_lastRosterList || []).forEach(v => {
+            ws.send(JSON.stringify({ type: 'set-ctrl-type', viewerId: v.id.split('_')[0], ctrlType: type }));
+        });
+    }
+    log('Controller type: ' + type, 'ok');
+}
+
 function changeDefaultInputMode(mode) {
     ctrlSettings.defaultInputMode = mode;
     localStorage.setItem('ns_ctrl_defaultInputMode', mode);
@@ -1401,10 +1586,12 @@ function sendCtrlSettings() {
     if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({
             type: 'ctrl-settings',
-            forceXboxOne: ctrlSettings.forceXboxOne,
-                enableDualShock: ctrlSettings.enableDualShock,
-                enableMotion: ctrlSettings.enableMotion,
-                defaultInputMode: ctrlSettings.defaultInputMode
+            forceXboxOne:     ctrlSettings.forceXboxOne,
+            enableDualShock:  ctrlSettings.enableDualShock,
+            enableMotion:     ctrlSettings.enableMotion,
+            defaultInputMode: ctrlSettings.defaultInputMode,
+            hybridInput:      ctrlSettings.hybridInput,
+            ctrlType:         ctrlSettings.ctrlType,
         }));
     }
 }
@@ -1460,6 +1647,19 @@ async function startArcadeSession() {
     } else {
         _doArcadeRegister();
     }
+
+    // Lock PIN controls while arcade session is live
+    const pinSwitch = document.getElementById('arcadeRequirePin');
+    const pinDisplay = document.getElementById('pinVal');
+    if (pinSwitch) {
+        pinSwitch.disabled = true;
+        pinSwitch.title = 'Cannot change PIN while session is live';
+    }
+    if (pinDisplay) {
+        pinDisplay.dataset.originalPin = pinDisplay.textContent;
+        // Inject a smaller, green badge style instead of plain text
+        pinDisplay.innerHTML = '<span style="color:var(--green); font-size:14px; font-weight:800; letter-spacing:0.05em;">Arcade Session</span>';
+    }
 }
 
 const getHostOS = () => {
@@ -1478,11 +1678,15 @@ function _doArcadeRegister() {
         }
         log(`Arcade Mode: ${arcadeConfig.title} (${arcadeConfig.maxPlayers} players) → ${info.tunnelUrl}`, 'ok');
 
+        if (info.tunnelUrl && !info.tunnelUrl.includes('voiceMode')) {
+            const _sep = info.tunnelUrl.includes('?') ? '&' : '?';
+            info.tunnelUrl += _sep + 'voiceMode=' + (arcadeConfig.captureMic ? 'push-to-talk' : 'off');
+        }
         if (!arcadeConfig.requirePin && pinEnabled) {
             pinEnabled = false;
             arcadeOverrodePin = true;
             const btn = document.getElementById('pinToggle');
-            if (btn) { btn.textContent = 'OFF'; btn.className = 'tog-btn'; }
+            if (btn) { btn.textContent = 'OFF'; btn.className = 'pin-toggle-btn'; }
             if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: false }));
             log('PIN disabled for Arcade session', 'ok');
         }
@@ -1493,7 +1697,7 @@ function _doArcadeRegister() {
             thumbnail: arcadeConfig.thumbnail,
             hasPin: arcadeConfig.requirePin,
             url: info.tunnelUrl,
-            region: `${knownViewers.size}/${arcadeConfig.maxPlayers} Players • ${getHostOS()}`
+            region: `${knownViewers.size + 1}/${arcadeConfig.maxPlayers} Players • ${getHostOS()}`
         });
 
         arcadeChannel.trigger('client-session-ping', getPingData());
@@ -1508,8 +1712,8 @@ function _doArcadeRegister() {
     }).catch(() => log('Arcade: Could not read server info', 'err'));
 }
 
-const SVG_EYE_OPEN   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-const SVG_EYE_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+const SVG_EYE_OPEN   = '<img src="/assets/icons/eye.svg"     style="width:20px;height:20px;filter:invert(0.6);pointer-events:none;" alt="">';
+const SVG_EYE_CLOSED = '<img src="/assets/icons/eye-off.svg" style="width:20px;height:20px;filter:invert(0.6);pointer-events:none;" alt="">';
 
 let previewHidden = false;
 function togglePreview() {

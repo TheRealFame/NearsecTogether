@@ -62,11 +62,7 @@
 
     <!-- Master Audio Killswitch: zeroes the desktop gain node to cut audio from the WebRTC stream -->
     <button class="rail-btn" id="btnMasterAudioKill" onclick="window.toggleMasterMute()" title="Cut Desktop Audio to Stream">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-        <line x1="23" y1="9" x2="17" y2="15"/>
-        <line x1="17" y1="9" x2="23" y2="15"/>
-      </svg>
+      <img id="speakerIcon" src="/assets/icons/speaker.svg" style="width:20px;height:20px;pointer-events:none;filter:invert(0.6);" alt="">
     </button>
 
     <button class="rail-btn" onclick="showAppSettings()" title="Settings">
@@ -89,11 +85,8 @@
 
       <div class="topbar-right">
         <div class="status-pill" id="capStatusPill"><span class="dot" id="capDot"></span><span id="capStatus" style="font-size:10px;">Idle</span></div>
-        <div class="status-pill live-pill" style="display:none" id="livePill">
-          <span style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;animation:pulse 2s infinite;"></span>
-          LIVE
-        </div>
       </div>
+
     </header>
 
     <section class="preview-stage glass">
@@ -437,6 +430,29 @@
         </select>
       </div>
 
+      <div class="ctrl-modal-row" id="ctrlRowHybrid" onclick="toggleHybridInput()">
+        <div class="ctrl-toggle-track" id="ctrlTrackHybrid"><div class="ctrl-toggle-thumb"></div></div>
+        <div class="ctrl-row-text">
+          <div class="ctrl-row-label">Hybrid Input (Gamepad + KBM)</div>
+          <div class="ctrl-row-desc">Both gamepad and KBM emulation active simultaneously. Also disables window-title auto-mapping.</div>
+        </div>
+      </div>
+
+      <div class="ctrl-modal-row" style="flex-direction:column;gap:8px;cursor:default;margin-top:8px;">
+        <div class="ctrl-row-text">
+          <div class="ctrl-row-label">Controller Prompt Type</div>
+          <div class="ctrl-row-desc">Button prompts shown in games. Requires viewer reconnect to re-enumerate.</div>
+        </div>
+        <select id="ctrlTypeSelect" onchange="changeCtrlType(this.value)"
+          style="padding:8px;border-radius:8px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--text);font-family:inherit;font-size:12px;width:100%;outline:none;">
+          <option value="xbox360">Xbox 360 (default, best compat)</option>
+          <option value="xboxone">Xbox One S</option>
+          <option value="ds4">DualShock 4 (PS4 prompts)</option>
+          <option value="dualsense">DualSense (PS5 prompts)</option>
+          <option value="switchpro">Switch Pro Controller</option>
+        </select>
+      </div>
+
     </div>
     <div class="modal-footer">
       <div class="btn-row"><button class="btn-confirm" onclick="closeCtrlModal()">Done</button></div>
@@ -690,33 +706,35 @@
     window._masterMuteActive = !window._masterMuteActive;
     const active = window._masterMuteActive;
     const btn = document.getElementById('btnMasterAudioKill');
+    const audStatus = document.getElementById('audStatus'); // NEW
+    const audDot = document.getElementById('audDot');       // NEW
 
     if (active) {
-      // 1. Save current gain values before zeroing
       window._savedDesktopGain = _desktopGainNode ? _desktopGainNode.gain.value : 1.0;
       window._savedMicGain     = _hostMicGainNode  ? _hostMicGainNode.gain.value  : 1.0;
       if (_desktopGainNode) _desktopGainNode.gain.value = 0;
       if (_hostMicGainNode)  _hostMicGainNode.gain.value  = 0;
 
-      // 2. Explicitly sever MediaStream active tracks
       if (typeof currentStream !== 'undefined' && currentStream) {
           currentStream.getAudioTracks().forEach(t => t.enabled = false);
       }
 
       if (btn) {
         btn.title = 'Audio MUTED — click to restore';
-        // Remove inline styles, enforce the CSS class
         btn.style.color = '';
         btn.style.borderColor = '';
         btn.classList.add('master-mic-kill');
+        const _spk = document.getElementById('speakerIcon');
+        if (_spk) { _spk.src = '/assets/icons/speaker-off.svg'; _spk.style.filter = 'invert(0.4) sepia(1) saturate(6) hue-rotate(-20deg)'; }
       }
+      if (audStatus) audStatus.textContent = 'Audio MUTED'; // SYNC
+      if (audDot) audDot.className = 'dot err';             // SYNC
+
       if (typeof log === 'function') log('Master mute: desktop audio cut from WebRTC stream', 'warn');
     } else {
-      // 1. Restore saved gains
       if (_desktopGainNode) _desktopGainNode.gain.value = window._savedDesktopGain;
       if (_hostMicGainNode)  _hostMicGainNode.gain.value  = window._savedMicGain;
 
-      // 2. Re-enable MediaStream tracks
       if (typeof currentStream !== 'undefined' && currentStream) {
           currentStream.getAudioTracks().forEach(t => t.enabled = true);
       }
@@ -724,12 +742,18 @@
       if (btn) {
         btn.title = 'Cut Desktop Audio to Stream';
         btn.classList.remove('master-mic-kill');
+        const _spk2 = document.getElementById('speakerIcon');
+        if (_spk2) { _spk2.src = '/assets/icons/speaker.svg'; _spk2.style.filter = 'invert(0.6)'; }
       }
+      if (audStatus) audStatus.textContent = 'Audio Active'; // SYNC
+      if (audDot) audDot.className = 'dot live';             // SYNC
+
       if (typeof log === 'function') log('Master mute: audio restored', 'ok');
     }
   };
 
-  let globalViewerVolume = 1.0;
+  // globalViewerVolume declared in host.js — assign here only
+  globalViewerVolume = 1.0;
   window.setGlobalViewerVolume = function(val) {
     globalViewerVolume = val / 100;
     const el = document.getElementById('globalViewerVolVal');
@@ -754,33 +778,6 @@
     if (mvEl) { mvEl.value = mv; setHostMicGain(mv); }
   });
 
-  // ── MASTER MIC KILL-SWITCH ────────────────────────────────────────────────
-  let _globalMicKillActive = false;
-
-  function toggleGlobalMicKill() {
-    _globalMicKillActive = !_globalMicKillActive;
-    const btn = document.getElementById('btnMasterMic');
-    if (btn) {
-      btn.classList.toggle('master-mic-kill', _globalMicKillActive);
-      btn.title = _globalMicKillActive ? 'All Viewer Mics Killed (Click to Restore)' : 'Mute All Viewer Mics';
-    }
-
-    document.querySelectorAll('[id^="remote-audio-"]').forEach(el => {
-      el.muted = _globalMicKillActive;
-    });
-
-    if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({
-        type: 'host-voice-broadcast',
-        action: _globalMicKillActive ? 'mute' : 'unmute'
-      }));
-    }
-
-    if (typeof log === 'function') {
-      if (_globalMicKillActive) log('Global mic kill: all viewer microphones disabled', 'warn');
-      else log('Global mic kill lifted: viewer mics restored', 'ok');
-    }
-  }
 </script>
 
 <script>
@@ -858,5 +855,32 @@
 
 <span id="trackInfo" style="display:none;"></span>
 <span id="viewerCount" style="display:none;"></span>
+
+<script>
+// ── Window-title auto-mapping (Linux only) ────────────────────────────────────
+// Polls the active window title every 2s and sends it to the server so
+// linux_uinput.py can look it up in game_profiles.csv and auto-switch
+// all viewers to the correct KBM preset + controller type.
+(function startWindowFocusPoller() {
+    if (!window.electronAPI) return; // only in Electron
+    let _lastTitle = '';
+    setInterval(() => {
+        // Electron exposes the active window title via a dedicated IPC call.
+        // If that's unavailable, fall back to document.title of the captured source.
+        const captureTitle = (typeof currentStream !== 'undefined' && currentStream)
+            ? (currentStream.getVideoTracks()[0]?.label || '')
+            : '';
+        if (captureTitle && captureTitle !== _lastTitle) {
+            _lastTitle = captureTitle;
+            if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'window-focus', title: captureTitle }));
+            }
+        }
+    }, 2000);
+})();
+</script>
+
+<div id="feStrip" onclick="this.classList.remove('visible')"></div>
+<div id="clipboardToast"></div>
 </body>
 </html>

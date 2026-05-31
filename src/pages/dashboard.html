@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>NearsecTogether</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -18,6 +19,21 @@
       --danger: #ff4444;
       --sidebar-width: 280px;
     }
+
+    /* Mobile UI Overrides */
+@media screen and (max-width: 900px) {
+    /* Target the content boxes specifically, NOT the background */
+    .modal, .modal-content, #controllerGuideCard {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        max-height: 85vh !important;
+        overflow-y: auto !important;
+        top: 5vh !important;
+        left: 2.5vw !important;
+        transform: none !important;
+        margin: 0 !important;
+    }
+}
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -222,6 +238,27 @@
 
     #virtual-cursor { position: fixed; width: 20px; height: 20px; background: rgba(192,132,252,0.6); border: 2px solid #fff; border-radius: 50%; z-index: 999999; pointer-events: none; display: none; box-shadow: 0 0 15px #c084fc; transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
     #virtual-cursor.clicking { transform: scale(0.6); background: #fff; }
+    body.client-only .host-only { display: none !important; }
+  /* Mobile UI Overrides & Notch Protection */
+    body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+
+    @media screen and (max-width: 900px) {
+    .modal, .modal-content, #controllerGuideCard {
+            width: 95vw !important;
+            max-width: 95vw !important;
+            max-height: 85vh !important;
+            overflow-y: auto !important;
+            top: 5vh !important;
+            left: 2.5vw !important;
+            transform: none !important;
+            margin: 0 !important;
+        }
+    }
   </style>
 </head>
 <body>
@@ -285,7 +322,7 @@
         <span class="btn-text">Live Arcade</span>
       </button>
 
-      <button class="nav-btn" onclick="window.electronAPI && window.electronAPI.openHost()" id="tab-host">
+      <button class="nav-btn" onclick="launchHostSession()" id="tab-host">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
           <line x1="8"  y1="21" x2="16" y2="21"></line>
@@ -388,7 +425,7 @@
             </div>
             <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
               <h4 style="margin: 0;">Terminal Launch Command</h4>
-              <input type="text" id="autoCmd" placeholder="mame -rompath /home/fame/Downloads -joystick schamp" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
+              <input type="text" id="autoCmd" placeholder="steam steam://rungameid/APPID  (or any shell command)" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
             </div>
             <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
               <h4 style="margin: 0;">Dedicated Tunnel Provider</h4>
@@ -399,7 +436,8 @@
                 <option value="playit">playit.gg</option>
               </select>
             </div>
-            <button class="btn-confirm" onclick="saveAutoHost()" style="width: 100%; padding: 12px; margin-top: 12px; border-radius: 6px; cursor: pointer; background: var(--accent); color: #000; font-weight: bold; border: none;">Save Configuration</button>
+            <button class="btn-confirm" onclick="saveAutoHost()" style="width:100%;padding:12px;margin-top:12px;border-radius:6px;cursor:pointer;background:var(--accent);color:#000;font-weight:bold;border:none;">Save Configuration</button>
+            <button id="btnOpenTerminal" onclick="openAutoHostTerminal()" style="display:none;width:100%;padding:10px;margin-top:8px;border-radius:6px;cursor:pointer;background:rgba(52,211,153,0.12);color:#34d399;font-weight:bold;border:1px solid rgba(52,211,153,0.3);font-family:inherit;font-size:12px;">⌘ Open Terminal for Auto-Host</button>
           </div>
 
           <div class="settings-section" id="activeAutoHostsList">
@@ -417,8 +455,8 @@
             <h2>General</h2>
             <div class="setting-row">
               <div class="setting-info" style="flex:1; margin-right: 20px;">
-                <h4>Host Display Name</h4>
-                <p>Your name shown in Discord link embeds. Leave blank to randomize.</p>
+                <h4>Display Name</h4>
+                <p>Your name shown in sessions and Discord. Leave blank to randomize.</p>
               </div>
               <div class="input-wrapper" style="max-width: 200px;">
                 <input type="text" id="settingHostName" placeholder="Guest" onchange="saveHostName(this.value)" style="padding-right: 18px; text-align: center;">
@@ -431,7 +469,7 @@
               </div>
               <div class="toggle" id="settingTrackRumble"><div class="toggle-thumb"></div></div>
             </div>
-            <div class="setting-row" onclick="toggleAppSetting('discordRPC')">
+            <div class="setting-row" id="settingRowDiscordRPC" onclick="toggleAppSetting('discordRPC')">
               <div class="setting-info">
                 <h4>Discord Rich Presence</h4>
                 <p>Show your friends what game you're playing on Nearsec Arcade.</p>
@@ -439,21 +477,20 @@
               <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
             </div>
           </div>
-          <div class="ctrl-modal-row" id="settingRowOldUI" onclick="toggleOldUI()">
-        <div class="ctrl-toggle-track" id="settingTrackOldUI"><div class="ctrl-toggle-thumb"></div></div>
-        <div class="ctrl-row-text">
-          <div class="ctrl-row-label">Use Classic Host UI</div>
-          <div class="ctrl-row-desc">Switches the host dashboard to the legacy layout.</div>
-        </div>
-      </div>
-
-      <div class="ctrl-modal-row" id="settingRowAutoHost" onclick="toggleAutoHost()" style="margin-top:8px;">
-        <div class="ctrl-toggle-track" id="settingTrackAutoHost"><div class="ctrl-toggle-thumb"></div></div>
-        <div class="ctrl-row-text">
-          <div class="ctrl-row-label">Auto-Start Host Mode</div>
-          <div class="ctrl-row-desc">Skips this dashboard and jumps straight into hosting on startup.</div>
-        </div>
-      </div>
+              <div class="setting-row" onclick="toggleOldUI()" id="settingRowOldUI">
+            <div class="setting-info">
+              <h4>Use Classic Host UI</h4>
+              <p>Switches the host dashboard to the legacy layout.</p>
+            </div>
+            <div class="toggle" id="settingTrackOldUI"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="setting-row" onclick="toggleAutoHost()" id="settingRowAutoHost" style="margin-top:8px;">
+            <div class="setting-info">
+              <h4>Auto-Start Host Mode</h4>
+              <p>Skips this dashboard and jumps straight into hosting on startup.</p>
+            </div>
+            <div class="toggle" id="settingTrackAutoHost"><div class="toggle-thumb"></div></div>
+          </div>
           <div class="settings-section">
             <h2>Experimental (Requires App Restart)</h2>
             <div class="setting-row" onclick="toggleAppSetting('hwDecode')">
@@ -490,7 +527,7 @@
     </div>
   </div>
 
-  <div class="modal-bg" id="gpModal">
+  <div class="modal-bg" id="gpModal" onclick="if(event.target === this) this.classList.remove('open');">
     <div class="modal-content">
       <div class="modal-head">
         <span>Controller Settings</span>
@@ -503,7 +540,7 @@
       </div>
       <iframe src="gamepad-popup.html" style="flex:1; border:none;"></iframe>
     </div>
-  </div>
+</div>
 
   <script src="../scripts/i18n.js"></script>
   <script>
@@ -551,7 +588,7 @@
 
     function syncSettingsUI() {
       if(document.getElementById('settingHostName')) {
-        document.getElementById('settingHostName').value = appConfig.hostName || '';
+        document.getElementById('settingHostName').value = appConfig.hostName || localStorage.getItem('ns_name') || '';
       }
       document.getElementById('settingTrackRumble')?.classList.toggle('on', appConfig.rumble !== false);
       document.getElementById('settingTrackTray')?.classList.toggle('on', appConfig.tray !== false);
@@ -573,6 +610,9 @@
 
     function saveHostName(val) {
       appConfig.hostName = val.trim();
+      // Sync to standard local storage so Arcade and Viewer immediately see it
+      localStorage.setItem('ns_name', appConfig.hostName);
+
       if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
       syncToNode();
     }
@@ -659,12 +699,19 @@
     window.addEventListener('gamepadconnected', () => requestAnimationFrame(updateGamepad));
 
     async function checkFirstRun() {
+      // NEW: Client-only flag strips the driver button entirely
+      if (window.IS_CLIENT_ONLY) {
+          const btn = document.getElementById('floating-setup-btn');
+          if (btn) btn.style.display = 'none';
+          return;
+      }
+
       if (!window.electronAPI) return;
       const cfg = await window.electronAPI.getSettings();
       const btn = document.getElementById('floating-setup-btn');
       const txt = document.getElementById('setup-btn-text');
 
-      if (cfg.firstRunComplete === true) {
+      if (cfg.firstRunComplete === true && btn) {
         btn.classList.add('done');
         txt.textContent = 'Drivers Installed';
       }
@@ -848,20 +895,73 @@
 
     // Load saved settings on boot
     document.addEventListener('DOMContentLoaded', () => {
-      if (localStorage.getItem('ns_ui_version') === 'old') {
-        document.getElementById('settingTrackOldUI').classList.add('on');
-      }
-      if (localStorage.getItem('ns_auto_host') === 'true') {
-        document.getElementById('settingTrackAutoHost').classList.add('on');
-        // Auto-launch after 500ms to ensure the Express server is fully bound
-        setTimeout(launchHostSession, 500);
-      }
-    });
+    // 1. Hide PC-only elements if running on Android / Capacitor
+    const isMobile = window.Capacitor || navigator.userAgent.includes('Android');
+    if (isMobile) {
+        ['floating-setup-btn', 'docsFloatBtn', 'settingRowDiscordRPC'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.setProperty('display', 'none', 'important');
+        });
+    }
+
+    // 2. Restore UI version toggle
+    if (localStorage.getItem('ns_ui_version') === 'old') {
+        document.getElementById('settingTrackOldUI')?.classList.add('on');
+    }
+
+    // 3. Populate language select with fallback options
+    const langSelect = document.getElementById('langSelect');
+    if (langSelect && langSelect.options.length === 0) {
+        [
+            ['en', 'English'], ['es', 'Español'], ['fr', 'Français'],
+            ['de', 'Deutsch'], ['pt', 'Português'], ['ja', '日本語'],
+            ['ko', '한국어'], ['zh', '中文'], ['ru', 'Русский'],
+        ].forEach(([val, label]) => {
+            const opt = document.createElement('option');
+            opt.value = val; opt.textContent = label;
+            langSelect.appendChild(opt);
+        });
+    }
+
+    const savedLang = localStorage.getItem('ns_lang') || navigator.language.split('-')[0] || 'en';
+    if (langSelect) langSelect.value = savedLang;
+
+    // 4. Arcade panel iframe
+    const port = _getServerPort();
+    const arcadeFrame = document.querySelector('#panel-arcade iframe');
+    if (arcadeFrame) {
+        arcadeFrame.src = `https://nearsec.cutefame.net/arcade?electron=1&lang=${savedLang}`;
+    }
+
+    loadAndSyncSettings();
+    checkFirstRun();
+
+    // 5. Auto-start logic
+    const params = new URLSearchParams(window.location.search);
+    const noAutoHost = params.get('noAutoHost') === '1';
+
+    const autoStartEnabled = appConfig.autoStartHost
+        || appConfig.bootToHost
+        || localStorage.getItem('ns_auto_host') === 'true';
+
+    if (autoStartEnabled) {
+        document.getElementById('settingTrackAutoHost')?.classList.add('on');
+        if (!noAutoHost) {
+            setTimeout(launchHostSession, 500);
+        }
+    }
+});
 
     function launchHostSession() {
-    const uiVer = localStorage.getItem('ns_ui_version') || 'new';
-    console.log("Launching UI version:", uiVer);
-    window.electronAPI.send('open-host', uiVer);
+      // Force direct storage read to prevent race condition with appConfig caching
+      const uiVer = localStorage.getItem('ns_ui_version') === 'old' ? 'old' : 'new';
+
+      if (window.electronAPI && window.electronAPI.openHost) {
+        window.electronAPI.openHost(uiVer);
+      } else {
+        const port = _getServerPort();
+        window.location.href = 'http://localhost:' + port + (uiVer === 'old' ? '/old_host' : '/host');
+      }
     }
 
     // Toggle Functions
@@ -869,13 +969,40 @@
       const track = document.getElementById('settingTrackOldUI');
       const isOld = track.classList.toggle('on');
       localStorage.setItem('ns_ui_version', isOld ? 'old' : 'new');
+      appConfig.useOldUI = isOld;
+      if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
     }
 
     function toggleAutoHost() {
       const track = document.getElementById('settingTrackAutoHost');
       const isAuto = track.classList.toggle('on');
       localStorage.setItem('ns_auto_host', isAuto ? 'true' : 'false');
+      // Write to config file so bootToHost is authoritative
+      appConfig.bootToHost = isAuto;
+      appConfig.autoStartHost = isAuto;
+      if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+      const port = _getServerPort();
+      fetch('http://localhost:' + port + '/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bootToHost: isAuto })
+      }).catch(() => {});
     }
+
+    function openAutoHostTerminal() {
+      const cmd  = document.getElementById('autoCmd').value.trim();
+      const name = document.getElementById('autoName').value.trim() || 'Auto-Host';
+      if (!cmd) { alert('Enter a launch command first.'); return; }
+      const port = _getServerPort();
+      fetch('http://localhost:' + port + '/api/open-terminal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd, name })
+      }).then(r => r.json()).then(d => { if (!d.ok) alert('Terminal failed: ' + (d.reason || '')); })
+        .catch(() => alert('Terminal launch failed.'));
+    }
+    (function () {
+      const isLinux = navigator.userAgent.includes('Linux') && !navigator.userAgent.includes('Android');
+      if (isLinux) { const b = document.getElementById('btnOpenTerminal'); if (b) b.style.display = 'block'; }
+    })();
 
     function killGame() {
         if(confirm("Stop the running game?")) {

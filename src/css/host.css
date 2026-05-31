@@ -493,7 +493,7 @@ background: #000;
 .url-card-inner { flex: 1; display: flex; flex-direction: column; justify-content: space-between; min-height: 0; }
 
 .url-entry {
-    font-size: 11px;
+    font-size: 13px;
     font-family: var(--mono);
     word-break: break-all;
     cursor: pointer;
@@ -526,7 +526,7 @@ background: #000;
 }
 
 .pin-num {
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 700;
     font-family: var(--mono);
     color: var(--accent2);
@@ -1126,3 +1126,92 @@ color: var(--muted) !important;
     background: rgba(248,113,113,0.25) !important;
 }
 
+
+
+
+/* ── URL row alias (renderUrls writes .url-row, keep both working) ────────── */
+.url-row {
+    font-size:   13px;
+    font-family: var(--mono);
+    word-break:  break-all;
+    cursor:      pointer;
+    color:       var(--accent2);
+    line-height: 1.5;
+    transition:  all 0.15s;
+    overflow:    hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding:     2px 6px;
+    margin-left: -6px;
+    border-radius: 4px;
+}
+.url-row:hover { background: rgba(139,92,246,0.15); color: #fff !important; }
+.url-label { font-size: 9px; color: var(--muted2); margin-bottom: 4px; }
+
+/* ── HYBRID INPUT active state ───────────────────────────────────────────── */
+.ctrl-toggle-track.on.hybrid-track { background: var(--warn); }
+
+/* ── NAT RELAY PILL ──────────────────────────────────────────────────────── */
+.relay-pill {
+    display:       inline-flex;
+    align-items:   center;
+    gap:           5px;
+    padding:       0 9px;
+    height:        22px;
+    border-radius: 99px;
+    border:        1px solid rgba(251,191,36,0.4);
+    background:    rgba(251,191,36,0.1);
+    font-size:     9px;
+    font-weight:   700;
+    letter-spacing:.08em;
+    color:         var(--warn);
+    font-family:   var(--mono);
+    text-transform:uppercase;
+}
+.relay-pill .relay-dot {
+    width:6px; height:6px; border-radius:50%;
+    background: var(--warn);
+    box-shadow: 0 0 4px var(--warn);
+}
+
+/* ── CLIPBOARD TOAST ─────────────────────────────────────────────────────── */
+#clipboardToast {
+    position:   fixed;
+    bottom:     80px; left: 50%;
+    transform:  translateX(-50%) translateY(20px);
+    background: rgba(139,92,246,0.18);
+    border:     1px solid rgba(139,92,246,0.4);
+    border-radius: 12px;
+    padding:    10px 18px;
+    font-size:  12px;
+    color:      var(--accent2);
+    z-index:    9999;
+    backdrop-filter: blur(12px);
+    opacity:    0; pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    font-family: var(--mono);
+    white-space: nowrap;
+}
+#clipboardToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── FRONTEND ERROR STRIP ────────────────────────────────────────────────── */
+#feStrip {
+    position:    fixed;
+    bottom:      0; left: 0; right: 0;
+    background:  rgba(248,113,113,0.15);
+    border-top:  1px solid rgba(248,113,113,0.35);
+    padding:     6px 14px;
+    font-size:   10px;
+    font-family: var(--mono);
+    color:       var(--danger);
+    z-index:     9998;
+    display:     none;
+    cursor:      pointer;
+    overflow:    hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#feStrip.visible { display: block; }
+
+/* ── CLIENT-ONLY MODE: hide host-specific sections ───────────────────────── */
+body.client-only .host-only { display: none !important; }
