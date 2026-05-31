@@ -13,7 +13,6 @@ const filesToScan = [
 'src/scripts/server.js',
 'src/scripts/host.js',
 'src/scripts/viewer.js',
-'kbm_bindings.json',
 'website/arcade.js'
 ];
 
@@ -27,7 +26,7 @@ function addEntry(text, prefix = 'txt') {
     // Ignore empty strings, single characters, pure numbers, or pure symbols
     if (cleanText.length < 2 || /^[0-9\W]+$/.test(cleanText)) return;
 
-    // Generate a key based on the first few words (e.g., "Start Sharing" -> "start_sharing")
+    // Generate a key based on the first few words
     const keyBase = cleanText.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').substring(0, 35).replace(/_$/, '');
     const key = `${prefix}_${keyBase}`;
 
@@ -49,36 +48,39 @@ filesToScan.forEach(filePath => {
 
     if (filePath.endsWith('.html')) {
         // Extract text between HTML tags: > Text Here <
-        // We ignore <script> and <style> blocks
         const htmlWithoutScripts = content.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
         const tagMatches = htmlWithoutScripts.matchAll(/>([^<]+)</g);
         for (const match of tagMatches) {
             addEntry(match[1], 'ui');
         }
 
-        // Extract placeholder attributes: placeholder="Search games..."
+        // Extract placeholder attributes
         const placeholderMatches = content.matchAll(/placeholder=["']([^"']+)["']/g);
         for (const match of placeholderMatches) {
             addEntry(match[1], 'ph');
         }
     }
     else if (filePath.endsWith('.js')) {
-        // Look for specific UI functions in your codebase
-
-        // log('Text', 'ok') or sysChat('Text')
-        const funcMatches = content.matchAll(/(?:log|sysChat|setStatus|showTunnelError)\s*\(\s*['"](.*?)['"]/g);
+        // 1. Standard UI functions + Explicit I18N.t() wrapper
+        // Catches: log('..'), sysChat('..'), I18N.t('..') using quotes OR backticks
+        const funcMatches = content.matchAll(/(?:log|sysChat|setStatus|showTunnelError|I18N\.t)\s*\(\s*['"`](.*?)['"`]/g);
         for (const match of funcMatches) {
             addEntry(match[1], 'msg');
         }
 
-        // document.getElementById(...).textContent = 'Text'
-        const textContentMatches = content.matchAll(/\.textContent\s*=\s*['"](.*?)['"]/g);
-        for (const match of textContentMatches) {
-            addEntry(match[1], 'ui');
+        // 2. textContent OR innerHTML assignments
+        const domMatches = content.matchAll(/\.(?:textContent|innerHTML)\s*=\s*['"`](.*?)['"`]/g);
+        for (const match of domMatches) {
+            let rawText = match[1];
+            // If it's innerHTML, strip the HTML tags so we only extract the raw text
+            if (rawText.includes('<')) {
+                rawText = rawText.replace(/<[^>]*>?/gm, ' ');
+            }
+            addEntry(rawText, 'ui');
         }
 
-        // appendChat('Name', 'Text')
-        const chatMatches = content.matchAll(/appendChat\([^,]+,\s*['"](.*?)['"]/g);
+        // 3. appendChat('Name', 'Text')
+        const chatMatches = content.matchAll(/appendChat\([^,]+,\s*['"`](.*?)['"`]/g);
         for (const match of chatMatches) {
             addEntry(match[1], 'msg');
         }

@@ -43,16 +43,15 @@ def run():
         try:
             msg = json.loads(line)
             msg_type = msg.get("type")
+            vid = str(msg.get("viewer_id", ""))
 
             # Update Viewer Modes
             if msg_type == "set-input-mode":
-                vid = str(msg.get("viewerId", ""))
-                viewer_modes[vid] = msg.get("mode", "gamepad")
+                viewer_modes[str(msg.get("viewerId", ""))] = msg.get("mode", "gamepad")
                 continue
 
             # Cleanup Disconnected Viewers
             if msg_type in ["flush_neutral", "disconnect_viewer"]:
-                vid = str(msg.get("viewer_id", ""))
                 keys = [k for k in list(devices.keys()) if str(k).startswith(vid + "_") or str(k) == vid]
 
                 for k in keys:
@@ -64,9 +63,16 @@ def run():
                 gc.collect()
                 continue
 
+            # Get current mode for this viewer (defaults to gamepad)
+            current_mode = viewer_modes.get(vid, "gamepad")
+
             # ── KBM Handling ──
             if msg_type in ["kbm", "keyboard"]:
                 if not KBM_ENABLED: continue
+                # FIX: Only allow KBM if mode is strictly 'kbm' or 'hybrid'
+                if current_mode not in ["kbm", "hybrid"]:
+                    continue
+
                 event_type = msg.get("event")
 
                 if event_type == "mousemove":
@@ -89,13 +95,14 @@ def run():
                 continue
 
             # ── Gamepad Handling ──
-            pad_id = str(msg.get("pad_id", "default"))
-            vid = str(msg.get("viewer_id", pad_id.split("_")[0]))
-
-            if viewer_modes.get(vid, "gamepad") != "gamepad":
-                continue
-
             if msg_type == "gamepad":
+                # FIX: Only allow gamepad if mode is strictly 'gamepad' or 'hybrid'
+                if current_mode not in ["gamepad", "hybrid"]:
+                    continue
+
+                pad_id = str(msg.get("pad_id", "default"))
+                vid = pad_id.split("_")[0]
+
                 if pad_id not in devices:
                     try:
                         devices[pad_id] = vg.VX360Gamepad()

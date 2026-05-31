@@ -24,6 +24,7 @@ const viewerNames = new Map();
 const inputPerms = new Map();
 const pinAttempts = new Map();
 const crypto = require("crypto");
+const { Worker } = require('worker_threads');
 
 const PusherRaw = require('pusher-js');
 
@@ -33,249 +34,89 @@ const venmicPath = isPackaged
 : path.join(__dirname, '..', '..', 'bin', 'venmic.node');
 
 // ══════════════════════════════════════════════════════════════════════════════
-// VIRTUAL AUDIO — complete lifecycle management for PipeWire / PulseAudio
-// All module IDs are stored so every module we create can be unloaded cleanly.
+// VIRTUAL AUDIO — delegated to audio_worker.js via worker_threads IPC
+// The main event loop never calls pactl directly; all blocking OS shell work
+// runs in the dedicated worker thread.
 // ══════════════════════════════════════════════════════════════════════════════
-
-// Tracks every pactl module ID we have created in this process lifetime.
-// Keys: 'sink' | 'remap' | 'loopback'
-const _vAudioModules = { sink: null, remap: null, loopback: null };
 
 // Prevents cleanup() running twice (e.g. SIGINT fires then process.exit fires)
 let _cleanupDone = false;
 
-/**
- * Run a shell command and return stdout as a trimmed string.
- * Resolves with '' on error (never rejects).
- */
-function _pactlExec(cmd) {
-  return new Promise((resolve) => {
-    exec(cmd, (err, stdout) => {
-      if (err) resolve('');
-      else resolve((stdout || '').trim());
-    });
-  });
-}
+// Module IDs are reported back by the worker so cleanup() can unload them
+// synchronously via execSync if the worker has already exited by SIGINT time.
+const _vAudioModules = { sink: null, remap: null, loopback: null, daemonHandle: null };
 
-/**
- * STEP 0 — Before creating new sinks, scan for and unload any orphaned
- * Nearsec modules left over from a previous crash.
- */
-async function cleanupStaleSinks() {
+// Holds a reference to the running audio worker
+let _audioWorker = null;
+
+// ── Spawn and wire the audio worker ──────────────────────────────────────────
+function spawnAudioWorker() {
   if (process.platform !== 'linux') return;
-  console.log('[VirtualAudio] Scanning for stale Nearsec modules...');
-  const list = await _pactlExec('pactl list short modules');
-  if (!list) return;
 
-  const staleIds = [];
-  for (const line of list.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    // Match any module whose argument string contains our names
-    if (trimmed.includes('NearsecAppAudio') || trimmed.includes('NearsecAppMic')) {
-      const id = trimmed.split(/\s+/)[0];
-      if (id && /^\d+$/.test(id)) staleIds.push(id);
+  const daemonPath = path.join(__dirname, '..', 'sidecar', 'audio_blacklist_daemon.js');
+
+  _audioWorker = new Worker(path.join(__dirname, '..', 'sidecar', 'audio_worker.js'), {
+    workerData: {
+      isPackaged,
+      venmicPath,
+      daemonPath: fs.existsSync(daemonPath) ? daemonPath : null,
     }
-  }
+  });
 
-  if (staleIds.length === 0) {
-    console.log('[VirtualAudio] No stale modules found.');
-    return;
-  }
+  _audioWorker.on('message', (msg) => {
+    switch (msg.type) {
+      case 'log':        console.log(msg.message);   break;
+      case 'error':      console.error(msg.message); break;
+      case 'module-ids': Object.assign(_vAudioModules, msg.ids); break;
+      case 'ready':      console.log('[VirtualAudio] Worker ready.'); break;
+      case 'destroyed':  console.log('[VirtualAudio] Worker teardown complete.'); break;
+    }
+  });
 
-  console.log(`[VirtualAudio] Found ${staleIds.length} stale module(s): [${staleIds.join(', ')}] — unloading...`);
-  for (const id of staleIds) {
-    await _pactlExec(`pactl unload-module ${id}`);
-    console.log(`[VirtualAudio] Unloaded stale module ${id}`);
-  }
-}
+  _audioWorker.on('error',  (e)    => console.error('[audio_worker] Runtime error:', e.message));
+  _audioWorker.on('exit',   (code) => {
+    if (code !== 0) console.warn(`[audio_worker] Exited with code ${code}`);
+    _audioWorker = null;
+  });
 
-/**
- * STEP 1 — Create the virtual null-sink (the "bucket" apps route audio into).
- * Returns the module ID string, or null on failure.
- */
-async function createSink() {
-  const id = await _pactlExec(
-    'pactl load-module module-null-sink ' +
-    'sink_name=NearsecAppAudio ' +
-    'sink_properties=device.description="Nearsec_App_Audio"'
-  );
-  if (!id || !/^\d+$/.test(id)) {
-    console.error('[VirtualAudio] Failed to create null-sink');
-    return null;
-  }
-  await _pactlExec('pactl set-sink-volume NearsecAppAudio 70%');
-  console.log(`[VirtualAudio] Created null-sink (module ${id})`);
-  return id;
-}
-
-/**
- * STEP 2 — Remap the sink monitor to a virtual microphone source.
- * This is what the browser captures as a microphone input.
- * Returns the module ID string, or null on failure.
- */
-async function createRemapSource() {
-  const id = await _pactlExec(
-    'pactl load-module module-remap-source ' +
-    'master=NearsecAppAudio.monitor ' +
-    'source_name=NearsecAppMic ' +
-    'source_properties=device.description="Nearsec_App_Mic"'
-  );
-  if (!id || !/^\d+$/.test(id)) {
-    console.error('[VirtualAudio] Failed to create remap-source');
-    return null;
-  }
-  console.log(`[VirtualAudio] Created remap-source (module ${id})`);
-  return id;
-}
-
-/**
- * STEP 3 — Create a loopback so the HOST can hear the virtual sink through
- * their own speakers/headphones. We pin the sink to @DEFAULT_SINK@ so it
- * always routes to the real output even if the default changes.
- * latency_msec is set low so it doesn't create a noticeable echo.
- * Returns the module ID string, or null on failure.
- */
-async function createLoopback() {
-  const id = await _pactlExec(
-    'pactl load-module module-loopback source=NearsecAppAudio.monitor latency_msec=30'
-  );
-  if (!id || !/^\d+$/.test(id)) {
-    console.warn('[VirtualAudio] Loopback module not created (non-fatal)');
-    return null;
-  }
-  console.log(`[VirtualAudio] Created loopback (module ${id})`);
-  return id;
-}
-
-/**
- * STEP D — Destroy a single tracked module by its stored key.
- * Safe to call even if the module ID is null or already gone.
- */
-async function destroyModule(key) {
-  const id = _vAudioModules[key];
-  if (!id) return;
-  const result = await _pactlExec(`pactl unload-module ${id}`);
-  console.log(`[VirtualAudio] Unloaded ${key} module ${id}${result ? '' : ' (may have already been removed)'}`);
-  _vAudioModules[key] = null;
+  _audioWorker.postMessage({ type: 'init' });
 }
 
 /**
  * PUBLIC — Create all virtual audio modules in sequence.
- * Runs stale cleanup first, so duplicate sinks are impossible.
+ * Delegates to audio_worker. Optional callback fires on 'ready'.
  */
-async function initVirtualAudio(callback) {
+function initVirtualAudio(callback) {
   if (process.platform !== 'linux') {
     if (callback) callback(false, 'Linux only');
     return;
   }
 
-  console.log('[VirtualAudio] Initialising Native Global Mirroring...');
-  const _prevDefault = (await _pactlExec('pactl get-default-sink')).trim();
-
-  await cleanupStaleSinks();
-
-  // 1. Create the Virtual Sink (New standard name)
-  _vAudioModules.sink = await _pactlExec(
-    'pactl load-module module-null-sink ' +
-    'sink_name=NearsecVirtual ' +
-    'sink_properties=device.description="NearsecVirtual"'
-  );
-
-  // 2. Create the WebRTC Monitor Remap
-  _vAudioModules.remap = await _pactlExec(
-    'pactl load-module module-remap-source ' +
-    'master=NearsecVirtual.monitor ' +
-    'source_name=NearsecVirtualCapture ' +
-    'source_properties=device.description="NearsecVirtualCapture"'
-  );
-
-  // 3. Resolve Hardware Sink for the Loopback
-  // If the previous default was already our virtual sink, find the actual physical hardware
-  let hwSink = _prevDefault;
-  if (!hwSink || hwSink.includes('Nearsec')) {
-    const sinksRaw = await _pactlExec('pactl list short sinks');
-    const fallback = (sinksRaw || '').split('\n').find(l => !l.includes('Nearsec') && l.trim() !== '');
-    if (fallback) hwSink = fallback.trim().split(/\s+/)[1];
-  }
-
-  // 4. Create the Loopback Mirror (Targeting the hardware sink specifically to prevent feedback loops)
-  if (hwSink) {
-    _vAudioModules.loopback = await _pactlExec(`pactl load-module module-loopback source=NearsecVirtual.monitor sink=${hwSink} latency_msec=30`);
+  if (!_audioWorker) {
+    spawnAudioWorker();
   } else {
-    console.warn('[VirtualAudio] No hardware sink found for loopback.');
+    _audioWorker.postMessage({ type: 'init' });
   }
 
-  // 5. LOCK the System Default to the Virtual Sink
-  // All new applications will now natively spawn on the virtual sink
-  await new Promise(r => setTimeout(r, 400));
-  await _pactlExec('pactl set-default-sink NearsecVirtual');
-
-  // 6. Spin up the Background Daemon
-  try {
-    const path = require('path');
-    const daemonPath = path.join(__dirname, '..', 'sidecar', 'audio_blacklist_daemon.js');
-    const blacklistDaemon = require(daemonPath);
-
-    // THE FIX: Explicitly pass hwSink to the daemon so it knows EXACTLY where to send Discord/Spotify
-    _vAudioModules.daemonHandle = blacklistDaemon.startDaemon(blacklistDaemon.DEFAULT_BLACKLIST, hwSink);
-  } catch (err) {
-    console.error('\x1b[31m[VirtualAudio] Failed to load blacklist daemon:\x1b[0m', err.message);
+  if (callback && _audioWorker) {
+    const onMsg = (msg) => {
+      if (msg.type === 'ready') {
+        _audioWorker && _audioWorker.off('message', onMsg);
+        callback(true);
+      } else if (msg.type === 'error') {
+        _audioWorker && _audioWorker.off('message', onMsg);
+        callback(false, msg.message);
+      }
+    };
+    _audioWorker.on('message', onMsg);
   }
-
-  console.log(`[VirtualAudio] Ready. Default locked to NearsecVirtual. Mirroring to: ${hwSink || 'None'}`);
-  if (callback) callback(true);
 }
+
 /**
- * PUBLIC — Tear down every module we created, in reverse order.
- * Idempotent: safe to call multiple times (only runs once).
+ * PUBLIC — Route game audio (delegates to worker).
  */
-async function destroyVirtualAudio() {
-  if (process.platform !== 'linux') return;
-
-  // Step 1: Move every sink-input off the Nearsec sink back to the default
-  // This is what makes Firefox and other apps auto-correct on shutdown.
-  await _pactlExec('pactl list short sinks').then(async sinks => {
-    const nearsecLine = (sinks || '').split('\n').find(l => l.includes('NearsecAppAudio'));
-    if (!nearsecLine) return;
-    const nearsecId = nearsecLine.trim().split(/\s+/)[0];
-    if (!nearsecId) return;
-
-    const defaultSink = (await _pactlExec('pactl get-default-sink')).trim();
-    if (!defaultSink || defaultSink === 'NearsecAppAudio') return;
-
-    const inputs = await _pactlExec('pactl list short sink-inputs');
-    for (const line of (inputs || '').split('\n').filter(Boolean)) {
-      const parts = line.trim().split(/\s+/);
-      const inputId  = parts[0];
-      const sinkId   = parts[1];
-      if (sinkId === nearsecId && /^\d+$/.test(inputId)) {
-        await _pactlExec(`pactl move-sink-input ${inputId} ${defaultSink}`);
-        console.log(`[VirtualAudio] Restored sink-input ${inputId} → ${defaultSink}`);
-      }
-    }
-  }).catch(() => {});
-
-  // Step 2: Unload our modules in reverse order
-  await destroyModule('loopback');
-  await destroyModule('remap');
-  await destroyModule('sink');
-
-  // Belt-and-braces: if any module slipped through the tracking, nuke by name
-  await _pactlExec('pactl list short modules').then(list => {
-    if (!list) return;
-    const leftover = [];
-    for (const line of list.split('\n')) {
-      if (line.includes('NearsecAppAudio') || line.includes('NearsecAppMic')) {
-        const id = line.trim().split(/\s+/)[0];
-        if (id && /^\d+$/.test(id)) leftover.push(id);
-      }
-    }
-    if (leftover.length > 0) {
-      console.warn(`[VirtualAudio] Belt-and-braces: unloading ${leftover.length} residual module(s) [${leftover.join(', ')}]`);
-      return Promise.all(leftover.map(id => _pactlExec(`pactl unload-module ${id}`)));
-    }
-  }).catch(() => {});
+function routeGameAudio(gameProcessName) {
+  if (_audioWorker) _audioWorker.postMessage({ type: 'route', processName: gameProcessName || null });
 }
 
 // Call it on boot
@@ -319,130 +160,49 @@ const pusher = new Pusher('a93f5405058cd9fc7967', {
 
 const globalArcadeChannel = pusher.subscribe('private-arcade-global');
 
-const AUDIO_BLACKLIST = [
-  // Voice/chat apps — never route these
-  'WEBRTC VoiceEngine', 'teamspeak', 'ts3client', 'mumble', 'slack',
-'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
-// Web browsers — their audio is their own business, not game audio
-'firefox', 'firefox-bin', 'firefox-esr',
-'chromium', 'chromium-browser', 'google-chrome', 'chrome',
-'brave', 'brave-browser', 'vivaldi', 'opera', 'epiphany',
-'waterfox', 'librewolf', 'ungoogled-chromium',
-];
-let linkedStreams = new Set(); // Tracks active wires so we don't spam the console
+// ── Arcade Heartbeat Worker ───────────────────────────────────────────────────
+// All arcadePingInterval / Pusher sync loops run in a dedicated thread so they
+// can never delay the signaling event loop, even under heavy load.
+let _arcadeWorker = null;
 
-function routeGameAudio(gameProcessName) {
-  // Always run the pactl fallback path — it works even when venmic can't see the node
-  _routeViaPatctl(gameProcessName);
-
-  // Also run the venmic path if available
-  if (!pb) return;
-
-  let devices;
-  try { devices = pb.list(); } catch(e) { return; }
-
-  // Find the Nearsec sink — try multiple property names since PipeWire versions differ
-  const sinkNode = devices.find(d => {
-    const cls  = (d['media.class'] || '').toLowerCase();
-    const name = (d['node.name'] || d['audio.name'] || '').toLowerCase();
-    const desc = (d['node.description'] || d['device.description'] || d['media.description'] || '').toLowerCase();
-    const isSink = cls.includes('sink') || cls.includes('audio/sink');
-    return isSink && (name.includes('nearsec') || desc.includes('nearsec') || name.includes('nearsecappaudio'));
+function spawnArcadeHeartbeatWorker() {
+  _arcadeWorker = new Worker(path.join(__dirname, '..', 'sidecar', 'arcade_heartbeat_worker.js'), {
+    workerData: { syncIntervalMs: 30_000, pingIntervalMs: 25_000 }
   });
 
-  if (!sinkNode) return;
+  _arcadeWorker.on('message', (msg) => {
+    switch (msg.type) {
+      case 'log':   console.log(msg.message);   break;
+      case 'error': console.error(msg.message); break;
 
-  const sinkId = sinkNode.id !== undefined ? sinkNode.id : sinkNode['object.id'];
-  if (sinkId === undefined) return;
-
-  const activeStreams = devices.filter(d => {
-    const cls = (d['media.class'] || '').toLowerCase();
-    return cls.includes('stream') || cls.includes('output/audio');
-  });
-
-  let streamsToRoute = [];
-  if (gameProcessName && gameProcessName !== "ALL_DESKTOP") {
-    streamsToRoute = activeStreams.filter(d => {
-      const bin = (d['application.process.binary'] || '').toLowerCase();
-      return bin === gameProcessName.toLowerCase();
-    });
-  } else {
-    streamsToRoute = activeStreams.filter(d => {
-      const binary = (d['application.process.binary'] || d['application.name'] || d['node.name'] || '').toLowerCase();
-      if (AUDIO_BLACKLIST.some(badApp => binary.includes(badApp))) return false;
-      if (binary.includes('sd_dummy') || binary.includes('speech-dispatcher')) return false;
-      if (binary.includes('nearsec')) return false;
-      return true;
-    });
-  }
-
-  streamsToRoute.forEach(node => {
-    const outId = node.id !== undefined ? node.id : node['object.id'];
-    if (outId !== undefined && !linkedStreams.has(outId)) {
-      const name = node['application.process.binary'] || node['application.name'] || 'Unknown';
-      console.log(`[Audio] Routing ${name} (${outId}) → NearsecAppAudio via venmic`);
-      try {
-        pb.link(outId, sinkId);
-        linkedStreams.add(outId);
-      } catch (e) {
-        console.warn(`[Audio] venmic link failed for ${name}:`, e.message);
-      }
+      // Worker asks main thread to fire the Pusher trigger
+      // (pusher-js channels must live on the thread that owns the WebSocket)
+      case 'pusher-trigger':
+        try {
+          if (typeof globalArcadeChannel !== 'undefined') {
+            globalArcadeChannel.trigger(msg.event, msg.data);
+          }
+        } catch (e) {
+          console.warn('[arcade_heartbeat] Pusher trigger failed:', e.message);
+        }
+        break;
     }
   });
-}
 
-// pactl fallback: moves sink-inputs (PulseAudio-style stream references) directly.
-// Works for apps that PipeWire exposes as classic PA sink-inputs, even when venmic
-// can't enumerate or link them.  Browsers are excluded.
-function _routeViaPatctl(gameProcessName) {
-  if (process.platform !== 'linux') return;
-
-  exec('pactl list short sink-inputs', (err, stdout) => {
-    if (err || !stdout) return;
-
-    const lines = stdout.trim().split('\n').filter(Boolean);
-    lines.forEach(line => {
-      // Format: <sink-input-id>\t<sink-id>\t<client-id>\t<module>\t<sample-spec>
-      const inputId = line.split(/\s+/)[0];
-      if (!inputId || !/^\d+$/.test(inputId)) return;
-
-      // Get the sink-input properties to check the binary name
-      exec(`pactl list sink-inputs | grep -A 20 "Sink Input #${inputId}"`, (e2, props) => {
-        if (e2 || !props) return;
-
-        const appBinary = (props.match(/application\.process\.binary\s*=\s*"([^"]+)"/) || [])[1] || '';
-        const appName   = (props.match(/application\.name\s*=\s*"([^"]+)"/) || [])[1] || '';
-        const identifier = (appBinary || appName).toLowerCase();
-
-        if (!identifier) return;
-        if (AUDIO_BLACKLIST.some(b => identifier.includes(b))) return;
-        if (identifier.includes('nearsec')) return;
-        if (identifier.includes('speech-dispatcher') || identifier.includes('sd_dummy')) return;
-
-        if (gameProcessName && gameProcessName !== 'ALL_DESKTOP') {
-          if (!identifier.includes(gameProcessName.toLowerCase())) return;
-        }
-
-        // Check if this input is already on the Nearsec sink
-        const currentSinkMatch = props.match(/Sink:\s*(\d+)/);
-        const currentSink = currentSinkMatch ? currentSinkMatch[1] : null;
-
-        exec('pactl list short sinks', (e3, sinks) => {
-          if (e3 || !sinks) return;
-          const nearsecLine = sinks.split('\n').find(l => l.includes('NearsecAppAudio'));
-          if (!nearsecLine) return;
-          const nearsecSinkId = nearsecLine.split(/\s+/)[0];
-          if (!nearsecSinkId) return;
-          if (currentSink === nearsecSinkId) return; // already routed
-
-          exec(`pactl move-sink-input ${inputId} ${nearsecSinkId}`, (e4) => {
-            if (!e4) console.log(`[Audio] pactl routed sink-input ${inputId} (${identifier}) → NearsecAppAudio`);
-          });
-        });
-      });
-    });
+  _arcadeWorker.on('error',  (e)    => console.error('[arcade_heartbeat] Runtime error:', e.message));
+  _arcadeWorker.on('exit',   (code) => {
+    if (code !== 0) console.warn(`[arcade_heartbeat] Exited with code ${code}`);
+    _arcadeWorker = null;
   });
 }
+
+// Helper — post to arcade worker only when it's alive
+function _arcadePost(msg) {
+  if (_arcadeWorker) _arcadeWorker.postMessage(msg);
+}
+
+// Boot the worker immediately (it idles quietly until a session goes active)
+spawnArcadeHeartbeatWorker();
 
 function toUinput(msg) {
   if (!uinputProc || !uinputProc.stdin.writable) return;
@@ -1453,7 +1213,7 @@ async function main() {
             console.log("[arcade] Session registered:", session.game, arcadeUrl);
             broadcastToArcade({ type: 'arcade-session-active', session });
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: 'arcade-session-active', session }));
-            if (typeof globalArcadeChannel !== 'undefined') globalArcadeChannel.trigger('client-session-active', { session });
+            _arcadePost({ type: 'session-active', session });
             return;
           }
 
@@ -1462,7 +1222,7 @@ async function main() {
               arcadeSessions.delete(id);
               broadcastToArcade({ type: 'arcade-session-stopped', id });
               console.log("[arcade] Session stopped:", s.game);
-              if (typeof globalArcadeChannel !== 'undefined') globalArcadeChannel.trigger('client-session-stopped', { id });
+              _arcadePost({ type: 'session-stopped', id });
             }
             return;
           }
@@ -1849,6 +1609,22 @@ function cleanup(isElectron = false) {
   _cleanupDone = true;
 
   console.log('\n[server] Shutting down — running cleanup...');
+
+  // ── Terminate worker threads gracefully ──────────────────────────────────
+  // Audio worker: ask it to destroy virtual audio, then terminate
+  if (_audioWorker) {
+    try {
+      _audioWorker.postMessage({ type: 'destroy' });
+      // Give it 800ms to run pactl teardown asynchronously, then force-terminate
+      setTimeout(() => { try { _audioWorker && _audioWorker.terminate(); } catch (_) {} }, 800);
+    } catch (_) {}
+  }
+
+  // Arcade heartbeat worker: clean shutdown
+  if (_arcadeWorker) {
+    try { _arcadeWorker.postMessage({ type: 'stop' }); } catch (_) {}
+    setTimeout(() => { try { _arcadeWorker && _arcadeWorker.terminate(); } catch (_) {} }, 500);
+  }
 
   if (activeTunnelProc) { try { activeTunnelProc.kill(); } catch (_) {} }
   if (uinputProc) {
