@@ -908,10 +908,44 @@ async function main() {
   // CRITICAL FIX: Use the ASAR-safe sidecarPath defined at the top of the file!
   if (fs.existsSync(sidecarPath)) {
     try {
-      uinputProc = spawn(pythonCmd, [sidecarPath], { stdio: ["pipe", "inherit", "inherit"], detached: false });
+      uinputProc = spawn(pythonCmd, [sidecarPath], { stdio: ["pipe", "pipe", "inherit"], detached: false });
       uinputProc.stdin.on("error", () => { });
       uinputProc.on("error", e => console.log("[uinput] spawn error:", e.message));
       uinputProc.on("close", () => { uinputProc = null; console.log("[uinput] sidecar exited"); });
+
+      // ── Rumble reader — forward FF events from Python to the correct viewer ──
+      let _uinputBuf = '';
+      uinputProc.stdout.on('data', (chunk) => {
+        _uinputBuf += chunk.toString();
+        let nl;
+        while ((nl = _uinputBuf.indexOf('\n')) !== -1) {
+          const line = _uinputBuf.slice(0, nl).trim();
+          _uinputBuf = _uinputBuf.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === 'rumble' && msg.viewerId) {
+              const realId  = msg.viewerId.split('_')[0];
+              const vws     = viewers.get(realId);
+              if (vws && vws.readyState === 1) {
+                vws.send(JSON.stringify({
+                  type:     'rumble',
+                  strong:   msg.strong,
+                  weak:     msg.weak,
+                  duration: msg.duration,
+                }));
+              }
+            } else {
+              // Any non-rumble line from Python is a log — pass through
+              console.log('[uinput]', line);
+            }
+          } catch {
+            // Non-JSON line from Python (startup messages etc) — log it
+            console.log('[uinput]', line);
+          }
+        }
+      });
+
       console.log("[uinput] sidecar started");
     } catch (err) {
       console.warn("[uinput] Failed to start Python sidecar:", err.message);

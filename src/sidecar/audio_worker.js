@@ -159,7 +159,11 @@ async function initVirtualAudio() {
     }
   }
 
-  log(`Ready. Default locked to NearsecVirtual. Mirroring to active system sink.`);
+  log(`Ready. Mirroring to active system sink. Routing daemon starting…`);
+
+  // Start the routing daemon immediately so any app that launches goes to NearsecVirtual
+  // without needing an explicit /api/route-audio call first.
+  startRoutingDaemon(null);
 
   // Report ONLY the string IDs to main thread so cleanup() can unload them synchronously
   parentPort.postMessage({ type: 'module-ids', ids: {
@@ -174,7 +178,9 @@ async function initVirtualAudio() {
 async function destroyVirtualAudio() {
   if (process.platform !== 'linux') return;
 
-  // Kill the JavaScript timer for the blacklist daemon
+  // Stop the routing daemon before tearing down sinks
+  stopRoutingDaemon();
+  linkedStreams.clear();
   if (_vAudioModules.daemonHandle) {
     clearInterval(_vAudioModules.daemonHandle);
     _vAudioModules.daemonHandle = null;
@@ -249,18 +255,104 @@ async function destroyVirtualAudio() {
 // ── Game audio routing ────────────────────────────────────────────────────────
 const AUDIO_BLACKLIST = [
   'WEBRTC VoiceEngine', 'teamspeak', 'ts3client', 'mumble', 'slack',
-'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
-'firefox', 'firefox-bin', 'firefox-esr',
-'chromium', 'chromium-browser', 'google-chrome', 'chrome',
-'brave', 'brave-browser', 'vivaldi', 'opera', 'epiphany',
-'waterfox', 'librewolf', 'ungoogled-chromium',
+  'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
+  'firefox', 'firefox-bin', 'firefox-esr',
+  'chromium', 'chromium-browser', 'google-chrome', 'chrome',
+  'brave', 'brave-browser', 'vivaldi', 'opera', 'epiphany',
+  'waterfox', 'librewolf', 'ungoogled-chromium',
 ];
 
 let linkedStreams = new Set();
 
-function routeGameAudio(gameProcessName) {
-  _routeViaPatctl(gameProcessName);
+// ── Continuous sink-input routing daemon ─────────────────────────────────────
+// Polls every 1500ms. Any non-blacklisted sink-input NOT already on NearsecVirtual
+// gets moved there. This mirrors the blacklist daemon's approach so new apps
+// are caught automatically regardless of when they launch.
 
+let _routingInterval  = null;
+const ROUTE_POLL_MS   = 1500;
+
+// When a specific game process is requested, only route that process.
+// null / 'ALL_DESKTOP' routes everything not on the blacklist.
+let _targetProcess = null;
+
+function startRoutingDaemon(processName) {
+  _targetProcess = (processName && processName !== 'ALL_DESKTOP') ? processName.toLowerCase() : null;
+
+  if (_routingInterval) {
+    // Already running — just update the target and let it continue
+    log(`Routing daemon target updated → ${_targetProcess || 'ALL_DESKTOP'}`);
+    return;
+  }
+
+  log(`Routing daemon started → target: ${_targetProcess || 'ALL_DESKTOP'} (poll: ${ROUTE_POLL_MS}ms)`);
+  _routeViaPatctl(); // immediate first sweep
+  _routingInterval = setInterval(_routeViaPatctl, ROUTE_POLL_MS);
+}
+
+function stopRoutingDaemon() {
+  if (_routingInterval) {
+    clearInterval(_routingInterval);
+    _routingInterval = null;
+    log('Routing daemon stopped.');
+  }
+}
+
+function routeGameAudio(processName) {
+  startRoutingDaemon(processName || null);
+
+  // venmic path: one-shot link pass (venmic links persist, no need to poll)
+  if (pb) _routeViaVenmic(processName);
+}
+
+function _routeViaPatctl() {
+  if (process.platform !== 'linux') return;
+
+  exec('pactl list short sinks', (e0, sinksOut) => {
+    if (e0 || !sinksOut) return;
+    const nearsecLine = sinksOut.split('\n').find(l => l.includes('NearsecVirtual'));
+    if (!nearsecLine) return;
+    const nearsecSinkId = nearsecLine.trim().split(/\s+/)[0];
+    if (!nearsecSinkId) return;
+
+    exec('pactl list sink-inputs', (e1, verbose) => {
+      if (e1 || !verbose) return;
+
+      // Split into per-input blocks
+      const blocks = verbose.split(/(?=Sink Input #\d+)/g);
+      for (const block of blocks) {
+        const idMatch  = block.match(/^Sink Input #(\d+)/);
+        if (!idMatch) continue;
+        const inputId  = idMatch[1];
+
+        const sinkMatch = block.match(/^\s*Sink:\s*(\d+)/m);
+        const currentSink = sinkMatch ? sinkMatch[1] : null;
+
+        // Already on NearsecVirtual — nothing to do
+        if (currentSink === nearsecSinkId) continue;
+
+        const appBinary = (block.match(/application\.process\.binary\s*=\s*"([^"]+)"/) || [])[1] || '';
+        const appName   = (block.match(/application\.name\s*=\s*"([^"]+)"/)           || [])[1] || '';
+        const identifier = (appBinary || appName).toLowerCase();
+
+        if (!identifier) continue;
+        if (AUDIO_BLACKLIST.some(b => identifier.includes(b.toLowerCase()))) continue;
+        if (identifier.includes('nearsec'))            continue;
+        if (identifier.includes('speech-dispatcher'))  continue;
+        if (identifier.includes('sd_dummy'))           continue;
+
+        // If a specific process was requested, skip everything else
+        if (_targetProcess && !identifier.includes(_targetProcess)) continue;
+
+        exec(`pactl move-sink-input ${inputId} ${nearsecSinkId}`, e2 => {
+          if (!e2) log(`Routed sink-input ${inputId} (${identifier}) → NearsecVirtual`);
+        });
+      }
+    });
+  });
+}
+
+function _routeViaVenmic(gameProcessName) {
   if (!pb) return;
 
   let devices;
@@ -271,7 +363,7 @@ function routeGameAudio(gameProcessName) {
     const name = (d['node.name'] || d['audio.name'] || '').toLowerCase();
     const desc = (d['node.description'] || d['device.description'] || d['media.description'] || '').toLowerCase();
     return (cls.includes('sink') || cls.includes('audio/sink')) &&
-    (name.includes('nearsec') || desc.includes('nearsec') || name.includes('nearsecappaudio'));
+      (name.includes('nearsec') || desc.includes('nearsec'));
   });
   if (!sinkNode) return;
 
@@ -303,7 +395,7 @@ function routeGameAudio(gameProcessName) {
     const outId = node.id !== undefined ? node.id : node['object.id'];
     if (outId !== undefined && !linkedStreams.has(outId)) {
       const name = node['application.process.binary'] || node['application.name'] || 'Unknown';
-      log(`Routing ${name} (${outId}) → NearsecAppAudio via venmic`);
+      log(`Routing ${name} (${outId}) → NearsecVirtual via venmic`);
       try {
         pb.link(outId, sinkId);
         linkedStreams.add(outId);
@@ -311,52 +403,6 @@ function routeGameAudio(gameProcessName) {
         err(`venmic link failed for ${name}: ${e.message}`);
       }
     }
-  });
-}
-
-function _routeViaPatctl(gameProcessName) {
-  if (process.platform !== 'linux') return;
-
-  exec('pactl list short sink-inputs', (error, stdout) => {
-    if (error || !stdout) return;
-
-    const lines = stdout.trim().split('\n').filter(Boolean);
-    lines.forEach(line => {
-      const inputId = line.split(/\s+/)[0];
-      if (!inputId || !/^\d+$/.test(inputId)) return;
-
-      exec(`pactl list sink-inputs | grep -A 20 "Sink Input #${inputId}"`, (e2, props) => {
-        if (e2 || !props) return;
-
-        const appBinary = (props.match(/application\.process\.binary\s*=\s*"([^"]+)"/) || [])[1] || '';
-        const appName   = (props.match(/application\.name\s*=\s*"([^"]+)"/) || [])[1] || '';
-        const identifier = (appBinary || appName).toLowerCase();
-
-        if (!identifier) return;
-        if (AUDIO_BLACKLIST.some(b => identifier.includes(b.toLowerCase()))) return;
-        if (identifier.includes('nearsec')) return;
-        if (identifier.includes('speech-dispatcher') || identifier.includes('sd_dummy')) return;
-
-        if (gameProcessName && gameProcessName !== 'ALL_DESKTOP') {
-          if (!identifier.includes(gameProcessName.toLowerCase())) return;
-        }
-
-        const currentSinkMatch = props.match(/Sink:\s*(\d+)/);
-        const currentSink = currentSinkMatch ? currentSinkMatch[1] : null;
-
-        exec('pactl list short sinks', (e3, sinks) => {
-          if (e3 || !sinks) return;
-          const nearsecLine = sinks.split('\n').find(l => l.includes('NearsecVirtual'));
-          if (!nearsecLine) return;
-          const nearsecSinkId = nearsecLine.split(/\s+/)[0];
-          if (!nearsecSinkId || currentSink === nearsecSinkId) return;
-
-          exec(`pactl move-sink-input ${inputId} ${nearsecSinkId}`, e4 => {
-            if (!e4) log(`pactl routed sink-input ${inputId} (${identifier}) → NearsecVirtual`);
-          });
-        });
-      });
-    });
   });
 }
 
