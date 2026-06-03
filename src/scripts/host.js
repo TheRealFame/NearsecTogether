@@ -127,19 +127,6 @@ function toggleMasterMute() {
     }
 }
 
-let _globalViewerVolumeLevel = 1.0;
-function setGlobalViewerVolume(val) {
-    _globalViewerVolumeLevel = val / 100;
-    const el = document.getElementById('globalViewerVolVal');
-    if (el) el.textContent = val;
-    if (typeof viewerAudioStates !== 'undefined') {
-        Object.keys(viewerAudioStates).forEach(vid => {
-            const audioEl = document.getElementById('remote-audio-' + vid);
-            if (audioEl && viewerAudioStates[vid].state < 2)
-                audioEl.volume = (viewerAudioStates[vid].vol / 100) * _globalViewerVolumeLevel;
-        });
-    }
-}
 // ─────────────────────────────────────────────────────────────────────────────
 
 const congestionControl = {
@@ -183,9 +170,13 @@ async function monitorCongestion(pc, viewerId) {
             if (!sender) return;
 
             const params = sender.getParameters();
-            const currentBitrate = params.encodings?.[0]?.maxBitrate || parseInt(document.getElementById('bitrateSelect').value);
+            const configuredBitrate = parseInt(document.getElementById('bitrateSelect').value, 10) || 0;
+            const currentBitrate = params.encodings?.[0]?.maxBitrate || configuredBitrate;
             const lastAdj = congestionControl.lastAdjustment[viewerId] || { bitrate: currentBitrate, time: 0 };
             const timeSinceLastAdj = Date.now() - lastAdj.time;
+
+            // Always preserve the user's degradationPreference — never let setParameters reset it
+            const degPref = document.getElementById('degSelect')?.value || 'maintain-framerate';
 
             let shouldReduce = false;
             let reason = '';
@@ -197,27 +188,32 @@ async function monitorCongestion(pc, viewerId) {
                 shouldReduce = true;
                 reason = `high RTT (${rttMs}ms > ${congestionControl.maxRttMs}ms)`;
             } else if (timeSinceLastAdj > congestionControl.recoveryTimeout &&
-                currentBitrate < lastAdj.bitrate * 0.95 &&
+                currentBitrate < (configuredBitrate || lastAdj.bitrate) * 0.95 &&
                 rttMs < congestionControl.minRttMs) {
-                const recovered = Math.min(lastAdj.bitrate, currentBitrate * 1.1);
-            if (params.encodings?.length) {
-                params.encodings[0].maxBitrate = Math.round(recovered);
+                // Recovery ceiling is the user's CONFIGURED bitrate, not the pre-reduction value.
+                // This allows full recovery to the intended quality after congestion clears.
+                const ceiling  = configuredBitrate > 0 ? configuredBitrate : lastAdj.bitrate;
+                const recovered = Math.min(ceiling, currentBitrate * 1.1);
+                if (params.encodings?.length) {
+                    params.encodings[0].maxBitrate = Math.round(recovered);
+                    params.encodings[0].degradationPreference = degPref;
+                }
+                await sender.setParameters(params);
+                congestionControl.lastAdjustment[viewerId] = { bitrate: recovered, time: Date.now() };
+                log(I18N.t('Congestion: Bitrate recovered to ${Math.round(recovered/1000)}kbps for ${viewerId}').replace('${Math.round(recovered/1000)}', Math.round(recovered/1000)).replace('${viewerId}', viewerId), 'ok');
+                return;
             }
-            await sender.setParameters(params);
-            congestionControl.lastAdjustment[viewerId] = { bitrate: recovered, time: Date.now() };
-            log(I18N.t('Congestion: Bitrate recovered to ${Math.round(recovered/1000)}kbps for ${viewerId}').replace('${Math.round(recovered/1000)}', Math.round(recovered/1000)).replace('${viewerId}', viewerId), 'ok');
-            return;
-                }
 
-                if (shouldReduce && timeSinceLastAdj > 2000) {
-                    const newBitrate = Math.round(currentBitrate * 0.8);
-                    if (params.encodings?.length) {
-                        params.encodings[0].maxBitrate = Math.max(500000, newBitrate);
-                    }
-                    await sender.setParameters(params);
-                    congestionControl.lastAdjustment[viewerId] = { bitrate: currentBitrate, time: Date.now() };
-                    log(I18N.t('Congestion: Bitrate reduced to ${Math.round(newBitrate/1000)}kbps (${reason})').replace('${Math.round(newBitrate/1000)}', Math.round(newBitrate/1000)).replace('${reason}', reason), 'warn');
+            if (shouldReduce && timeSinceLastAdj > 2000) {
+                const newBitrate = Math.round(currentBitrate * 0.8);
+                if (params.encodings?.length) {
+                    params.encodings[0].maxBitrate = Math.max(500000, newBitrate);
+                    params.encodings[0].degradationPreference = degPref;
                 }
+                await sender.setParameters(params);
+                congestionControl.lastAdjustment[viewerId] = { bitrate: currentBitrate, time: Date.now() };
+                log(I18N.t('Congestion: Bitrate reduced to ${Math.round(newBitrate/1000)}kbps (${reason})').replace('${Math.round(newBitrate/1000)}', Math.round(newBitrate/1000)).replace('${reason}', reason), 'warn');
+            }
         } catch (e) {}
     };
 

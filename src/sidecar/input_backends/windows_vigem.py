@@ -36,8 +36,9 @@ viewer_modes = {}
 def run():
     print("[input] Windows vgamepad + pyautogui backend initialized", flush=True)
 
-    for line in sys.stdin:
-        line = line.strip()
+    stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+    for raw_line in stdin_raw:
+        line = raw_line.decode('utf-8', errors='replace').strip()
         if not line: continue
 
         try:

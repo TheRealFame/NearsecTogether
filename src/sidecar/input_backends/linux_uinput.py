@@ -544,8 +544,13 @@ def run():
     global _active_binds, _auto_map_on, _is_hybrid
     print("[input] Loaded linux_uinput backend (stable, completely unified)", flush=True)
 
-    for line in sys.stdin:
-        line = line.strip()
+    # Use unbuffered binary stdin so every line Node writes is dispatched immediately
+    # without waiting for the OS 8KB read buffer to fill. This is the main source
+    # of variable controller latency on the Python side.
+    stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+
+    for raw_line in stdin_raw:
+        line = raw_line.decode('utf-8', errors='replace').strip()
         if not line:
             continue
         

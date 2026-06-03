@@ -206,7 +206,15 @@ spawnArcadeHeartbeatWorker();
 
 function toUinput(msg) {
   if (!uinputProc || !uinputProc.stdin.writable) return;
-  setImmediate(() => { try { uinputProc.stdin.write(JSON.stringify(msg) + "\n"); } catch { } });
+  // Gamepad messages are written synchronously — setImmediate adds a full
+  // event loop tick of unnecessary latency on every single input frame.
+  // Config/control messages keep setImmediate since they're not latency-sensitive.
+  const isInput = msg.type === 'gamepad' || msg.type === 'kbm' || msg.type === 'keyboard';
+  if (isInput) {
+    try { uinputProc.stdin.write(JSON.stringify(msg) + '\n'); } catch { }
+  } else {
+    setImmediate(() => { try { uinputProc.stdin.write(JSON.stringify(msg) + '\n'); } catch { } });
+  }
 }
 
 const projectRoot = path.join(__dirname, '..', '..');

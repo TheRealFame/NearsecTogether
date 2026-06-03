@@ -430,8 +430,9 @@ def run():
     check_permissions()
 
     try:
-        for line in sys.stdin:
-            line = line.strip()
+        stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+        for raw_line in stdin_raw:
+            line = raw_line.decode('utf-8', errors='replace').strip()
             if not line:
                 continue
 
