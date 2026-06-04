@@ -255,16 +255,45 @@ async function createWindow() {
   win.webContents.session.setPermissionCheckHandler(() => true);
   win.webContents.session.setPermissionRequestHandler((wc, permission, callback) => callback(true));
 
+  // ── UNIFIED CAPTURE HANDLER (Fixes PipeWire Deadlocks & UI Freezes) ──
   win.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
       if (sources && sources.length > 0) {
+        // WINDOWS AUDIO FIX: 'loopback' enables capturing desktop audio
         if (process.platform === 'win32') callback({ video: sources[0], audio: 'loopback' });
         else callback({ video: sources[0] });
       } else {
         console.log('[electron] Capture blocked or no sources found. Cancelling.');
-        callback();
+        callback(); // Empty callback safely aborts without crashing PipeWire
+
+        // ANTI-FREEZE INJECTION: Forcefully unlock the frontend UI buttons
+        if (win && !win.isDestroyed()) {
+          win.webContents.executeJavaScript(`
+          if (typeof _elDisabled === 'function') {
+            _elDisabled('btnStart', false);
+            _elDisabled('btnSwitch', false);
+            _elDisabled('btnStop', true);
+            if (typeof setCapDot === 'function') setCapDot('');
+          }
+          `).catch(()=>{});
+        }
       }
-    }).catch(err => { console.error('[electron] Capturer error:', err); callback(); });
+    }).catch(err => {
+      console.error('[electron] Capturer error:', err);
+      callback(); // Empty callback safely aborts without crashing PipeWire
+
+      // ANTI-FREEZE INJECTION: Forcefully unlock the frontend UI buttons
+      if (win && !win.isDestroyed()) {
+        win.webContents.executeJavaScript(`
+        if (typeof _elDisabled === 'function') {
+          _elDisabled('btnStart', false);
+          _elDisabled('btnSwitch', false);
+          _elDisabled('btnStop', true);
+          if (typeof setCapDot === 'function') setCapDot('');
+        }
+        `).catch(()=>{});
+      }
+    });
   });
 
   win.on('resize', () => {

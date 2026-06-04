@@ -1096,7 +1096,7 @@ async function main() {
 
       // Start audio routing as soon as the host session opens
       if (_audioWorker) _audioWorker.postMessage({ type: 'route', processName: null });
-      viewers.forEach((_, id) => ws.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id })));
+      viewers.forEach((_, id) => hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id })));
 
       if (tunnelUrl) ws.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
 

@@ -557,9 +557,17 @@ const keyMap = {
 const mouseMap = { 0:'BTN_LEFT', 1:'BTN_MIDDLE', 2:'BTN_RIGHT' };
 
 function sendKbm(data) {
-    if (ws && ws.readyState === 1 && document.pointerLockElement) {
+    if (document.pointerLockElement) {
         data.type = 'keyboard';
-        ws.send(JSON.stringify(data));
+        data.viewerId = myId;
+        data.pad_id = myId + '_0';
+
+        const str = JSON.stringify(data);
+        if (inputWs && inputWs.readyState === 1) {
+            inputWs.send(str);
+        } else if (ws && ws.readyState === 1) {
+            ws.send(str);
+        }
     }
 }
 function requestPointerLock() {
@@ -733,14 +741,30 @@ function pollGamepad() {
             sentGpid.add(gp.index);
         }
         const forceHb = now - (lastGpSend[gp.index]||0) > 100;
-        const state = { type:'gamepad', padIndex:gp.index, axes:Array.from(gp.axes).map(v=>Math.round(v*32767)), buttons:gp.buttons.map(b=>({ pressed:b.pressed, value:Math.round(b.value*255) })) };
+        const state = {
+            type: 'gamepad',
+            viewerId: myId,
+            pad_id: myId + '_' + gp.index,
+            padIndex: gp.index,
+            axes: Array.from(gp.axes).map(v => Math.round(v * 32767)),
+            buttons: gp.buttons.map(b => ({ pressed: b.pressed, value: Math.round(b.value * 255) }))
+        };
         applyCalibration(gp, state);
         if (hidDevice && hostMotionEnabled) {
             state.axes[2] = Math.max(-32767, Math.min(32767, state.axes[2] + Math.round(hidGyroX*32767)));
             state.axes[3] = Math.max(-32767, Math.min(32767, state.axes[3] + Math.round(hidGyroY*32767)));
         }
         const str = JSON.stringify(state);
-        if (str !== lastGpStr[gp.index] || forceHb) { lastGpStr[gp.index] = str; lastGpSend[gp.index] = now; if (ws?.readyState===1) ws.send(str); }
+        if (str !== lastGpStr[gp.index] || forceHb) {
+            lastGpStr[gp.index] = str;
+            lastGpSend[gp.index] = now;
+            // Fast Lane Routing
+            if (inputWs && inputWs.readyState === 1) {
+                inputWs.send(str);
+            } else if (ws && ws.readyState === 1) {
+                ws.send(str);
+            }
+        }
     }
     if (touchMode) {
         const vIndex = 99;
@@ -771,6 +795,29 @@ function setStatus(msg, live) {
     if (live) document.getElementById('liveDot').style.display = 'inline-block';
 }
 function showOverlay(v) { document.getElementById('overlay').classList.toggle('gone', !v); }
+
+// ── DEDICATED INPUT FAST LANE ─────────────────────────────────────────────────
+let inputWs = null;
+
+function connectInputWS() {
+    if (inputWs && (inputWs.readyState === 0 || inputWs.readyState === 1)) return;
+
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    inputWs = new WebSocket(proto + '://' + location.host + '/ws/input');
+
+    inputWs.onopen = () => {
+        console.log('[Input] Dedicated 250Hz Fast Lane connected.');
+        // The server needs us to identify ourselves on this separate pipe!
+        if (myId) inputWs.send(JSON.stringify({ type: 'identify', viewerId: myId }));
+    };
+
+    inputWs.onclose = () => {
+        console.warn('[Input] Fast Lane disconnected. Retrying in 2s...');
+        setTimeout(connectInputWS, 2000);
+    };
+
+    inputWs.onerror = () => console.error('[Input] Fast Lane error.');
+}
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 async function connect() {
@@ -855,6 +902,9 @@ async function connect() {
             sessionStorage.setItem('ns_viewer_id', myId);
             const nameEl = document.querySelector('#talkingMe .talking-name');
             if (nameEl) nameEl.textContent = myName + ' (You)';
+
+            // --> START THE FAST LANE NOW THAT WE KNOW OUR ID <--
+            connectInputWS();
             return;
         }
         if (msg.type === 'host-stream-ready') { setStatus('Host found, connecting...'); maybeShowControllerGuide(); return; }

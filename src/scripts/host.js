@@ -145,7 +145,7 @@ async function monitorCongestion(pc, viewerId) {
     if (!congestionControl.enabled) return;
 
     const poll = async () => {
-        try {
+        try { // <--- OUTER TRY STARTS HERE
             const stats = await pc.getStats();
             let candidatePair = null;
 
@@ -172,8 +172,9 @@ async function monitorCongestion(pc, viewerId) {
             if (!sender) return;
 
             const params = sender.getParameters();
-            const configuredBitrate = parseInt(document.getElementById('bitrateSelect').value, 10) || 0;
+            const configuredBitrate = parseInt(document.getElementById('bitrateSelect')?.value, 10) || 0;
             const currentBitrate = params.encodings?.[0]?.maxBitrate || configuredBitrate;
+
             if (!congestionControl.lastAdjustment[viewerId]) {
                 congestionControl.lastAdjustment[viewerId] = { bitrate: currentBitrate, time: 0, baselineRtt: 0 };
             }
@@ -199,29 +200,42 @@ async function monitorCongestion(pc, viewerId) {
             } else if (timeSinceLastAdj > congestionControl.recoveryTimeout &&
                 currentBitrate < (configuredBitrate || lastAdj.bitrate) * 0.95 &&
                 rttMs < congestionControl.minRttMs) {
-                const ceiling  = configuredBitrate > 0 ? configuredBitrate : lastAdj.bitrate;
-                const recovered = Math.min(ceiling, currentBitrate * 1.1);
-                if (params.encodings?.length) {
-                    params.encodings[0].maxBitrate = Math.round(recovered);
-                    params.encodings[0].degradationPreference = degPref;
-                }
-                await sender.setParameters(params);
-                congestionControl.lastAdjustment[viewerId] = { bitrate: recovered, time: Date.now(), baselineRtt: lastAdj.baselineRtt };
-                log(I18N.t('Congestion: Bitrate recovered to ${Math.round(recovered/1000)}kbps for ${viewerId}').replace('${Math.round(recovered/1000)}', Math.round(recovered/1000)).replace('${viewerId}', viewerId), 'ok');
-                return;
-            }
 
-            if (shouldReduce && timeSinceLastAdj > 2000) {
-                const newBitrate = Math.round(currentBitrate * 0.8);
-                if (params.encodings?.length) {
-                    params.encodings[0].maxBitrate = Math.max(500000, newBitrate);
-                    params.encodings[0].degradationPreference = degPref;
-                }
-                await sender.setParameters(params);
-                congestionControl.lastAdjustment[viewerId] = { bitrate: currentBitrate, time: Date.now(), baselineRtt: lastAdj.baselineRtt };
-                log(I18N.t('Congestion: Bitrate reduced to ${Math.round(newBitrate/1000)}kbps (${reason})').replace('${Math.round(newBitrate/1000)}', Math.round(newBitrate/1000)).replace('${reason}', reason), 'warn');
+                const ceiling  = configuredBitrate > 0 ? configuredBitrate : lastAdj.bitrate;
+            const recovered = Math.min(ceiling, currentBitrate * 1.1);
+
+            if (params.encodings?.length) {
+                params.encodings[0].maxBitrate = Math.round(recovered);
+                params.encodings[0].degradationPreference = degPref;
             }
-        } catch (e) {}
+            await sender.setParameters(params);
+
+            congestionControl.lastAdjustment[viewerId] = { bitrate: recovered, time: Date.now(), baselineRtt: lastAdj.baselineRtt };
+            log(I18N.t('Congestion: Bitrate recovered to ${Math.round(recovered/1000)}kbps for ${viewerId}').replace('${Math.round(recovered/1000)}', Math.round(recovered/1000)).replace('${viewerId}', viewerId), 'ok');
+            return;
+                }
+
+                if (shouldReduce && timeSinceLastAdj > 2000) {
+                    const isCrisp = (degPref === 'maintain-resolution');
+                    const reductionFactor = isCrisp ? 0.95 : 0.80;
+                    const minFloor        = isCrisp ? 2500000 : 500000;
+                    const newBitrate = Math.round(currentBitrate * reductionFactor);
+
+                    try { // <--- INNER TRY (The INVALID_STATE fix)
+                        const freshParams = sender.getParameters();
+                        if (freshParams.encodings?.length) {
+                            freshParams.encodings[0].maxBitrate = Math.max(minFloor, newBitrate);
+                            freshParams.encodings[0].degradationPreference = degPref;
+                        }
+                        await sender.setParameters(freshParams);
+
+                        congestionControl.lastAdjustment[viewerId] = { bitrate: currentBitrate, time: Date.now(), baselineRtt: lastAdj.baselineRtt };
+                        log(I18N.t('Congestion: Bitrate reduced to ${Math.round(newBitrate/1000)}kbps (${reason})').replace('${Math.round(newBitrate/1000)}', Math.round(newBitrate/1000)).replace('${reason}', reason), 'warn');
+                    } catch (e) {
+                        console.warn('[Congestion] Failed to apply bitrate reduction:', e.message);
+                    }
+                }
+        } catch (outerErr) {}
     };
 
     const interval = setInterval(async () => {
@@ -283,19 +297,32 @@ async function fetchGameThumbnail(gameTitle) {
 
 function preferVideoCodec(pc) {
     const caps = RTCRtpSender.getCapabilities?.('video');
-    if (!caps) return null;
+    if (!caps || !caps.codecs) return null;
     const val = document.getElementById('codecSelect').value;
-    // H.265 is listed as 'video/H265' in Chromium/Electron but some builds use 'video/hevc'
-    const candidates = val === 'H265'
-        ? [c => c.mimeType === 'video/H265', c => c.mimeType.toLowerCase() === 'video/hevc']
-        : [c => c.mimeType === 'video/' + val];
-    const preferred = candidates.flatMap(fn => caps.codecs.filter(fn));
-    const rest      = caps.codecs.filter(c => !preferred.includes(c));
-    const sorted    = [...preferred, ...rest];
+
+    // Match mimeType exactly as WebRTC defines it (case-insensitive)
+    const targetMime = 'video/' + (val === 'H265' ? 'hevc' : val).toLowerCase();
+    const fallbackMime = val === 'H265' ? 'video/h265' : targetMime;
+
+    const preferred = caps.codecs.filter(c =>
+    c.mimeType.toLowerCase() === targetMime || c.mimeType.toLowerCase() === fallbackMime
+    );
+
+    // Fallback to browser default if hardware is missing
+    if (preferred.length === 0) return null;
+
+    const rest = caps.codecs.filter(c => !preferred.includes(c));
+    const sorted = [...preferred, ...rest];
+
     let used = null;
     pc.getTransceivers().forEach(t => {
         if (t.sender?.track?.kind === 'video') {
-            try { t.setCodecPreferences(sorted); used = sorted[0]?.mimeType || null; } catch { }
+            try {
+                t.setCodecPreferences(sorted);
+                used = sorted[0]?.mimeType || null;
+            } catch (e) {
+                console.warn('[WebRTC] Codec preference rejected:', e.message);
+            }
         }
     });
     return used;
@@ -308,9 +335,10 @@ async function setLowLatencyParams(pc) {
         const params = sender.getParameters();
         const bitVal = parseInt(document.getElementById('bitrateSelect').value, 10);
         const _appFpsUnlock = (typeof appConfig !== 'undefined') && appConfig.fpsUnlock;
-    const fpsVal = _appFpsUnlock
-      ? Math.max(parseInt(document.getElementById('fpsSelect')?.value) || 60, 120)
-      : (parseInt(document.getElementById('fpsSelect')?.value) || 60);
+        const fpsVal = _appFpsUnlock
+        ? Math.max(parseInt(document.getElementById('fpsSelect')?.value) || 60, 120)
+        : (parseInt(document.getElementById('fpsSelect')?.value) || 60);
+
         if (params.encodings?.length) {
             if (bitVal > 0) {
                 params.encodings[0].maxBitrate = bitVal;
@@ -321,12 +349,13 @@ async function setLowLatencyParams(pc) {
             params.encodings[0].networkPriority = 'high';
             params.encodings[0].priority = 'high';
 
-            // FIX: Actually read the UI dropdown so you can choose Crisp vs Smooth
             const degPref = document.getElementById('degSelect')?.value || 'maintain-framerate';
             params.encodings[0].degradationPreference = degPref;
         }
         await sender.setParameters(params);
-    } catch { }
+    } catch (e) {
+        console.warn('[WebRTC] Failed to apply low latency params:', e.message);
+    }
 }
 
 async function applyBitrateToAll() {
@@ -1093,6 +1122,12 @@ async function hotSwapCapture() {
 }
 
 async function startCapture() {
+    // ── HANG PROTECTION: Forces hanging OS promises to reject after 20 seconds ──
+    const withTimeout = (promise, ms, msg) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms))
+    ]);
+
     _elDisabled('btnStart', true);
     _elDisabled('btnSwitch', true);
 
@@ -1103,8 +1138,8 @@ async function startCapture() {
     const isLinux = navigator.userAgent.includes('Linux') || navigator.platform.toLowerCase().includes('linux');
     const _appFpsUnlock = (typeof appConfig !== 'undefined') && appConfig.fpsUnlock;
     const fpsVal = _appFpsUnlock
-      ? Math.max(parseInt(document.getElementById('fpsSelect')?.value) || 60, 120)
-      : (parseInt(document.getElementById('fpsSelect')?.value) || 60);
+    ? Math.max(parseInt(document.getElementById('fpsSelect')?.value) || 60, 120)
+    : (parseInt(document.getElementById('fpsSelect')?.value) || 60);
     const resVal = document.getElementById('resSelect')?.value || '1080p';
 
     let videoConstraints = { frameRate: { ideal: fpsVal } };
@@ -1125,29 +1160,58 @@ async function startCapture() {
             displayMediaOptions.audio = false;
         }
 
-        if (selectedSourceId && window.electronAPI) {
+        // ── THE NATIVE WAYLAND BYPASS ──
+        if (isLinux) {
+            // Do NOT use getDisplayMedia or desktopCapturer on Linux.
+            // By calling getUserMedia with 'desktop' directly, Chromium natively invokes
+            // the Wayland PipeWire portal in C++, completely bypassing Electron's broken deadlock bug.
+            screenStream = await navigator.mediaDevices.getUserMedia({
+                video: { mandatory: { chromeMediaSource: 'desktop', maxFrameRate: fpsVal } },
+                audio: false
+            });
+        }
+        // ── WINDOWS / MAC LOGIC ──
+        else if (selectedSourceId && window.electronAPI) {
             try {
                 window._lastSourceId = selectedSourceId;
-                screenStream = await navigator.mediaDevices.getUserMedia({
-                    audio: isLinux ? false : (audioSettings.forceAudioEnabled ? { mandatory: { chromeMediaSource: 'desktop' } } : false),
-                                                                         video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: selectedSourceId, maxFrameRate: fpsVal } }
+
+                // 1. Grab the Video specifically for the selected Window/Screen
+                const vidStream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: selectedSourceId, maxFrameRate: fpsVal } }
                 });
                 log(I18N.t('Using selected source:') + ' ' + selectedSourceId, 'ok');
+
+                // 2. Safely grab System Audio as a completely separate stream (if enabled)
+                let tempAudioTrack = null;
+                if (!isLinux && audioSettings.forceAudioEnabled) {
+                    try {
+                        const audStream = await navigator.mediaDevices.getUserMedia({
+                            audio: { mandatory: { chromeMediaSource: 'desktop' } },
+                            video: false
+                        });
+                        tempAudioTrack = audStream.getAudioTracks()[0];
+                    } catch (audErr) {
+                        log(I18N.t('Could not attach system audio to window capture.') , 'warn');
+                    }
+                }
+
+                // 3. Stitch them together manually
+                screenStream = new MediaStream([vidStream.getVideoTracks()[0]]);
+                if (tempAudioTrack) screenStream.addTrack(tempAudioTrack);
+
             } catch (e) {
-                log(I18N.t('Source selection failed, falling back:') + ' ' + e.message, 'warn');
+                log(I18N.t('Source selection failed, falling back to native picker:') + ' ' + e.message, 'warn');
                 selectedSourceId = null;
                 screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
             }
-        } else {
-            screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
         }
 
         if (selectedSourceId) activeSourceId = selectedSourceId;
         selectedSourceId = null;
         const vTrack = screenStream.getVideoTracks()[0];
         if (!vTrack || vTrack.readyState === 'ended') {
-            log(I18N.t('Screen capture cancelled'), 'warn'); setCapDot('');
-            document.getElementById('btnStart').disabled = false; return;
+            throw new DOMException("Stream ended unexpectedly", "AbortError");
         }
 
         vTrack.contentHint = 'motion';
@@ -1159,7 +1223,6 @@ async function startCapture() {
 
         if (isLinux) {
             try {
-                // Force permission prompt to un-hide device labels
                 try {
                     const unlockStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     unlockStream.getTracks().forEach(t => t.stop());
@@ -1168,13 +1231,9 @@ async function startCapture() {
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const audioInputs = devices.filter(d => d.kind === 'audioinput');
 
-                // Print all seen devices to console for debugging
-                console.log("Available Audio Inputs:", audioInputs.map(d => d.label || 'Hidden/Unknown'));
-
-                // Look for the system audio capture source
                 const loopbackDevice = audioInputs.find(d =>
-                d.label.includes('NearsecVirtualCapture') || // NEW ARCHITECTURE
-                d.label.includes('NearsecVirtual') ||        // NEW ARCHITECTURE
+                d.label.includes('NearsecVirtualCapture') ||
+                d.label.includes('NearsecVirtual') ||
                 d.label.includes('Nearsec_App_Mic') ||
                 d.label.includes('Nearsec_Virtual_Mic') ||
                 d.label.includes('NearsecAppMic') ||
@@ -1193,9 +1252,7 @@ async function startCapture() {
                         }
                     });
                     aTrack = audioStream.getAudioTracks()[0];
-                    if (aTrack) {
-                        log(I18N.t('System audio captured'), 'ok');
-                    }
+                    if (aTrack) log(I18N.t('System audio captured'), 'ok');
                 } else {
                     const labels = audioInputs.map(d => d.label || 'Hidden').join(', ');
                     log(I18N.t('Virtual cable not found. Seen labels:') + ' ' + labels, 'warn');
@@ -1205,12 +1262,10 @@ async function startCapture() {
             }
         }
 
-        // FORCE DISABLE PYTHON FALLBACK - We rely strictly on PipeWire now
         const disableFallback = true;
 
         if (aTrack) {
             combined.addTrack(aTrack);
-            // Link the slider node to the track so the Host can change the volume!
             if (typeof attachDesktopGain === 'function') attachDesktopGain(combined);
             log(I18N.t('System Audio Track Found:') + ' ' + (aTrack.label || 'default'), 'ok');
             if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stop-audio-fallback' }));
@@ -1240,11 +1295,8 @@ async function startCapture() {
 
         currentStream = combined;
 
-        // Instantly display the selected codec instead of waiting for a viewer
         const cb = document.getElementById('codecBadge');
-        if (cb) {
-            cb.textContent = document.getElementById('codecSelect').value;
-        }
+        if (cb) cb.textContent = document.getElementById('codecSelect').value;
 
         const prev = document.getElementById('preview');
         if (appSettings.hidePreviewOnStart) {
@@ -1265,7 +1317,6 @@ async function startCapture() {
         settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
         (finalAudioTracks.length > 0 ? 'Audio: active' : (disableFallback && !aTrack ? 'No audio' : 'Audio: OS fallback'));
 
-        // ── Dynamic resolution tracking (updates if resolution changes) ──
         const liveResEl   = document.getElementById('liveResDisplay');
         const liveResText = document.getElementById('liveResText');
         function _updateRes() {
@@ -1274,12 +1325,11 @@ async function startCapture() {
             if (!vt) return;
             const s = vt.getSettings();
             const label = (s.width && s.height)
-                ? s.width + '×' + s.height + ' @ ' + Math.round(s.frameRate || 0) + ' fps'
-                : '';
+            ? s.width + '×' + s.height + ' @ ' + Math.round(s.frameRate || 0) + ' fps'
+            : '';
             if (label) {
                 if (liveResText) liveResText.textContent = label;
                 if (liveResEl) liveResEl.style.display = 'block';
-                // Also update trackInfoAlt directly so the hyphen is never shown while live
                 const alt = document.getElementById('trackInfoAlt');
                 if (alt && !alt.innerHTML.includes('<strong>')) {
                     alt.textContent = label;
@@ -1310,10 +1360,22 @@ async function startCapture() {
         _elDisabled('btnSwitch', false);
         _elDisabled('btnStop', false);
         _elDisabled('btnKbmPanic', false);
+
     } catch (err) {
-        if (err.name === 'NotAllowedError' || err.name === 'AbortError') log(I18N.t('Capture cancelled'), 'warn');
-        else { log(I18N.t('Capture failed:') + ' ' + err.message, 'err'); setCapDot('err'); }
+        // UNFREEZE TRIGGER: Now runs cleanly whether by user abort or by our timeout
+        const sysName = isLinux ? (window.electronAPI ? "Wayland/PipeWire" : "Linux Native") : "Windows/Mac Desktop API";
+
+        if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+            log(`Screen capture cancelled by user [${sysName}]`, 'warn');
+            setCapDot('');
+        } else {
+            log(`Capture failed [${sysName}]: ${err.message}`, 'err');
+            setCapDot('err');
+        }
+
         _elDisabled('btnStart', false);
+        _elDisabled('btnSwitch', true);
+        _elDisabled('btnStop', true);
     }
 }
 
