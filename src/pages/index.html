@@ -86,6 +86,14 @@
       object-fit: contain;
     }
 
+    #webcodecs-canvas {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 1;
+    }
+
     /* Portrait: video fills naturally, no forced rotation */
     @media (orientation:portrait) {
       #video, #frameCanvas {
@@ -940,6 +948,7 @@ if (window.IS_CLIENT_ONLY) {
   <div id="video-container">
     <video id="video" autoplay playsinline disableRemotePlayback></video>
     <canvas id="frameCanvas"></canvas>
+    <canvas id="webcodecs-canvas"></canvas>
   </div>
 
   <!-- ════ CONNECTING OVERLAY ════ -->

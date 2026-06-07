@@ -99,6 +99,18 @@ const VAD_HOLD_MS   = 800;  // ms to hold "talking" indicator after silence
 let vadTalkingTimer = null;
 let vadIsTalking    = false;
 // ─────────────────────────────────────────────────────────────────────────────
+// ── WebCodecs Globals ──
+// USE_WEBCODECS: true when launched with --webcodecs flag (?wc=1 in URL).
+// In this mode the DataChannel pipeline is the primary renderer; the WebRTC
+// video track is still received (for timing / signalling parity) but is
+// immediately muted and never shown.
+const USE_WEBCODECS = new URLSearchParams(location.search).get('wc') === '1';
+
+let wcDecoder = null;
+// Pre-wire to the canvas already in index.html so initWebCodecsViewer never
+// creates a duplicate element.
+let wcCanvas = document.getElementById('webcodecs-canvas') || null;
+let wcCtx = wcCanvas ? wcCanvas.getContext('2d', { alpha: false, desynchronized: true }) : null;
 
 const CONTROLLER_GUIDE_STORAGE_KEY = 'ns_controller_guide_ack';
 const CLIENT_VERSION = window.NEARSEC_VERSION || '1.0.0';
@@ -142,50 +154,145 @@ async function createPC() {
         if (pc.connectionState === 'failed')      setStatus('Connection failed. Retrying...');
         if (pc.connectionState === 'disconnected') console.warn('[WebRTC] Disconnected.');
     };
-    pc.oniceconnectionstatechange = () => console.log(`[WebRTC] ICE State: ${pc.iceConnectionState}`);
-    pc.onsignalingstatechange     = () => console.log(`[WebRTC] Signaling State: ${pc.signalingState}`);
-    pc.onicecandidateerror        = (e) => console.error('[WebRTC] ICE Error:', e);
+        pc.oniceconnectionstatechange = () => console.log(`[WebRTC] ICE State: ${pc.iceConnectionState}`);
+        pc.onsignalingstatechange     = () => console.log(`[WebRTC] Signaling State: ${pc.signalingState}`);
+        pc.onicecandidateerror        = (e) => console.error('[WebRTC] ICE Error:', e);
 
-    pc.onicecandidate = (e) => {
-        if (e.candidate && e.candidate.candidate && ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({ type: 'ice-viewer', candidate: e.candidate, viewerId: myId }));
-        }
-    };
-
-    pc.ontrack = (e) => {
-        console.log(`[WebRTC] Received Track: ${e.track.kind}`);
-        if (e.track.kind === 'video') {
-            const video = document.getElementById('preview') || document.querySelector('video');
-            if (video) {
-                video.srcObject = e.streams[0];
-                if (typeof showOverlay === 'function') showOverlay(false);
-                setStatus('');
-                const spinner = document.getElementById('spinner');
-                if (spinner) spinner.style.display = 'none';
-                console.log('[WebRTC] Video stream attached!');
+        pc.onicecandidate = (e) => {
+            if (e.candidate && e.candidate.candidate && ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'ice-viewer', candidate: e.candidate, viewerId: myId }));
             }
-        }
-    };
+        };
 
-    // Re-attach mic on reconnect
-    if (localMicStream) {
-        console.log('[WebRTC] Re-attaching local microphone...');
-        const audioTrack = localMicStream.getAudioTracks()[0];
-        if (audioTrack) micSender = pc.addTrack(audioTrack, localMicStream);
-    }
+        pc.ontrack = (e) => {
+            console.log(`[WebRTC] Received Track: ${e.track.kind}`);
+            if (e.track.kind === 'video') {
+                if (USE_WEBCODECS) {
+                    // WebCodecs mode: DataChannel is the real renderer.
+                    // Attach the track to a silent video element just to keep
+                    // the WebRTC engine happy (RTCP feedback, etc.) — never shown.
+                    const sink = document.getElementById('video');
+                    if (sink) {
+                        if (!sink.srcObject) sink.srcObject = new MediaStream();
+                        sink.srcObject.addTrack(e.track);
+                        sink.muted = true;
+                        sink.style.display = 'none';
+                    }
+                    // Show the WebCodecs canvas layer; decoder will be configured
+                    // when the host sends the 'webcodecs-config' DataChannel message.
+                    if (wcCanvas) {
+                        wcCanvas.style.display = 'block';
+                    }
+                    console.log('[WebCodecs] Video track suppressed — DataChannel renderer active');
+                    return;
+                }
+                // Normal WebRTC mode: attach to the primary #video element.
+                const videoEl = document.getElementById('video');
+                if (videoEl) {
+                    if (!videoEl.srcObject) videoEl.srcObject = new MediaStream();
+                    videoEl.srcObject.addTrack(e.track);
+                    videoEl.onplaying = () => {
+                        if (typeof showOverlay === 'function') showOverlay(false);
+                        setStatus('');
+                        const spinner = document.getElementById('spinner');
+                        if (spinner) spinner.style.display = 'none';
+                    };
+                    console.log('[WebRTC] Video stream attached to #video');
+                }
+            }
+        };
+        // ── EXPERIMENTAL WEBCODECS DATA CHANNEL RECEIVER ──
+        let waitingForKeyframe = true;
 
-    // Renegotiation — sends a new offer when tracks are added/removed
-    pc.onnegotiationneeded = async () => {
-        if (!ws || ws.readyState !== 1) return;
-        try {
-            console.log('[WebRTC] Renegotiation needed — sending new offer...');
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription }));
-        } catch (err) {
-            console.error('[WebRTC] Renegotiation error:', err);
+        pc.ondatachannel = (event) => {
+            const channel = event.channel;
+
+            // --- WEBCODECS VIDEO PIPELINE ---
+            if (channel.label === 'webcodecs') {
+                console.log('[WebRTC] DataChannel opened for WebCodecs payload: webcodecs');
+
+                channel.onmessage = async (e) => {
+                    // 1. Process String Configuration Messages
+                    if (typeof e.data === 'string') {
+                        try {
+                            const msg = JSON.parse(e.data);
+                            if (msg.type === 'webcodecs-config') {
+                                initWebCodecsViewer(msg);
+                            }
+                        } catch (err) {
+                            console.warn('[WebCodecs] Failed to parse string message:', err);
+                        }
+                        return;
+                    }
+
+                    // 2. Process Binary Video Frames
+                    if (e.data instanceof ArrayBuffer) {
+                        if (!wcDecoder || wcDecoder.state !== 'configured') return;
+
+                        const view = new DataView(e.data);
+                        if (e.data.byteLength <= 9) return;
+
+                        const isKey = view.getUint8(0) === 1;
+                        const timestamp = view.getFloat64(1, true);
+                        const chunkData = new Uint8Array(e.data, 9);
+
+                        // --- RESILIENCY LAYER ---
+                        if (waitingForKeyframe) {
+                            if (!isKey) return; // Drop delta frames until we get a keyframe
+                            waitingForKeyframe = false;
+                            console.log('[WebCodecs] Locked onto keyframe stream.');
+                        }
+
+                        try {
+                            const chunk = new EncodedVideoChunk({
+                                type: isKey ? 'key' : 'delta',
+                                timestamp: timestamp,
+                                data: chunkData
+                            });
+                            wcDecoder.decode(chunk);
+                        } catch (err) {
+                            console.error('[WebCodecs] Decode error, dropping frame...', err);
+                            waitingForKeyframe = true;
+                        }
+                    }
+                };
+                return; // Stop here so it doesn't fall through to the input block
+            }
+
+            // --- STANDARD FAST-LANE INPUT PIPELINE ---
+            if (channel.label === 'input') {
+                console.log('[Input] Dedicated 250Hz Fast Lane connected.');
+
+                // This ensures your mouse/keyboard coordinates are actually processed
+                channel.onmessage = (e) => {
+                    // (If your viewer was receiving data from the host here, you'd parse it.
+                    // Usually this channel is purely for sending FROM the viewer TO the host,
+                    // but we must acknowledge the channel open state regardless).
+                };
+
+                // Bind the fast-lane channel to your input dispatcher
+                window._fastLaneChannel = channel;
+            }
+        };
+        // Re-attach mic on reconnect
+        if (localMicStream) {
+            console.log('[WebRTC] Re-attaching local microphone...');
+            const audioTrack = localMicStream.getAudioTracks()[0];
+            if (audioTrack) micSender = pc.addTrack(audioTrack, localMicStream);
         }
-    };
+
+        // Renegotiation — sends a new offer when tracks are added/removed
+        pc.onnegotiationneeded = async () => {
+            if (!ws || ws.readyState !== 1) return;
+            try {
+                console.log('[WebRTC] Renegotiation needed — sending new offer...');
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription }));
+            } catch (err) {
+                console.error('[WebRTC] Renegotiation error:', err);
+            }
+        };
 }
 
 // ── MIC TOGGLE ────────────────────────────────────────────────────────────────
@@ -210,8 +317,8 @@ async function enableMic() {
             // NEW: Command the Host to send a fresh offer picking up this new audio track
             if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: 'viewer-mic-ready' }));
+            }
         }
-    }
 
         micEnabled = true;
         updateMicButton();
@@ -583,6 +690,15 @@ function requestPointerLock() {
 }
 frameCanvas.addEventListener('click', requestPointerLock);
 video.addEventListener('click', requestPointerLock);
+
+document.addEventListener('click', e => {
+    if (e.target === frameCanvas ||
+        e.target === video ||
+        e.target.id === 'webcodecs-canvas' || // Add this check!
+        e.target.closest('#video-container')) {
+        requestPointerLock();
+        }
+});
 document.addEventListener('click', e => { if (e.target === frameCanvas || e.target === video) requestPointerLock(); });
 document.addEventListener('keydown', e => { if (!document.pointerLockElement) return; if (keyMap[e.code]) { e.preventDefault(); sendKbm({ event:'keydown', key:keyMap[e.code] }); } });
 document.addEventListener('keyup',   e => { if (!document.pointerLockElement) return; if (keyMap[e.code]) { e.preventDefault(); sendKbm({ event:'keyup',   key:keyMap[e.code] }); } });
@@ -796,6 +912,27 @@ function setStatus(msg, live) {
 }
 function showOverlay(v) { document.getElementById('overlay').classList.toggle('gone', !v); }
 
+// Captures the current rendered frame into _swapOverlayEl so the viewer sees
+// a freeze-frame (rather than black) during host disconnects / codec swaps.
+// Works in both WebCodecs canvas mode and legacy frameCanvas mode.
+let _swapOverlayEl = null;
+function _freezeFrameForSwap() {
+    // Use whichever surface is currently active
+    const src = (wcCanvas && wcCanvas.style.display !== 'none')
+        ? wcCanvas
+        : document.getElementById('frameCanvas');
+    if (!src || !src.width || !src.height) return;
+    if (!_swapOverlayEl) {
+        _swapOverlayEl = document.createElement('canvas');
+        _swapOverlayEl.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:5;pointer-events:none;';
+        document.getElementById('video-container')?.appendChild(_swapOverlayEl);
+    }
+    _swapOverlayEl.width  = src.width;
+    _swapOverlayEl.height = src.height;
+    const ctx = _swapOverlayEl.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+}
+
 // ── DEDICATED INPUT FAST LANE ─────────────────────────────────────────────────
 let inputWs = null;
 
@@ -931,15 +1068,11 @@ async function connect() {
             return;
         }
         if (msg.type === 'host-disconnected' || msg.type === 'host-stream-stopped') {
-            // Freeze the last frame rather than going black — shows the viewer
-            // what was on screen and makes it clear the host dropped, not them.
             _freezeFrameForSwap();
-            // Swap the spinner text to a disconnect message
             if (_swapOverlayEl) {
                 const ctx2d = _swapOverlayEl.getContext('2d');
                 const cx = _swapOverlayEl.width / 2, cy = _swapOverlayEl.height / 2;
-                ctx2d.clearRect(0, 0, _swapOverlayEl.width, _swapOverlayEl.height);
-                ctx2d.drawImage(document.getElementById('frameCanvas'), 0, 0);
+                // Dim the freeze frame
                 ctx2d.fillStyle = 'rgba(0,0,0,0.55)';
                 ctx2d.fillRect(0, 0, _swapOverlayEl.width, _swapOverlayEl.height);
                 ctx2d.font = `bold ${Math.round(_swapOverlayEl.height * 0.04)}px sans-serif`;
@@ -1236,18 +1369,95 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// ── WEBCODECS VIEWER INITIALIZER ──
+function initWebCodecsViewer(config) {
+    console.log('[WebCodecs] Received Host Configuration:', config);
+
+    const videoEl = document.getElementById('video');
+    if (videoEl) videoEl.style.display = 'none';
+    const frameCanvas = document.getElementById('frameCanvas');
+    if (frameCanvas) frameCanvas.style.display = 'none';
+
+    if (typeof showOverlay === 'function') showOverlay(false);
+    const spinner = document.getElementById('spinner');
+    if (spinner) spinner.style.display = 'none';
+
+    if (!wcCanvas) {
+        wcCanvas = document.createElement('canvas');
+        wcCanvas.id = 'webcodecs-canvas';
+        // USE NATIVE CSS SCALING: This completely prevents out-of-bounds errors
+        wcCanvas.style.cssText = 'width: 100%; height: 100%; object-fit: contain; display: block; position: absolute; top: 0; left: 0;';
+
+        document.getElementById('video-container')?.appendChild(wcCanvas) ??
+        document.body.appendChild(wcCanvas);
+
+        // THIS FIXES KBM: Bind pointer lock to the canvas so you can actually click it!
+        wcCanvas.addEventListener('click', () => {
+            if (typeof requestPointerLock === 'function') requestPointerLock();
+        });
+    } else {
+        wcCanvas.style.display = 'block';
+    }
+
+    if (window._wcResizeHandler) {
+        window.removeEventListener('resize', window._wcResizeHandler);
+        window._wcResizeHandler = null;
+    }
+
+    if (!wcCtx) {
+        wcCtx = wcCanvas.getContext('2d', { alpha: false, desynchronized: true });
+    }
+
+    if (wcDecoder && wcDecoder.state !== 'closed') wcDecoder.close();
+
+    let _wcFirstFrame = true;
+
+    wcDecoder = new VideoDecoder({
+        output: (frame) => {
+            // CSS object-fit handles the scaling now. Just map 1:1 resolution.
+            if (wcCanvas.width !== frame.displayWidth || wcCanvas.height !== frame.displayHeight) {
+                wcCanvas.width  = frame.displayWidth;
+                wcCanvas.height = frame.displayHeight;
+            }
+            if (wcCtx) wcCtx.drawImage(frame, 0, 0, wcCanvas.width, wcCanvas.height);
+            frame.close();
+
+            if (_wcFirstFrame) {
+                _wcFirstFrame = false;
+                if (typeof showOverlay === 'function') showOverlay(false);
+                if (typeof setStatus === 'function') setStatus('Live', true);
+                if (spinner) spinner.style.display = 'none';
+                if (typeof _swapOverlayEl !== 'undefined' && _swapOverlayEl) {
+                    _swapOverlayEl.style.display = 'none';
+                }
+            }
+        },
+        error: (e) => console.error('[WebCodecs] Decoder Error:', e)
+    });
+
+    const decoderConfig = {
+        codec: config.codec,
+        codedWidth: config.codedWidth,
+        codedHeight: config.codedHeight
+    };
+
+    if (config.description) decoderConfig.description = new Uint8Array(config.description);
+    wcDecoder.configure(decoderConfig);
+    console.log('[WebCodecs] Hardware Decoder Ready!');
+}
+
 // ── STEAM DECK / IMMERSIVE AUTO-DETECT ───────────────────────────────────────
 (function detectSteamDeck() {
     const ua = navigator.userAgent;
     const params = new URLSearchParams(location.search);
     const isSteamDeck =
-        ua.includes('SteamGamepadUI') ||
-        ua.includes('Steam') ||
-        params.get('deck') === '1' ||
-        (navigator.platform === 'Linux x86_64' &&
-         navigator.maxTouchPoints > 0 &&
-         screen.width === 1280 &&
-         screen.height === 800);
+    ua.includes('SteamGamepadUI') ||
+    ua.includes('Steam') ||
+    params.get('deck') === '1' ||
+    (navigator.platform === 'Linux x86_64' &&
+    navigator.maxTouchPoints > 0 &&
+    screen.width === 1280 &&
+    screen.height === 800);
 
     if (isSteamDeck) {
         console.log('[Nearsec] Steam Deck detected — auto-entering immersive mode');
@@ -1276,3 +1486,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { passive:true });
     showBtn();
 })();
+
+// ── GAMEPAD CALIBRATION SAVER ──
+window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'SAVE_CONTROLLER_CALIB') {
+        const { hardwareId, map } = e.data;
+        localStorage.setItem('nearsec_map_' + hardwareId, JSON.stringify(map));
+        if (window.electronAPI && window.electronAPI.saveSettings) {
+            window.electronAPI.saveSettings({ [`calib_${hardwareId}`]: map });
+            console.log('[Input] Saved calibration to disk for:', hardwareId);
+        }
+    }
+});

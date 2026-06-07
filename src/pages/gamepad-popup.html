@@ -227,13 +227,6 @@
       updatePrompt(index);
     }
 
-    function updatePrompt(index) {
-      const el = document.getElementById(`c${index}-prompt`);
-      if (!el) return;
-      const steps = ['', '1. PULL LEFT TRIGGER', '2. PULL RIGHT TRIGGER', '3. PUSH RIGHT STICK RIGHT', '4. PUSH RIGHT STICK DOWN'];
-      el.textContent = steps[controllers.get(index)?.calibStep] || 'DONE';
-    }
-
     function runCalibration(gp) {
       const state = controllers.get(gp.index);
       if (!state || state.calibStep === 0 || state.calibCooldown) return;
@@ -262,7 +255,17 @@
         state.calibStep = 0;
         state.mapCache = state.tempMap;
         const safeId = getSafeId(gp);
+
+        // Save to popup's local storage just in case
         localStorage.setItem(STORAGE_PREFIX + safeId, JSON.stringify(state.mapCache));
+
+        // Send to parent window to save persistently
+        window.parent.postMessage({
+            type: 'SAVE_CONTROLLER_CALIB',
+            hardwareId: safeId,
+            map: state.mapCache
+        }, '*');
+
         document.getElementById(`c${gp.index}-calib`)?.classList.remove('active');
         broadcastConfigExternally(safeId, state.mapCache);
       } else {

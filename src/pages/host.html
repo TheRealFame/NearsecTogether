@@ -113,6 +113,13 @@
         <div class="dock-label">Stream Quality</div>
         <div class="quality-grid">
           <div class="q-field">
+            <div class="q-field">
+            <div class="q-label">Pipeline</div>
+            <select id="pipelineSelect" class="form-select" onchange="saveCaptureMethod(this.value)">
+              <option value="native" selected>WebRTC (Stable)</option>
+              <option value="webcodecs">WebCodecs (Low Latency)</option>
+            </select>
+          </div>
             <div class="q-label">Codec</div>
             <select id="codecSelect" class="form-select">
               <option value="H264">H.264 (Hardware)</option>

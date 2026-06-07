@@ -13,6 +13,7 @@ const { exec, spawn } = require("child_process");
 const open = (...args) => import('open').then(({default: open}) => open(...args));
 const which = require("which");
 const killPort = require("kill-port");
+const captureManager = require('../sidecar/CaptureManager.js');
 let hostWS = null;
 let tunnelUrl = null;
 let activeTunnelProc = null;
@@ -29,7 +30,7 @@ const { Worker } = require('worker_threads');
 const PusherRaw = require('pusher-js');
 
 const isPackaged = __dirname.includes('app.asar');
-
+const inputDriver = require('../sidecar/input_backends/InputOrchestrator.js');
 // ══════════════════════════════════════════════════════════════════════════════
 // VIRTUAL AUDIO — delegated to audio_worker.js via worker_threads IPC
 // The main event loop never calls pactl directly; all blocking OS shell work
@@ -190,16 +191,8 @@ function _arcadePost(msg) {
 spawnArcadeHeartbeatWorker();
 
 function toUinput(msg) {
-  if (!uinputProc || !uinputProc.stdin.writable) return;
-  // Gamepad messages are written synchronously — setImmediate adds a full
-  // event loop tick of unnecessary latency on every single input frame.
-  // Config/control messages keep setImmediate since they're not latency-sensitive.
-  const isInput = msg.type === 'gamepad' || msg.type === 'kbm' || msg.type === 'keyboard';
-  if (isInput) {
-    try { uinputProc.stdin.write(JSON.stringify(msg) + '\n'); } catch { }
-  } else {
-    setImmediate(() => { try { uinputProc.stdin.write(JSON.stringify(msg) + '\n'); } catch { } });
-  }
+  // The Orchestrator handles routing to either the native binary or the Python stdin
+  inputDriver.send(msg);
 }
 
 const projectRoot = path.join(__dirname, '..', '..');
@@ -812,62 +805,32 @@ async function main() {
     res.json({ success: true });
   });
 
-  // ── FFmpeg Experimental Pipeline ──────────────────────────────────────────
-  // Only registered when FFMPEG_EXPERIMENTAL env var is set.
-  // Disabled by default — not part of the stable release.
-  if (process.env.FFMPEG_EXPERIMENTAL === '1') {
-    console.log('[server] ⚠  FFmpeg experimental routes active.');
+  // ── Unified Capture Manager API ───────────────────────────────────────────
+  app.get('/api/capture/status', (req, res) => {
+    res.json(captureManager.getStatus());
+  });
 
-    let ffmpegCapture = null;
+  app.post('/api/capture/start', express.json(), async (req, res) => {
+    const { method, options } = req.body || {};
+    if (!method) return res.status(400).json({ ok: false, reason: 'method is required (webcodecs | ffmpeg | webrtc)' });
     try {
-      ffmpegCapture = require(path.join(__dirname, '..', 'sidecar', 'ffmpeg_capture.js'));
+      const result = await captureManager.start(method, options || {});
+      res.json({ ok: true, ...result });
     } catch (e) {
-      console.error('[ffmpeg] Failed to load ffmpeg_capture.js:', e.message);
+      console.error('[capture] start failed:', e.message);
+      res.status(500).json({ ok: false, reason: e.message });
     }
+  });
 
-    app.get('/api/ffmpeg-status', (req, res) => {
-      if (!ffmpegCapture) return res.json({ available: false, reason: 'module load failed' });
-      res.json({
-        available:   true,
-        active:      ffmpegCapture.isActive(),
-        encoderType: ffmpegCapture.encoderType() || null,
-      });
-    });
-
-    app.post('/api/start-ffmpeg-capture', express.json(), async (req, res) => {
-      if (!ffmpegCapture) return res.status(500).json({ ok: false, reason: 'module not loaded' });
-      if (process.platform !== 'linux') return res.status(400).json({ ok: false, reason: 'Linux only' });
-      try {
-        const { width, height, fps, bitrate } = req.body || {};
-        // startCapture returns a MediaStreamTrack — it lives in the renderer,
-        // not here. We just confirm FFmpeg spawned successfully.
-        await ffmpegCapture.startCapture({ width, height, fps, bitrate });
-        res.json({ ok: true, encoderType: ffmpegCapture.encoderType() });
-      } catch (e) {
-        console.error('[ffmpeg] startCapture failed:', e.message);
-        res.status(500).json({ ok: false, reason: e.message });
-      }
-    });
-
-    app.post('/api/stop-ffmpeg-capture', async (req, res) => {
-      if (!ffmpegCapture) return res.json({ ok: true });
-      try {
-        await ffmpegCapture.stopCapture();
-        res.json({ ok: true });
-      } catch (e) {
-        res.status(500).json({ ok: false, reason: e.message });
-      }
-    });
-
-    // Toggle ffmpegExperimental in the Nearsec config file so it persists
-    // across relaunches without needing the --ffmpeg-experimental flag again.
-    app.post('/api/ffmpeg-toggle', express.json(), (req, res) => {
-      const cfg = loadConfig();
-      cfg.ffmpegExperimental = req.body?.enabled ?? !cfg.ffmpegExperimental;
-      saveConfig(cfg);
-      res.json({ ok: true, ffmpegExperimental: cfg.ffmpegExperimental });
-    });
-  }
+  app.post('/api/capture/stop', async (req, res) => {
+    try {
+      await captureManager.stop();
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[capture] stop failed:', e.message);
+      res.status(500).json({ ok: false, reason: e.message });
+    }
+  });
 
   app.post("/api/restart-game", express.json(), (req, res) => {
     if (activeGameProc) {
@@ -962,57 +925,12 @@ async function main() {
     }
   });
 
-  // ── uinput sidecar ─────────────────────────────────────────────────────────
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+  // ── INPUT ORCHESTRATOR (Hybrid C++ / Python) ──
+  const screenW = global.currentResW || 1920;
+  const screenH = global.currentResH || 1080;
 
-  // CRITICAL FIX: Use the ASAR-safe sidecarPath defined at the top of the file!
-  if (fs.existsSync(sidecarPath)) {
-    try {
-      uinputProc = spawn(pythonCmd, [sidecarPath], { stdio: ["pipe", "pipe", "inherit"], detached: false });
-      uinputProc.stdin.on("error", () => { });
-      uinputProc.on("error", e => console.log("[uinput] spawn error:", e.message));
-      uinputProc.on("close", () => { uinputProc = null; console.log("[uinput] sidecar exited"); });
-
-      // ── Rumble reader — forward FF events from Python to the correct viewer ──
-      let _uinputBuf = '';
-      uinputProc.stdout.on('data', (chunk) => {
-        _uinputBuf += chunk.toString();
-        let nl;
-        while ((nl = _uinputBuf.indexOf('\n')) !== -1) {
-          const line = _uinputBuf.slice(0, nl).trim();
-          _uinputBuf = _uinputBuf.slice(nl + 1);
-          if (!line) continue;
-          try {
-            const msg = JSON.parse(line);
-            if (msg.type === 'rumble' && msg.viewerId) {
-              const realId  = msg.viewerId.split('_')[0];
-              const vws     = viewers.get(realId);
-              if (vws && vws.readyState === 1) {
-                vws.send(JSON.stringify({
-                  type:     'rumble',
-                  strong:   msg.strong,
-                  weak:     msg.weak,
-                  duration: msg.duration,
-                }));
-              }
-            } else {
-              // Any non-rumble line from Python is a log — pass through
-              console.log('[uinput]', line);
-            }
-          } catch {
-            // Non-JSON line from Python (startup messages etc) — log it
-            console.log('[uinput]', line);
-          }
-        }
-      });
-
-      console.log("[uinput] sidecar started");
-    } catch (err) {
-      console.warn("[uinput] Failed to start Python sidecar:", err.message);
-    }
-  } else {
-    console.log(`[uinput] Sidecar script not found at ${sidecarPath}. Input bridging disabled.`);
-  }
+  // This will try C++ first, and automatically fall back to Python if the .node file is missing
+  const inputReady = inputDriver.init(screenW, screenH);
 
   let hostStreaming = false;
   const audioViewers = new Set();
@@ -1036,8 +954,16 @@ async function main() {
       if (err) console.log("[audio] Could not play sound on " + process.platform + ":", err.message);
     });
   }
-  function playJoinSound() { playSound(JOIN_SOUND); }
-  function playLeaveSound() { playSound(LEAVE_SOUND); }
+  function playJoinSound() {
+    if (hostWS && hostWS.readyState === 1) {
+      hostWS.send(JSON.stringify({ type: 'play-system-sound', action: 'join' }));
+    }
+  }
+  function playLeaveSound() {
+    if (hostWS && hostWS.readyState === 1) {
+      hostWS.send(JSON.stringify({ type: 'play-system-sound', action: 'leave' }));
+    }
+  }
 
   function broadcast(data) {
     viewers.forEach(vws => { if (vws.readyState === 1) vws.send(data); });
@@ -1050,6 +976,7 @@ async function main() {
   function broadcastRoster() {
     const roster = [];
     roster.push({ id:'host_0', name:'Host', gp:false, kb:false, slot:0, locked:true, inputMode:'host' });
+    let autoSlot = 1;
     viewers.forEach((vws, id) => {
       const pads = viewerGamepads.get(id) || new Set([0]);
       pads.forEach(padIdx => {
@@ -1066,11 +993,11 @@ async function main() {
         roster.push({
           id: rosterId,
           name: (viewerNames.get(id) || id) + nameSuffix,
-                    gp: !!p.gp,
-                    kb: !!p.kb,
-                    slot: p.slot ?? null,
-                    locked: !!p.locked,
-                    inputMode: mode
+          gp: !!p.gp,
+          kb: !!p.kb,
+          slot: p.slot ?? autoSlot++,
+          locked: !!p.locked,
+          inputMode: mode
         });
       });
     });
@@ -1429,25 +1356,41 @@ async function main() {
       // Immediately tell Python to apply the correct profile to this new viewer
       toUinput({ type: 'set-ctrl-type', viewerId: id, ctrlType: global.currentCtrlType || 'xbox360' });
 
+      // If hybrid is active, explicitly set the mode in Python rather than relying on the fallback.
+      if (global.hybridInputActive) {
+        toUinput({ type: 'set-input-mode', viewerId: id + '_0', mode: 'hybrid' });
+      }
+
       ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: defaultName }));
       ws.send(JSON.stringify({ type: "input-state", gp: true, kb: startKb, mode: startKb ? 'hybrid' : 'gamepad' }));
 
-      if (hostWS && hostWS.readyState === 1) {
-        hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: defaultName }));
-
-        // CRITICAL BUG FIX: Force the late viewer to recognize the host is online
-        ws.send(JSON.stringify({ type: "host-connected" }));
-
-        if (hostStreaming) {
-          ws.send(JSON.stringify({ type: "host-stream-ready" }));
-        }
-      }
-
-      broadcastRoster();
+      // NOTE: viewer-joined is sent to the host inside the 'join' message handler below,
+      // AFTER the viewer's chosen display name has arrived. This ensures the host dashboard
+      // always shows the real name rather than the server-assigned Guest#### placeholder.
 
       ws.on("message", raw => {
         try {
           const msg = JSON.parse(raw);
+
+          // ── NAME HANDSHAKE: viewer sends { type:'join', name, viewerId, pin } ──
+          // This is the first message from the viewer after ws.onopen.
+          // We update the name here, then fire viewer-joined to the host.
+          if (msg.type === "join") {
+            const joinName = sanitize(String(msg.name || '')).slice(0, 20) || defaultName;
+            viewerNames.set(id, joinName);
+            console.log("[viewer]", id, "name resolved to:", joinName);
+
+            if (hostWS && hostWS.readyState === 1) {
+              hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: joinName }));
+              ws.send(JSON.stringify({ type: "host-connected" }));
+              if (hostStreaming) {
+                ws.send(JSON.stringify({ type: "host-stream-ready" }));
+              }
+            }
+
+            broadcastRoster();
+            return;
+          }
 
           // Inject viewer ID for answers AND mic renegotiation requests
           if (msg.type === "answer" || msg.type === "ice-viewer" || msg.type === "viewer-mic-ready") {
@@ -1626,7 +1569,7 @@ async function main() {
             toUinput({ type: 'disconnect_viewer', viewer_id: id });
           }
           broadcastRoster();
-          if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id }));
+          if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id, name: viewerNames.get(id) || id }));
         }
         console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
       });
@@ -1757,14 +1700,15 @@ function cleanup(isElectron = false) {
   }
 
   if (activeTunnelProc) { try { activeTunnelProc.kill(); } catch (_) {} }
-  if (uinputProc) {
-    try {
-      if (uinputProc.stdin?.writable) {
-        uinputProc.stdin.write(JSON.stringify({ type: 'destroy_all' }) + '\n');
-      }
-      uinputProc.kill();
-    } catch (_) {}
+  if (activeTunnelProc) { try { activeTunnelProc.kill(); } catch (_) {} }
+
+  // Cleanly destroy the input driver (whether it's using C++ or Python)
+  try {
+    inputDriver.destroy();
+  } catch (e) {
+    console.error("[Server] Input driver cleanup error:", e);
   }
+
   if (audioProc) { try { audioProc.kill(); } catch (_) {} }
 
   if (process.platform === 'linux') {

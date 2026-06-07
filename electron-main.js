@@ -11,7 +11,31 @@ powerSaveBlocker.start('prevent-app-suspension');
 // ── CRITICAL FIX: Detect Arcade Worker immediately ──
 const isArcadeWorker      = process.argv.includes('--arcade-worker');
 const isFFmpegExperimental = process.argv.includes('--ffmpeg-experimental');
+let isWebCodecs            = process.argv.includes('--webcodecs');
+let isFFmpegCapture        = process.argv.includes('--ffmpeg');
 const gotTheLock          = isArcadeWorker ? true : app.requestSingleInstanceLock();
+
+
+// ── AUTOMATIC CONFIGURATION OVERRIDES ──
+try {
+  const configPath = path.join(app.getPath('userData'), path.join('NearsecTogether', 'nearsectogether.config.json'));
+  if (fs.existsSync(configPath)) {
+    const rawConfig = fs.readFileSync(configPath, 'utf8');
+    const parsedConfig = JSON.parse(rawConfig);
+
+    // Config applies ONLY if CLI args aren't forcing a specific mode
+    if (!process.argv.includes('--webcodecs') && !process.argv.includes('--ffmpeg') && !process.argv.includes('--webrtc')) {
+      if (parsedConfig.captureMethod === 'webcodecs') isWebCodecs = true;
+      if (parsedConfig.captureMethod === 'ffmpeg') isFFmpegCapture = true;
+      console.log(`[Main] Loaded capture method from config: ${parsedConfig.captureMethod || 'native'}`);
+    } else {
+      console.log(`[Main] Capture method forced by CLI arguments.`);
+    }
+  }
+} catch (err) {
+  console.warn('[Main] Could not read nearsectogether.config.json, falling back to defaults.');
+}
+// ──────────────────────────────────────────
 
 if (!gotTheLock) {
   app.quit();
@@ -120,13 +144,13 @@ const DEFAULTS = {
   hostName: '',
   // Controller
   forceXboxOne: false, enableDualShock: false, enableMotion: false,
-  defaultInputMode: 'gamepad', hybridInput: false,
-  // Tunnels
-  tunnelProvider: null, neverAsk: false, vpsHost: '',
-  // Auto-hosts
-  autoHosts: [],
-  // First run
-  firstRunComplete: false,
+    defaultInputMode: 'gamepad', hybridInput: false,
+      // Tunnels
+      tunnelProvider: null, neverAsk: false, vpsHost: '',
+      // Auto-hosts
+      autoHosts: [],
+      // First run
+      firstRunComplete: false,
 };
 
 function loadSettings() {
@@ -155,18 +179,6 @@ function startServer() {
   return new Promise((resolve) => {
     process.env.ELECTRON_MODE = '1';
 
-    // If launched with --ffmpeg-experimental, persist it to config and tell server
-    if (isFFmpegExperimental) {
-      settings.ffmpegExperimental = true;
-      saveSettings(settings);
-      process.env.FFMPEG_EXPERIMENTAL = '1';
-      console.log('[electron] ⚠  FFmpeg experimental pipeline ENABLED via launch flag.');
-    } else if (settings.ffmpegExperimental) {
-      // Also honour the saved config preference without needing the flag every time
-      process.env.FFMPEG_EXPERIMENTAL = '1';
-      console.log('[electron] ⚠  FFmpeg experimental pipeline ENABLED via saved config.');
-    }
-
     serverCore = require('./src/scripts/server.js');
     const _log = console.log.bind(console);
     console.log = function (...args) {
@@ -192,20 +204,20 @@ async function createWindow() {
 
   win = new BrowserWindow({
     width:  Math.max(settings.w, 600),
-    height: Math.max(settings.h, 500),
-    minWidth:  600,
-    minHeight: 500,
-    title: 'NearsecTogether',
-    icon:  path.join(__dirname, 'assets/NearsecTogether.png'),
-    backgroundColor: '#111111',
-    alwaysOnTop: settings.alwaysOnTop,
-    show: false,
-    webPreferences: {
-      nodeIntegration:  false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'electron-preload.js'),
-    },
-    autoHideMenuBar: true,
+                          height: Math.max(settings.h, 500),
+                          minWidth:  600,
+                          minHeight: 500,
+                          title: 'NearsecTogether',
+                          icon:  path.join(__dirname, 'assets/NearsecTogether.png'),
+                          backgroundColor: '#111111',
+                          alwaysOnTop: settings.alwaysOnTop,
+                          show: false,
+                          webPreferences: {
+                            nodeIntegration:  false,
+                            contextIsolation: true,
+                            preload: path.join(__dirname, 'electron-preload.js'),
+                          },
+                          autoHideMenuBar: true,
   });
 
   win.once('ready-to-show', () => { if (!isArcadeWorker) win.show(); });
@@ -229,7 +241,7 @@ async function createWindow() {
     console.error('[electron] failed to load:', code, desc);
     setTimeout(() => {
       if (isArcadeWorker) win.loadURL(`http://localhost:${port}/host?auto=1`);
-      else win.loadFile(path.join(PAGES_DIR, 'dashboard.html'), { query: { port: String(port) } });
+        else win.loadFile(path.join(PAGES_DIR, 'dashboard.html'), { query: { port: String(port) } });
     }, 1000);
   });
 
@@ -238,16 +250,16 @@ async function createWindow() {
     const currentURL = win.webContents.getURL();
     if (currentURL.includes('/old_host')) {
       win.webContents.executeJavaScript(`
-        if (!document.getElementById('ns-dash-btn') && window.electronAPI) {
-          const btn = document.createElement('button');
-          btn.id = 'ns-dash-btn';
-          btn.innerHTML = '← Dashboard';
-          btn.style.cssText = 'position:fixed;bottom:24px;left:0;opacity:0.8;z-index:999999;padding:12px 20px;background:#141414;color:#aaa;border:1px solid #252525;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;transition:all 0.2s;';
-          btn.onmouseover = () => { btn.style.opacity='1'; btn.style.color='#c084fc'; btn.style.borderColor='#c084fc'; };
-          btn.onmouseleave = () => { btn.style.opacity='0.8'; btn.style.color='#aaa'; btn.style.borderColor='#252525'; };
-          btn.onclick = () => window.electronAPI.backToDashboard();
-          document.body.appendChild(btn);
-        }
+      if (!document.getElementById('ns-dash-btn') && window.electronAPI) {
+        const btn = document.createElement('button');
+        btn.id = 'ns-dash-btn';
+        btn.innerHTML = '← Dashboard';
+        btn.style.cssText = 'position:fixed;bottom:24px;left:0;opacity:0.8;z-index:999999;padding:12px 20px;background:#141414;color:#aaa;border:1px solid #252525;border-left:none;border-radius:0 8px 8px 0;font-family:monospace;font-weight:bold;cursor:pointer;transition:all 0.2s;';
+        btn.onmouseover = () => { btn.style.opacity='1'; btn.style.color='#c084fc'; btn.style.borderColor='#c084fc'; };
+        btn.onmouseleave = () => { btn.style.opacity='0.8'; btn.style.color='#aaa'; btn.style.borderColor='#252525'; };
+        btn.onclick = () => window.electronAPI.backToDashboard();
+        document.body.appendChild(btn);
+      }
       `);
     }
   });
@@ -309,8 +321,8 @@ async function createWindow() {
   tray.setToolTip('NearsecTogether');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Show Dashboard', click: () => { if (win) { win.show(); win.focus(); } else createWindow(); } },
-    { type: 'separator' },
-    { label: 'Quit', click: () => { app.isQuiting = true; app.quit(); } },
+                                             { type: 'separator' },
+                                             { label: 'Quit', click: () => { app.isQuiting = true; app.quit(); } },
   ]));
   tray.on('click', () => { if (win) { win.isVisible() ? win.hide() : win.show(); } });
 
@@ -445,7 +457,11 @@ async function createWindow() {
   ipcMain.on('open-host', (event, version) => {
     // FIX #7: version param ('new' | 'old') is now forwarded from preload
     const route = version === 'old' ? '/old_host' : '/host';
-    if (win && !win.isDestroyed()) win.loadURL(`http://localhost:${serverPort}${route}`);
+    const captureParams = [];
+    if (isWebCodecs)    captureParams.push('wc=1');
+    if (isFFmpegCapture) captureParams.push('ffmpeg=1');
+    const qs = captureParams.length ? '?' + captureParams.join('&') : '';
+    if (win && !win.isDestroyed()) win.loadURL(`http://localhost:${serverPort}${route}${qs}`);
   });
 
   ipcMain.on('back-to-dashboard-from-host', () => {

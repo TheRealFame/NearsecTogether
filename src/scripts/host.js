@@ -466,8 +466,8 @@ let _globalMicKillActive = false;
 function _micSvg(state) {
     const icon  = state >= 2 ? 'mic-off' : 'mic';
     const style = state === 1 ? 'filter:sepia(1) saturate(4) hue-rotate(10deg);'
-                : state >= 2  ? 'filter:invert(0.4) sepia(1) saturate(6) hue-rotate(-20deg);'
-                : 'filter:invert(0.75);';
+    : state >= 2  ? 'filter:invert(0.4) sepia(1) saturate(6) hue-rotate(-20deg);'
+    : 'filter:invert(0.75);';
     return `<img src="/assets/icons/${icon}.svg" style="width:14px;height:14px;flex-shrink:0;display:block;${style}" alt="">`;
 }
 
@@ -475,7 +475,7 @@ const _micTitles = [
     'Mic Normal (100%)',
     'Mic Quiet (50%)',
     'Locally Muted',
-    'Globally Muted',
+'Globally Muted',
 ];
 
 function renderRoster(list) {
@@ -519,31 +519,31 @@ function renderRoster(list) {
         r.innerHTML = `
         <div class="rnum">${index + 1}</div>
         <div style="flex:1; overflow:hidden;">
-          <div class="rname">${v.name}</div>
-          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-            <img src="${iconSrc}" style="width:14px;height:14px;filter:invert(0.8);" id="icon-${v.id}" />
-            <select class="form-select" style="padding:2px 4px;font-size:9px;width:auto;"
-              onchange="changeInputMode('${v.id}', this.value, '${v.name.replace(/'/g, "\\'")}')">
-              <option value="gamepad"       ${currentMode === 'gamepad'       ? 'selected' : ''}>Gamepad</option>
-              <option value="kbm"           ${currentMode === 'kbm'           ? 'selected' : ''}>Raw KBM</option>
-              <option value="kbm_emulated"  ${currentMode === 'kbm_emulated'  ? 'selected' : ''}>Emulated KBM</option>
-              <option value="disabled"      ${currentMode === 'disabled'      ? 'selected' : ''}>Disabled</option>
-            </select>
-            <div style="width:1px;height:12px;background:var(--border2);margin:0 2px;"></div>
-            <button onclick="cycleViewerMic('${v.id}')" title="${micTitle}"
-              id="mic-btn-${v.id}"
-              style="background:none;border:none;cursor:pointer;display:flex;align-items:center;padding:2px;${_globalMicKillActive ? 'opacity:0.4;pointer-events:none;' : ''}">
-              ${micSvg}
-            </button>
-            <input type="range" min="0" max="100" value="${viewerAudioStates[v.id].vol}"
-              oninput="setViewerVolume('${v.id}', this.value)"
-              style="width:38px;accent-color:var(--accent);height:3px;" title="Viewer voice volume">
-          </div>
+        <div class="rname">${v.name}</div>
+        <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+        <img src="${iconSrc}" style="width:14px;height:14px;filter:invert(0.8);" id="icon-${v.id}" />
+        <select class="form-select" style="padding:2px 4px;font-size:9px;width:auto;"
+        onchange="changeInputMode('${v.id}', this.value, '${v.name.replace(/'/g, "\\'")}')">
+        <option value="gamepad"       ${currentMode === 'gamepad'       ? 'selected' : ''}>Gamepad</option>
+        <option value="kbm"           ${currentMode === 'kbm'           ? 'selected' : ''}>Raw KBM</option>
+        <option value="kbm_emulated"  ${currentMode === 'kbm_emulated'  ? 'selected' : ''}>Emulated KBM</option>
+        <option value="disabled"      ${currentMode === 'disabled'      ? 'selected' : ''}>Disabled</option>
+        </select>
+        <div style="width:1px;height:12px;background:var(--border2);margin:0 2px;"></div>
+        <button onclick="cycleViewerMic('${v.id}')" title="${micTitle}"
+        id="mic-btn-${v.id}"
+        style="background:none;border:none;cursor:pointer;display:flex;align-items:center;padding:2px;${_globalMicKillActive ? 'opacity:0.4;pointer-events:none;' : ''}">
+        ${micSvg}
+        </button>
+        <input type="range" min="0" max="100" value="${viewerAudioStates[v.id].vol}"
+        oninput="setViewerVolume('${v.id}', this.value)"
+        style="width:38px;accent-color:var(--accent);height:3px;" title="Viewer voice volume">
+        </div>
         </div>
         <div class="rstat">${v.slot !== null ? '(Assigned)' : ''}</div>
         <button class="rlock" onclick="toggleSlotLock('${v.id}')" title="Lock slot"
-          style="background:none;border:none;cursor:pointer;padding:0 4px;width:20px;height:20px;display:flex;align-items:center;">
-          <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;filter:invert(0.5);" />
+        style="background:none;border:none;cursor:pointer;padding:0 4px;width:20px;height:20px;display:flex;align-items:center;">
+        <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;filter:invert(0.5);" />
         </button>
         <button class="rkick" onclick="killGp('${v.id}')" title="Revoke input">×</button>
         `;
@@ -622,8 +622,8 @@ function toggleGlobalMicKill() {
 
     log(
         _globalMicKillActive
-            ? 'Global mic kill: all viewer mics disabled'
-            : 'Global mic kill lifted: viewer mics restored',
+        ? 'Global mic kill: all viewer mics disabled'
+        : 'Global mic kill lifted: viewer mics restored',
         _globalMicKillActive ? 'warn' : 'ok'
     );
 
@@ -731,14 +731,14 @@ function connectWS() {
             if (hostNameEl) hostNameEl.textContent = cfg.hostName || 'Guest';
         });
 
-        fetch('/api/info').then(r => r.json()).then(d => {
-            currentPin = d.pin;
-            document.getElementById('pinVal').textContent = d.pin;
-            renderUrls(d);
-            ws.send(JSON.stringify({ type: 'sync-pin', pin: currentPin, enabled: pinEnabled }));
-            sendCtrlSettings();
-        });
-        checkTunnelOnConnect();
+            fetch('/api/info').then(r => r.json()).then(d => {
+                currentPin = d.pin;
+                document.getElementById('pinVal').textContent = d.pin;
+                renderUrls(d);
+                ws.send(JSON.stringify({ type: 'sync-pin', pin: currentPin, enabled: pinEnabled }));
+                sendCtrlSettings();
+            });
+            checkTunnelOnConnect();
     };
     ws.onmessage = async (e) => {
         const msg = JSON.parse(e.data);
@@ -759,7 +759,7 @@ function connectWS() {
         if (msg.type === 'viewer-left') {
             knownViewers.delete(msg.viewerId);
             if (peerConnections[msg.viewerId]) { peerConnections[msg.viewerId].close(); delete peerConnections[msg.viewerId]; }
-            log(I18N.t('Viewer') + ' ' + msg.viewerId + ' left');
+            log(I18N.t('Viewer') + ' ' + (msg.name || msg.viewerId) + ' left');
         }
         if (msg.type === 'roster') {
             _lastRosterList = msg.viewers || [];
@@ -797,6 +797,14 @@ function connectWS() {
             log(I18N.t('Tunnel failed:') + ' ' + msg.provider, 'err');
             showTunnelError('Failed to start ' + msg.provider + '.\n\nIf using a SSH tunnel (localhost.run / serveo), outbound port 22 is likely blocked by your router/ISP.\n\nTry using cloudflared instead.');
         }
+        if (msg.type === 'play-system-sound') {
+            // Relative path from src/pages/host.html to assets/
+            const soundFile = msg.action === 'join' ? '../../assets/joinsound.wav' : '../../assets/leavesound.wav';
+            const audio = new Audio(soundFile);
+            audio.volume = 0.5;
+            audio.play().catch(err => console.warn('[Audio] Could not play UI sound:', err));
+            return;
+        }
         if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
         if (msg.type === 'viewer-gpid') log(I18N.t('Controller:') + ' ' + msg.id, 'ok');
         if (msg.type === 'arcade-session-active') log(I18N.t('Arcade session is LIVE on Nearsec Arcade!'), 'ok');
@@ -833,10 +841,29 @@ async function sendOfferToViewer(viewerId) {
         sdpSemantics: 'unified-plan',
     });
 
-    // monitorCongestion runs on 'connected' below — not here.
-    // Calling it here spawned a dead getStats interval before ICE even completes.
-
     peerConnections[viewerId] = pc;
+
+    // ── THE MISSING UDP TUNNEL ──
+    pc.wcChannel = pc.createDataChannel('webcodecs', { ordered: false, maxRetransmits: 0 });
+
+    // When the channel opens for this viewer, send the cached decoder config
+    // immediately so they don't wait for the next keyframe (which may be seconds away).
+    // Then force a keyframe so they can start decoding right away.
+    pc.wcChannel.onopen = () => {
+        console.log(`[WebCodecs] wcChannel open for ${viewerId} — sending cached config and forcing a keyframe`);
+
+        // 1. Send the configuration to boot the decoder
+        if (_lastWcConfig && pc.wcChannel.readyState === 'open') {
+            pc.wcChannel.send(_lastWcConfig);
+        }
+
+        // 2. FORCE THE ENCODER TO SEND A NEW KEYFRAME
+        // This guarantees the viewer gets a fresh full frame immediately after connecting
+        if (_wcEncoder && _wcEncoder.state !== 'closed') {
+            _wcForceKeyframe = true;
+            console.log(`[WebCodecs] Keyframe requested for late-joiner ${viewerId}`);
+        }
+    };
 
     currentStream.getTracks().forEach(track => {
         const sender = pc.addTrack(track, currentStream);
@@ -922,6 +949,7 @@ async function sendOfferToViewer(viewerId) {
 
 let selectedSourceId = null;
 
+
 async function showSourceSelectionModal() {
     // CRITICAL FIX: Bypass custom modal on Linux.
     // Electron's desktopCapturer.getSources() triggers a video-only xdg-desktop-portal
@@ -980,8 +1008,8 @@ async function _populateSourceGrid() {
 
             const thumbnail = source.thumbnail || '';
             const imgHtml = thumbnail
-                ? `<img src="${thumbnail}" class="source-thumbnail" alt="${source.name}">`
-                : '<div class="source-thumbnail" style="background:#2a2a2a;display:flex;align-items:center;justify-content:center;color:#666;font-size:10px;">No Preview</div>';
+            ? `<img src="${thumbnail}" class="source-thumbnail" alt="${source.name}">`
+            : '<div class="source-thumbnail" style="background:#2a2a2a;display:flex;align-items:center;justify-content:center;color:#666;font-size:10px;">No Preview</div>';
 
             const sourceType = source.isScreen ? '🖥️ Screen' : '🪟 Window';
             card.innerHTML = `${imgHtml}
@@ -1131,6 +1159,7 @@ async function startCapture() {
     _elDisabled('btnStart', true);
     _elDisabled('btnSwitch', true);
 
+    // Teardown old streams BEFORE we start capturing
     if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); stopAudioMeter(); currentStream = null; }
     Object.values(peerConnections).forEach(pc => pc.close());
     peerConnections = {};
@@ -1149,7 +1178,7 @@ async function startCapture() {
     if (resVal === '4k') videoConstraints.height = { ideal: 2160 };
 
     try {
-        let screenStream;
+        let screenStream = null;
         videoConstraints.cursor = 'never';
         const displayMediaOptions = { video: videoConstraints };
 
@@ -1160,21 +1189,42 @@ async function startCapture() {
             displayMediaOptions.audio = false;
         }
 
-        // ── THE NATIVE WAYLAND BYPASS ──
-        if (isLinux) {
-            // Do NOT use getDisplayMedia or desktopCapturer on Linux.
-            // By calling getUserMedia with 'desktop' directly, Chromium natively invokes
-            // the Wayland PipeWire portal in C++, completely bypassing Electron's broken deadlock bug.
+        // ── 1. FFMPEG EXPERIMENTAL INTERCEPTOR ──
+        // Ask the backend directly if FFmpeg is active, bypassing UI state
+        let backendHasFfmpeg = false;
+        try {
+            const statusRes = await fetch('/api/ffmpeg-status').then(r => r.json());
+            if (statusRes.available !== false) backendHasFfmpeg = true;
+        } catch (e) { /* Route 404s if disabled, naturally skipping */ }
+
+        if (backendHasFfmpeg) {
+            log('Routing capture through experimental FFmpeg pipeline...', 'warn');
+            try {
+                const ffmpegTrack = await startFFmpegCapture();
+                screenStream = new MediaStream([ffmpegTrack]);
+            } catch (e) {
+                console.error('FFmpeg pipeline failed:', e);
+                log('FFmpeg failed. Falling back to native Wayland portal.', 'err');
+            }
+        }
+
+        // ── 2. THE NATIVE WAYLAND BYPASS ──
+        // Only trigger if FFmpeg was off or failed
+        if (!screenStream && isLinux) {
             screenStream = await navigator.mediaDevices.getUserMedia({
                 video: { mandatory: { chromeMediaSource: 'desktop', maxFrameRate: fpsVal } },
                 audio: false
             });
         }
-        // ── WINDOWS / MAC LOGIC ──
-        else if (selectedSourceId && window.electronAPI) {
+        // ── 3. WINDOWS / MAC LOGIC ──
+        else if (!screenStream && selectedSourceId && window.electronAPI) {
             try {
                 window._lastSourceId = selectedSourceId;
 
+                // Ensure Chromium specifically targets the window by appending the correct prefix
+                if (selectedSourceId && !selectedSourceId.includes(':')) {
+                    selectedSourceId = 'window:' + selectedSourceId + ':0';
+                }
                 // 1. Grab the Video specifically for the selected Window/Screen
                 const vidStream = await navigator.mediaDevices.getUserMedia({
                     audio: false,
@@ -1205,19 +1255,41 @@ async function startCapture() {
                 selectedSourceId = null;
                 screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
             }
+        } else if (!screenStream) {
+            // Ultimate fallback if no other method caught it
+            screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
         }
 
         if (selectedSourceId) activeSourceId = selectedSourceId;
         selectedSourceId = null;
+        if (!screenStream) {
+            console.error('[Capture] Aborting: No stream was returned (likely Windows audio restriction).');
+            log('Capture failed: No stream returned. Try without system audio.', 'err');
+            if (typeof setCapDot === 'function') setCapDot('err');
+            _elDisabled('btnStart', false);
+            _elDisabled('btnSwitch', true);
+            _elDisabled('btnStop', true);
+            return;
+        }
+
         const vTrack = screenStream.getVideoTracks()[0];
         if (!vTrack || vTrack.readyState === 'ended') {
             throw new DOMException("Stream ended unexpectedly", "AbortError");
         }
 
-        vTrack.contentHint = 'motion';
         const settings = vTrack.getSettings();
         const combined = new MediaStream();
-        combined.addTrack(vTrack);
+
+        // ── WEBCODECS FLAG INTERCEPT ──
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('wc') === '1') {
+            log('WebCodecs flag detected! Bypassing standard WebRTC video...', 'warn');
+            startWebCodecsNetworkPipeline(vTrack);
+        } else {
+            // Standard Stable Behavior
+            vTrack.contentHint = 'motion';
+            combined.addTrack(vTrack);
+        }
 
         let aTrack = screenStream.getAudioTracks()[0] || null;
 
@@ -1384,6 +1456,13 @@ function stopCapture() {
     if (window._resInterval) { clearInterval(window._resInterval); window._resInterval = null; }
     stopAudioMeter();
 
+    if (window._webcodecsReader) { window._webcodecsReader.cancel(); window._webcodecsReader = null; }
+    if (_wcEncoder && _wcEncoder.state !== 'closed') { try { _wcEncoder.close(); } catch(_) {} }
+    _wcEncoder = null;
+    _wcForceKeyframe = false;
+    const wcCanvas = document.getElementById('webcodecs-preview-canvas');
+    if (wcCanvas) wcCanvas.remove();
+
     // Stop FFmpeg experimental pipeline if it was running
     fetch(`/api/stop-ffmpeg-capture`, { method: 'POST' }).catch(() => {});
     if (window._ffmpegHealthInterval) { clearInterval(window._ffmpegHealthInterval); window._ffmpegHealthInterval = null; }
@@ -1463,6 +1542,232 @@ function stopCapture() {
     }
 }
 
+async function startWebCodecsPipeline(videoTrack, dataChannel) {
+    console.log("Initializing WebCodecs VideoEncoder...");
+
+    // 1. Configure the Bare-Metal Hardware Encoder
+    const encoder = new VideoEncoder({
+        output: (chunk, metadata) => {
+            // This callback fires the exact millisecond the GPU finishes encoding a frame.
+            // We immediately hurl the raw bytes over the network.
+            const buffer = new ArrayBuffer(chunk.byteLength);
+            chunk.copyTo(buffer);
+
+            // Send chunk data & type (keyframe vs delta frame)
+            const payload = JSON.stringify({
+                type: chunk.type,
+                timestamp: chunk.timestamp,
+                data: Array.from(new Uint8Array(buffer)) // Serialize for transport
+            });
+
+            if (dataChannel.readyState === 'open') {
+                dataChannel.send(payload);
+            }
+        },
+        error: (err) => {
+            console.error("WebCodecs Encoding Error:", err);
+        }
+    });
+
+    // 2. Enforce ultra-low latency hardware parameters
+    encoder.configure({
+        codec: 'avc1.42002A', // H.264 Baseline Profile (Fastest decode)
+    width: 1920,
+    height: 1080,
+    bitrate: 8000000,     // 8 Mbps
+    framerate: 60,
+    hardwareAcceleration: 'prefer-hardware',
+    latencyMode: 'realtime' // Throws away jitter buffers!
+    });
+
+    // 3. Rip the raw frames directly from the PipeWire video track
+    const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+    const reader = processor.readable.getReader();
+
+    // 4. The Encoding Loop
+    async function processFrames() {
+        while (true) {
+            const { done, value: frame } = await reader.read();
+            if (done) break;
+
+            // Feed the raw frame to the GPU, then instantly garbage collect it
+            // to prevent memory leaks.
+            encoder.encode(frame);
+            frame.close();
+        }
+    }
+
+    // Start the loop
+    processFrames();
+    console.log("WebCodecs Pipeline is now pushing raw frames.");
+}
+
+async function startFFmpegCapture() {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // 1. Tell the backend to spin up the FFmpeg hardware encoder
+            await fetch('/api/start-ffmpeg-capture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            // Clean up any old instances
+            let oldVideo = document.getElementById('ffmpeg-hidden-video');
+            if (oldVideo) oldVideo.remove();
+
+            // 2. Create an invisible video element to decode the stream natively
+            // (It MUST be attached to the DOM for captureStream to work in Electron)
+            const video = document.createElement('video');
+            video.id = 'ffmpeg-hidden-video';
+            video.autoplay = true;
+            video.muted = true;
+            video.style.position = 'fixed';
+            video.style.top = '-9999px';
+            video.style.opacity = '0';
+            document.body.appendChild(video);
+
+            const ms = new MediaSource();
+            video.src = URL.createObjectURL(ms);
+
+            ms.addEventListener('sourceopen', async () => {
+                const sourceBuffer = ms.addSourceBuffer('video/mp4; codecs="avc1.64002a"');
+
+                // 3. Connect to our new dedicated FFmpeg HTTP stream port
+                const response = await fetch('http://127.0.0.1:3005/');
+                const reader = response.body.getReader();
+
+                const pushChunk = async () => {
+                    if (sourceBuffer.updating) {
+                        setTimeout(pushChunk, 10);
+                        return;
+                    }
+                    try {
+                        const { value, done } = await reader.read();
+                        if (done) return;
+                        sourceBuffer.appendBuffer(value);
+                    } catch (err) {
+                        console.error('Stream read error', err);
+                    }
+                };
+
+                sourceBuffer.addEventListener('updateend', pushChunk);
+                pushChunk(); // Kick off the loop
+
+                video.onplaying = () => {
+                    log('FFmpeg Fragmented MP4 stream hooked successfully!', 'ok');
+                    // Extract the raw WebRTC track!
+                    resolve(video.captureStream(60).getVideoTracks()[0]);
+                };
+            });
+
+            video.onerror = () => reject(new Error("Video decode error"));
+
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+// ── EXPERIMENTAL WEBCODECS NETWORK TUNNEL (HOST) ──
+// Last known decoder config — cached so late-joining viewers receive it
+// immediately on wcChannel.onopen rather than waiting for a keyframe that
+// already fired at pipeline start (when peerConnections was still empty).
+let _lastWcConfig    = null;
+let _wcEncoder       = null;
+let _wcForceKeyframe = false;
+
+async function startWebCodecsNetworkPipeline(videoTrack) {
+    console.log('[WebCodecs] Initializing Network Pipeline...');
+    if (typeof sysChat === 'function') sysChat('WebCodecs Network Pipeline Armed');
+
+    _lastWcConfig    = null; // reset on new pipeline
+    _wcForceKeyframe = false;
+
+    const encoder = new VideoEncoder({
+        output: (chunk, metadata) => {
+            if (metadata.decoderConfig) {
+                _lastWcConfig = JSON.stringify({
+                    type: 'webcodecs-config',
+                    codec: metadata.decoderConfig.codec,
+                    codedWidth: metadata.decoderConfig.codedWidth,
+                    codedHeight: metadata.decoderConfig.codedHeight,
+                    description: metadata.decoderConfig.description
+                        ? Array.from(new Uint8Array(metadata.decoderConfig.description))
+                        : null
+                });
+                broadcastToViewers(_lastWcConfig);
+            }
+
+            const payload = new Uint8Array(1 + 8 + chunk.byteLength);
+            payload[0] = chunk.type === 'key' ? 1 : 0;
+            new DataView(payload.buffer).setFloat64(1, chunk.timestamp, true);
+            chunk.copyTo(payload.subarray(9));
+
+            broadcastToViewers(payload.buffer);
+        },
+        error: (e) => console.error('[WebCodecs] Encoder Error:', e)
+    });
+    _wcEncoder = encoder;
+
+    const settings = videoTrack.getSettings();
+    encoder.configure({
+        codec: 'vp8',
+        width: (settings.width || 1920) & ~1,
+                      height: (settings.height || 1080) & ~1,
+                      bitrate: 8000000,
+                      framerate: Math.round(settings.frameRate || 60),
+                      hardwareAcceleration: 'no-preference',
+                      latencyMode: 'realtime'
+    });
+
+    const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+    const reader = processor.readable.getReader();
+    window._webcodecsReader = reader;
+
+    async function processFrames() {
+        try {
+            while (true) {
+                const { done, value: frame } = await reader.read();
+                if (done) break;
+
+                if (encoder.encodeQueueSize > 2) {
+                    frame.close();
+                } else {
+                    const keyFrame = _wcForceKeyframe;
+                    if (keyFrame) _wcForceKeyframe = false;
+                    encoder.encode(frame, { keyFrame });
+                    frame.close();
+                }
+            }
+        } catch (e) {
+            console.log("[WebCodecs] Stream loop terminated.");
+        }
+    }
+    processFrames();
+
+    // Periodic keyframe every 2 seconds — ensures late joiners never wait
+    // more than 2s for a decodable frame, and VP8 realtime encoders that may
+    // ignore a single on-demand keyFrame request will always get one soon.
+    const _kfInterval = setInterval(() => {
+        if (!_wcEncoder || _wcEncoder.state !== 'configured') {
+            clearInterval(_kfInterval);
+            return;
+        }
+        _wcForceKeyframe = true;
+    }, 2000);
+}
+
+function broadcastToViewers(data) {
+    if (typeof peerConnections === 'undefined') return;
+    Object.values(peerConnections).forEach(pc => {
+        const channel = pc.wcChannel;
+        if (channel && channel.readyState === 'open') {
+            channel.send(data);
+        }
+    });
+}
+
 function updateKbmPanicButton() {
     const btn = document.getElementById('btnKbmPanic');
     if (!btn) return;
@@ -1494,6 +1799,35 @@ function toggleKbmPanic() {
         log('✓ KBM panic released', 'ok');
     }
 }
+
+// ── SAVING THE CAPTURE METHOD (PIPELINE) ──
+function saveCaptureMethod(method) {
+    if (window.electronAPI && window.electronAPI.saveSettings) {
+        window.electronAPI.saveSettings({ captureMethod: method });
+        console.log(`[Host] Capture pipeline saved as: ${method}. Requires restart to take effect.`);
+
+        // Let the user know they need to restart
+        const confirmMsg = "Capture pipeline changed to " + method.toUpperCase() + ". You must restart NearsecTogether for this to take effect. Close the app now?";
+        if (confirm(confirmMsg)) {
+            window.electronAPI.close();
+        }
+    }
+}
+
+// Ensure the UI matches the loaded URL parameter on boot
+window.addEventListener('DOMContentLoaded', () => {
+    const pSelect = document.getElementById('pipelineSelect');
+    if (!pSelect) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('wc') === '1') {
+        pSelect.value = 'webcodecs';
+    } else if (urlParams.get('ff') === '1' || process.argv?.includes('--ffmpeg')) {
+        pSelect.value = 'ffmpeg';
+    } else {
+        pSelect.value = 'native';
+    }
+});
 
 function startAudioMeter(stream) {
     audioCtx = new AudioContext();
@@ -1621,11 +1955,11 @@ async function checkTunnelOnConnect() {
 
 const ctrlSettings = {
     forceXboxOne:     localStorage.getItem('ns_ctrl_forceXboxOne')    === 'true',
-    enableDualShock:  localStorage.getItem('ns_ctrl_enableDualShock')  === 'true',
-    enableMotion:     localStorage.getItem('ns_ctrl_enableMotion')     === 'true',
-    defaultInputMode: localStorage.getItem('ns_ctrl_defaultInputMode') || 'gamepad',
-    hybridInput:      localStorage.getItem('ns_ctrl_hybridInput')      === 'true',
-    ctrlType:         localStorage.getItem('ns_ctrl_ctrlType')         || 'xbox360',
+        enableDualShock:  localStorage.getItem('ns_ctrl_enableDualShock')  === 'true',
+        enableMotion:     localStorage.getItem('ns_ctrl_enableMotion')     === 'true',
+        defaultInputMode: localStorage.getItem('ns_ctrl_defaultInputMode') || 'gamepad',
+            hybridInput:      localStorage.getItem('ns_ctrl_hybridInput')      === 'true',
+            ctrlType:         localStorage.getItem('ns_ctrl_ctrlType')         || 'xbox360',
 };
 
 function applyCtrlSettingsUI() {
@@ -1712,11 +2046,11 @@ function sendCtrlSettings() {
         ws.send(JSON.stringify({
             type: 'ctrl-settings',
             forceXboxOne:     ctrlSettings.forceXboxOne,
-            enableDualShock:  ctrlSettings.enableDualShock,
-            enableMotion:     ctrlSettings.enableMotion,
-            defaultInputMode: ctrlSettings.defaultInputMode,
-            hybridInput:      ctrlSettings.hybridInput,
-            ctrlType:         ctrlSettings.ctrlType,
+                enableDualShock:  ctrlSettings.enableDualShock,
+                enableMotion:     ctrlSettings.enableMotion,
+                defaultInputMode: ctrlSettings.defaultInputMode,
+                    hybridInput:      ctrlSettings.hybridInput,
+                    ctrlType:         ctrlSettings.ctrlType,
         }));
     }
 }
@@ -2087,3 +2421,18 @@ if (urlParams.get('auto') === '1') {
         });
     }, 1500);
 }
+// ── GAMEPAD CALIBRATION SAVER ──
+window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'SAVE_CONTROLLER_CALIB') {
+        const { hardwareId, map } = e.data;
+
+        // Save to local storage for the browser viewer
+        localStorage.setItem('nearsec_map_' + hardwareId, JSON.stringify(map));
+
+        // If we are in Electron (Host), save it to the persistent config file
+        if (window.electronAPI && window.electronAPI.saveSettings) {
+            window.electronAPI.saveSettings({ [`calib_${hardwareId}`]: map });
+            console.log('[Input] Saved calibration to disk for:', hardwareId);
+        }
+    }
+});
