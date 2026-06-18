@@ -424,7 +424,7 @@ function _handleKbm(msg) {
     const viewerId = msg.pad_id || (msg.viewerId + '_0');
     if (!viewerId) return;
 
-    const profileKey = viewerCtrlType.get(viewerId) || 'xbox360';
+    const profileKey = viewerCtrlType.get(viewerId) || _defaultProfileKey || 'xbox360';
     const slotIndex = _allocateSlot(viewerId, profileKey);
     if (slotIndex < 0) {
         console.log(`[DEBUG KBM] _handleKbm dropped due to slotIndex < 0`);

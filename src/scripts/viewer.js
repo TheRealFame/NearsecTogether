@@ -272,7 +272,6 @@ async function createPC() {
                 if (sink) {
                     if (!sink.srcObject) sink.srcObject = new MediaStream();
                     sink.srcObject.addTrack(e.track);
-                    sink.muted = true;
                     sink.style.display = 'none';
                 }
                 // Show the WebCodecs canvas layer; decoder will be configured
@@ -296,6 +295,19 @@ async function createPC() {
                 };
                 console.log('[WebRTC] Video stream attached to #video');
             }
+        } else if (e.track.kind === 'audio') {
+            let audioEl = document.getElementById('remote-audio');
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.id = 'remote-audio';
+                audioEl.autoplay = true;
+                document.body.appendChild(audioEl);
+            }
+            if (!audioEl.srcObject) audioEl.srcObject = new MediaStream();
+            audioEl.srcObject.addTrack(e.track);
+            audioEl.muted = (typeof audioMuted !== 'undefined' ? audioMuted : false);
+            audioEl.volume = (typeof _audioPrefs !== 'undefined' && _audioPrefs.streamVol !== undefined) ? _audioPrefs.streamVol : 1.0;
+            console.log('[WebRTC] Audio stream attached to dedicated #remote-audio element');
         }
     };
     // ── EXPERIMENTAL WEBCODECS DATA CHANNEL RECEIVER ──
@@ -504,6 +516,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Apply stream volume to video immediately
     const videoEl = document.getElementById('video');
     if (videoEl) videoEl.volume = _audioPrefs.streamVol;
+    const remoteAudioEl = document.getElementById('remote-audio');
+    if (remoteAudioEl) remoteAudioEl.volume = _audioPrefs.streamVol;
 });
 
 // Stream volume
@@ -513,11 +527,15 @@ function setStreamVolume(val) {
     localStorage.setItem('ns_vol_stream', _audioPrefs.streamVol);
     const videoEl = document.getElementById('video');
     if (videoEl) videoEl.volume = _audioPrefs.streamVol;
+    const remoteAudioEl = document.getElementById('remote-audio');
+    if (remoteAudioEl) remoteAudioEl.volume = _audioPrefs.streamVol;
     const display = document.getElementById('streamVolVal');
     if (display) display.textContent = v;
     if (v > 0 && audioMuted) {
         audioMuted = false;
         if (videoEl?.srcObject) videoEl.srcObject.getAudioTracks().forEach(t => { t.enabled = true; });
+        const remoteAudioEl = document.getElementById('remote-audio');
+        if (remoteAudioEl?.srcObject) remoteAudioEl.srcObject.getAudioTracks().forEach(t => { t.enabled = true; });
         const btn = document.getElementById('audBtn');
         if (btn) { btn.textContent = 'Stream Audio'; btn.className = 'ns-bar-btn ns-btn-active'; }
     }
@@ -1535,6 +1553,8 @@ function toggleChat() {
 function toggleAudio() {
     audioMuted = !audioMuted;
     if (video.srcObject) video.srcObject.getAudioTracks().forEach(t => t.enabled = !audioMuted);
+    const audioEl = document.getElementById('remote-audio');
+    if (audioEl && audioEl.srcObject) audioEl.srcObject.getAudioTracks().forEach(t => t.enabled = !audioMuted);
     const btn = document.getElementById('audBtn');
     if (btn) {
         btn.textContent = audioMuted ? 'Stream Audio: OFF' : 'Stream Audio';
