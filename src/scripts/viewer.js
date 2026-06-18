@@ -805,7 +805,7 @@ document.addEventListener('click', e => {
         requestPointerLock();
     }
 });
-document.addEventListener('click', e => { if (e.target === frameCanvas || e.target === video) requestPointerLock(); });
+document.addEventListener('click', e => { if (e.target === frameCanvas || e.target === video || (typeof wcCanvas !== 'undefined' && e.target === wcCanvas)) requestPointerLock(); });
 document.addEventListener('keydown', e => { if (!document.pointerLockElement) return; if (keyMap[e.code]) { e.preventDefault(); sendKbm({ event: 'keydown', key: keyMap[e.code] }); } });
 document.addEventListener('keyup', e => { if (!document.pointerLockElement) return; if (keyMap[e.code]) { e.preventDefault(); sendKbm({ event: 'keyup', key: keyMap[e.code] }); } });
 document.addEventListener('mousemove', e => { if (!document.pointerLockElement) return; sendKbm({ event: 'mousemove', dx: e.movementX, dy: e.movementY }); });
@@ -1266,10 +1266,18 @@ async function connect() {
         // pin-required is checked via /api/pin-required on load; ignore WebSocket commands.
         if (msg.type === 'pin-rejected' || msg.type === 'kick') {
             stopReconnect = true;
-            document.getElementById('pinScreen').classList.remove('gone');
-            document.getElementById('pinErr').textContent = msg.reason === 'Incorrect PIN' ? 'Incorrect PIN.' : 'You were kicked by the Host.';
-            document.getElementById('pinInput').value = '';
+            if (pc) { try { pc.close(); } catch {} pc = null; }
             ws.close();
+            
+            if (msg.reason === 'kicked' || msg.type === 'kick') {
+                alert('You have been kicked by the Host.');
+                try { window.close(); } catch {}
+                document.body.innerHTML = '<div style="color:white;text-align:center;margin-top:20vh;font-family:sans-serif;"><h2>Disconnected</h2><p>You have been kicked by the host.</p></div>';
+            } else {
+                document.getElementById('pinScreen').classList.remove('gone');
+                document.getElementById('pinErr').textContent = 'Incorrect PIN.';
+                document.getElementById('pinInput').value = '';
+            }
             return;
         }
         if (msg.type === 'your-id') {
@@ -1651,6 +1659,13 @@ function initWebCodecsViewer(config) {
         wcCanvas.style.cssText = 'width: 100%; height: 100%; max-width: 100vw; max-height: 100vh; object-fit: contain; position: absolute; top: 0; left: 0; z-index: 10; display: block; overflow: hidden;';
         document.getElementById('video-container')?.appendChild(wcCanvas) ?? document.body.appendChild(wcCanvas);
         wcCtx = wcCanvas.getContext('2d', { alpha: false, desynchronized: true });
+        
+        // Ensure KBM pointer lock works on the experimental WebCodecs canvas
+        if (typeof requestPointerLock === 'function') {
+            wcCanvas.addEventListener('click', requestPointerLock);
+        }
+
+        wcCanvas.style.display = 'block';
     } else {
         wcCanvas.style.display = 'block';
     }

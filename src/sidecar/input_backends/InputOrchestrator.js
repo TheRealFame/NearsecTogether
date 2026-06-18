@@ -426,7 +426,10 @@ function _handleKbm(msg) {
 
     const profileKey = viewerCtrlType.get(viewerId) || 'xbox360';
     const slotIndex = _allocateSlot(viewerId, profileKey);
-    if (slotIndex < 0) return;
+    if (slotIndex < 0) {
+        console.log(`[DEBUG KBM] _handleKbm dropped due to slotIndex < 0`);
+        return;
+    }
 
     let state = kbmStates.get(viewerId);
     if (!state) {
@@ -468,7 +471,11 @@ function _handleKbm(msg) {
     if (msg.event === 'keydown' || msg.event === 'keyup') {
         // Try the loaded layout first, fallback to the hardcoded default
         const action = layout.keys[msg.key] || defaultKeys[msg.key];
-        if (!action) return;
+        
+        if (!action) {
+            console.log(`[DEBUG KBM] _handleKbm dropped because ${msg.key} has no mapping action!`);
+            return;
+        }
 
         const isDown = (msg.event === 'keydown');
         state.keys[action] = isDown;
@@ -510,6 +517,7 @@ function _handleKbm(msg) {
     }
 
     if (typeof _sendKbmStateToBuffer === 'function') {
+        console.log(`[DEBUG KBM] calling _sendKbmStateToBuffer: lx=${state.lx}, ly=${state.ly}, buttons=${state.buttons}`);
         _sendKbmStateToBuffer(slotIndex, state);
     }
 }
@@ -642,6 +650,7 @@ function send(msg) {
     if (validated.type === 'gamepad') {
         _handleGamepad(validated);
     } else if (validated.type === 'kbm' || validated.type === 'keyboard') {
+        console.log(`[DEBUG KBM] Orchestrator send() routing to _handleKbm`);
         _handleKbm(validated);
     } else if (msg.type === 'set-ctrl-type') {
         // Update per-viewer map AND the global default so new connections inherit the type

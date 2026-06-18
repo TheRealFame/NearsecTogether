@@ -665,6 +665,10 @@ function renderRoster(list) {
     const o = document.getElementById('rosterEmpty');
     const controllers = list;
 
+    const listStr = JSON.stringify(controllers);
+    if (c.dataset.lastList === listStr) return;
+    c.dataset.lastList = listStr;
+
     if (controllers.length === 0) {
         c.innerHTML = '';
         o.style.display = 'block';
@@ -725,7 +729,7 @@ function renderRoster(list) {
         <div class="rstat">${v.slot !== null ? '(Assigned)' : ''}</div>
         <button class="rlock" onclick="toggleSlotLock('${v.id}', ${!v.locked})" title="Lock slot"
         style="background:none;border:none;cursor:pointer;padding:0 4px;width:20px;height:20px;display:flex;align-items:center;">
-        <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;filter:invert(0.5);" />
+        <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;${v.locked ? 'filter:invert(0.8) sepia(1) saturate(5) hue-rotate(350deg);' : 'filter:invert(0.5);'}" />
         </button>
         <button class="rkick" onclick="kickViewer('${v.id}')" title="Kick Viewer">×</button>
         `;
@@ -992,6 +996,10 @@ function connectWS() {
         if (msg.type === 'tunnel-error') {
             log(I18N.t('Tunnel failed:') + ' ' + msg.provider, 'err');
             showTunnelError('Failed to start ' + msg.provider + '.\n\nIf using a SSH tunnel (localhost.run / serveo), outbound port 22 is likely blocked by your router/ISP.\n\nTry using cloudflared instead.');
+        }
+        if (msg.type === 'tunnel-not-found') {
+            log(I18N.t('Tunnel executable not found:') + ' ' + msg.provider, 'err');
+            showTunnelError('The executable for ' + msg.provider + ' could not be found on your system.\n\nPlease install it or ensure it is in your PATH.');
         }
         if (msg.type === 'vps-broadcast') {
             if (_vpsWs && _vpsWs.readyState === 1) {

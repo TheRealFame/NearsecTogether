@@ -460,7 +460,7 @@ function ensureExecutable(binPath) {
 function startTunnelCloudflared(port) {
   return new Promise(resolve => {
     findBinaryPath('cloudflared').then(cloudflaredPath => {
-      if (!cloudflaredPath) { resolve(null); return; }
+      if (!cloudflaredPath) { resolve({ error: 'NOT_FOUND', provider: 'cloudflared' }); return; }
       ensureExecutable(cloudflaredPath);
 
       const cfToken = readEnv('CF_TOKEN');
@@ -659,7 +659,7 @@ function startTunnelZrok(port, retries = 3) {
       return null;
     })();
 
-    if (!zrokPath) { resolve(null); return; }
+    if (!zrokPath) { resolve({ error: 'NOT_FOUND', provider: 'zrok' }); return; }
     ensureExecutable(zrokPath);
 
     console.log(`  \x1b[33m~\x1b[0m Starting zrok public share (${zrokPath})... (Retries left: ${retries})`);
@@ -1100,10 +1100,13 @@ async function main() {
 
     try {
       const tun = await fn(PORT);
-      if (tun) {
+      if (tun && tun.url) {
         tunnelUrl = tun.url;
         const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
         if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
+      } else if (tun && tun.error === 'NOT_FOUND') {
+        console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${provider}' binary not found.`);
+        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-not-found", provider: provider }));
       } else {
         console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${provider}' failed.`);
         if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
@@ -1193,7 +1196,9 @@ async function main() {
         const isExtra = padIdx > 0;
         const nameSuffix = isExtra ? ' ' + (padIdx + 1) : '';
         const rosterId = id + '_' + padIdx;
-        const p = inputPerms.get(rosterId) || { gp: true, kb: false, slot: null };
+        const pBase = inputPerms.get(id) || {};
+        const pPad = inputPerms.get(rosterId) || {};
+        const p = { gp: true, kb: false, slot: null, locked: false, ...pBase, ...pPad };
 
         let mode = 'gamepad';
         if (!p.gp && p.kb) mode = 'kbm';
@@ -1569,12 +1574,21 @@ async function main() {
             const padId = msg.pad_id || (id + '_0');
             msg.pad_id   = padId;
             msg.viewer_id = id;
-            const perms = inputPerms.get(padId) || { gp: true, kb: false };
+            const perms = inputPerms.get(id) || inputPerms.get(padId) || { gp: true, kb: false };
+            
+            if (msg.type === 'kbm') {
+              console.log(`[DEBUG KBM] (/ws/host) padId: ${padId}, perms: ${JSON.stringify(perms)}, Event: ${msg.event} ${msg.key}`);
+            }
+
             if (msg.type === 'gamepad') {
               if (!perms.gp) return;
               msg = normalizeGamepadMsg(msg);
             }
-            if (msg.type === 'kbm' && !perms.kb) return;
+            if (msg.type === 'kbm' && !perms.kb) {
+                console.log(`[DEBUG KBM] Dropped in /ws/host due to perms.kb=false`);
+                return;
+            }
+            if (msg.type === 'kbm') console.log(`[DEBUG KBM] Sending to InputOrchestrator!`);
             inputDriver.send(msg);
             return;
           }
@@ -1879,9 +1893,17 @@ async function main() {
               }
             }
 
-            const perms = inputPerms.get(rosterId) || { gp: true, kb: false };
+            const perms = inputPerms.get(id) || inputPerms.get(rosterId) || { gp: true, kb: false };
+            
+            if (msg.type === 'kbm') {
+                console.log(`[DEBUG KBM] (app.ws) id: ${id}, rosterId: ${rosterId}, perms: ${JSON.stringify(perms)}, Event: ${msg.event} ${msg.key}`);
+            }
+            
             if (msg.type === "gamepad" && !perms.gp) return;
-            if (msg.type === "kbm" && !perms.kb) return;
+            if (msg.type === "kbm" && !perms.kb) {
+                console.log(`[DEBUG KBM] Dropped in app.ws due to perms.kb=false`);
+                return;
+            }
 
             // If viewer's primary slot is kbm_emulated, suppress any extra gamepad devices
             // (e.g. touch padIndex:99) to prevent a second virtual gamepad appearing in the OS.
@@ -1956,10 +1978,18 @@ async function main() {
           }
           if (msg.type === "gamepad") { toUinput(normalizeGamepadMsg(msg)); return; }
 
-          if (msg.type === "keyboard") {
-            if (!myId) return;
+          if (msg.type === "keyboard" || msg.type === "kbm") {
+            console.log(`[DEBUG KBM] (/ws/input) received keyboard event:`, msg.event, msg.key);
+            if (!myId) {
+                console.log(`[DEBUG KBM] Dropped in /ws/input: myId is null`);
+                return;
+            }
             const perms = inputPerms.get(myId) || { gp: true, kb: false };
-            if (!perms.kb) return;
+            if (!perms.kb) {
+                console.log(`[DEBUG KBM] Dropped in /ws/input: perms.kb=false for id ${myId}`);
+                return;
+            }
+            console.log(`[DEBUG KBM] Sending to InputOrchestrator from /ws/input!`);
             toUinput(msg);
             return;
           }
