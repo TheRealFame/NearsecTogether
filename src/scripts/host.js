@@ -564,11 +564,13 @@ function setAudDot(state, label) {
 
 // ── V3 UI UPDATE ──
 async function renderUrls(d) {
-    // 1. Fetch the REAL host name from your backend config FIRST
+    // 1. Fetch the REAL host name and tunnel provider from your backend config FIRST
     let hostName = 'A player';
+    let isPortForward = false;
     try {
         const cfg = await fetch('/api/config').then(r => r.json());
         if (cfg && cfg.hostName) hostName = cfg.hostName;
+        if (cfg && cfg.tunnelProvider === 'portforward') isPortForward = true;
     } catch (e) {}
 
     const encodedName = encodeURIComponent(hostName);
@@ -580,13 +582,15 @@ async function renderUrls(d) {
         finalTunnelUrl = `${d.tunnelUrl}${separator}host=${encodedName}`;
     }
 
-    const rows = [
-        finalTunnelUrl
-        ? { url: finalTunnelUrl, label: 'HTTPS tunnel (v3) ← share this', color: 'var(--accent)' }
-        : { url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true },
+    const rows = [];
+    
+    if (finalTunnelUrl) {
+        rows.push({ url: finalTunnelUrl, label: 'HTTPS tunnel (v3) ← share this', color: 'var(--accent)' });
+    } else if (!isPortForward) {
+        rows.push({ url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true });
+    }
 
-        { url: `http://${d.lanIP}:${d.port}/?v3&host=${encodedName}`, label: 'LAN (v3) — same network only', color: '#555' },
-    ];
+    rows.push({ url: `http://${d.lanIP}:${d.port}/?v3&host=${encodedName}`, label: 'LAN (v3) — same network only', color: '#555' });
 
     if (!finalTunnelUrl && d.publicIP)
         rows.splice(1, 0, { url: `http://${d.publicIP}:${d.port}/?v3&host=${encodedName}`, label: 'Public IP (v3) (needs port forward)', color: '#666' });
@@ -1062,7 +1066,11 @@ async function sendOfferToViewer(viewerId) {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
             { urls: 'stun:stun.cloudflare.com:3478' },
+            { urls: 'stun:stun.stunprotocol.org:3478' },
             // Public OpenRelay TURN server to guarantee WebRTC connections over strict NATs/Tunnels
             {
                 urls: [

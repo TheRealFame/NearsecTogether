@@ -49,11 +49,12 @@ sudo ./linux_setup.sh
 
 We keep all technical setup instructions, dependency lists, and API guides in a dedicated documentation directory. This keeps the main page clean. You can read these files from the Host Dashboard book icon or by clicking the links below.
 
-* src/docs/GETTING_STARTED.md
-* PLATFORM_SETUP.md
-* src/docs/HOST_USAGE.md
-* src/docs/API_AND_SETUP.md
-* src/docs/ADVANCED_LOGIC.md
+* [Getting Started Guide](src/docs/GETTING_STARTED.md)
+* [Host Usage Manual](src/docs/HOST_USAGE.md)
+* [API and Setup Guide](src/docs/API_AND_SETUP.md)
+* [VPS Server Setup](src/docs/VPS_SETUP.md)
+* [Advanced Logic Documentation](src/docs/ADVANCED_LOGIC.md)
+* [Nearsec Arcade Info](src/docs/NEARSEC_ARCADE.md)
 
 ## Nearsec Arcade
 The platform includes an optional public lobby system. Hosts can list their sessions on the Arcade grid to let global players discover and join local co-op games. You can view the public lobby at https://nearsec.cutefame.net/arcade and join active sessions directly from your browser.
