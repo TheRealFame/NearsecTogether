@@ -291,6 +291,7 @@ async function createPC() {
             // Normal WebRTC mode: attach to the primary #video element.
             const videoEl = document.getElementById('video');
             if (videoEl) {
+                videoEl.muted = true; // Required by Chrome/Safari to allow dynamic autoplay
                 if (!videoEl.srcObject) videoEl.srcObject = new MediaStream();
                 videoEl.srcObject.addTrack(e.track);
                 videoEl.onplaying = () => {
