@@ -56,5 +56,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onViewerClosed: (cb) => ipcRenderer.on('viewer-closed', ()      => cb()),
   onUpdateReady:  (cb) => ipcRenderer.on('update-ready',  (_e, v) => cb(v)),
 
+  startNativeGamepadCapture: () => ipcRenderer.send('start-native-gamepad'),
+  onNativeGamepadEvent: (cb) => ipcRenderer.on('native-gamepad-event', (_e, msg) => cb(msg)),
+
   isElectron: true,
 });

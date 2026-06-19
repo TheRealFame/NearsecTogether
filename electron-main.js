@@ -436,10 +436,36 @@ async function createWindow() {
     // When the user clicks "Join" from the dashboard, load the viewer UI
     // and pass the host connection data in the URL
     if (win && !win.isDestroyed()) {
-      win.loadURL(`http://localhost:${serverPort}/?client=1&host=${encodeURIComponent(data || '')}`);
+      win.loadURL(`http://localhost:${serverPort}/?client=1&compat=1&host=${encodeURIComponent(data || '')}`);
     }
     return true;
   });
+
+  let gamepadProc = null;
+  ipcMain.on('start-native-gamepad', (event) => {
+    if (gamepadProc) return;
+    const { spawn } = require('child_process');
+    const pyScript = path.join(__dirname, 'src', 'sidecar', 'input_backends', 'read_gamepads.py');
+    const pyExec = process.platform === 'win32' ? path.join(__dirname, 'bin', 'python', 'python.exe') : 'python3';
+    
+    // Fallback to system python on windows if bin/python doesn't exist
+    const actualExec = (process.platform === 'win32' && !fs.existsSync(pyExec)) ? 'python' : pyExec;
+    
+    gamepadProc = spawn(actualExec, [pyScript]);
+    gamepadProc.stdout.on('data', (data) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line.trim());
+          event.reply('native-gamepad-event', msg);
+        } catch (_) {}
+      }
+    });
+    gamepadProc.stderr.on('data', d => console.error('[native-gamepad]', d.toString().trim()));
+    gamepadProc.on('close', () => { gamepadProc = null; });
+  });
+
   ipcMain.handle('get-settings', () => settings);
   // Dedicated VPS config handler — exposes only VPS fields to the renderer,
   // keeping the master key separate from general settings for clarity.

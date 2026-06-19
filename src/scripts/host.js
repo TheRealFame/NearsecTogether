@@ -15,6 +15,7 @@ const ctrlSettings = {
     defaultInputMode: localStorage.getItem('ns_ctrl_defaultInputMode') || 'gamepad',
     hybridInput:      localStorage.getItem('ns_ctrl_hybridInput')      === 'true',
     ctrlType:         localStorage.getItem('ns_ctrl_ctrlType')         || 'xbox360',
+    touchLayout:      localStorage.getItem('ns_ctrl_touchLayout')      || 'default',
 };
 
 const appSettings = {
@@ -129,6 +130,11 @@ async function sendVpsViewerBootstrap(viewerId) {
         hostName: cfg.hostName || 'Host',
         hostRegion,
     });
+    vpsDispatch(viewerId, {
+        type: 'ctrl-settings',
+        touchLayout: ctrlSettings.touchLayout,
+        enableMotion: ctrlSettings.enableMotion,
+    });
     if (_smartDb && Object.keys(_smartDb).length) {
         vpsDispatch(viewerId, { type: 'smart-db', payload: _smartDb });
     }
@@ -150,7 +156,7 @@ function handleVpsJoin(viewerId, inner) {
         return;
     }
 
-    _pendingVpsViewers.set(viewerId, { name, region });
+    _pendingVpsViewers.set(viewerId, { name, region, isDesktopApp: !!inner.isDesktopApp });
     if (_vpsWs && _vpsWs.readyState === 1) {
         _vpsWs.send(JSON.stringify({ type: 'viewer-authorized', viewerId }));
     }
@@ -904,6 +910,7 @@ function togglePin() {
     const btn = document.getElementById('pinToggle');
     if (btn) { btn.textContent = pinEnabled ? 'ON' : 'OFF'; btn.classList.toggle('on', pinEnabled); }
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: pinEnabled }));
+    if (_vpsWs && _vpsWs.readyState === 1) _vpsWs.send(JSON.stringify({ type: currentStream ? 'stream-active' : 'stream-idle', pinRequired: pinEnabled }));
 }
 
 function regeneratePin() {
@@ -947,6 +954,14 @@ function connectWS() {
                 log(I18N.t('Viewer') + ' ' + (msg.name || msg.viewerId) + ' joined', 'ok');
             } else {
                 log(I18N.t('Viewer') + ' ' + (msg.name || msg.viewerId) + ' re-offer requested', 'ok');
+            }
+
+            // Desktop App users are auto-assigned KBM Emulated so Steam controllers work flawlessly
+            if (msg.isDesktopApp && msg.name && !msg.name.startsWith('Guest') && !savedViewerModes[msg.name]) {
+                setTimeout(() => changeInputMode(msg.viewerId, 'kbm_emulated', msg.name), 200);
+            } else if (msg.isDesktopApp && msg.name && msg.name.startsWith('Guest')) {
+                // If they didn't set a name, we can't save it to savedViewerModes, but we still apply it
+                setTimeout(() => changeInputMode(msg.viewerId, 'kbm_emulated'), 200);
             }
             if (currentStream) {
                 await sendOfferToViewer(msg.viewerId);
@@ -1734,7 +1749,7 @@ async function startCapture() {
 
         // Notify VPS viewers the stream is now active so they dismiss standby
         if (_vpsWs && _vpsAuthOk && _vpsWs.readyState === 1) {
-            _vpsWs.send(JSON.stringify({ type: 'stream-active' }));
+            _vpsWs.send(JSON.stringify({ type: 'stream-active', pinRequired: pinEnabled }));
         }
 
         setTimeout(() => {
@@ -1798,7 +1813,7 @@ function stopCapture() {
 
     // Notify VPS viewers the stream has stopped — triggers standby screen
     if (_vpsWs && _vpsAuthOk && _vpsWs.readyState === 1) {
-        _vpsWs.send(JSON.stringify({ type: 'stream-idle' }));
+        _vpsWs.send(JSON.stringify({ type: 'stream-idle', pinRequired: pinEnabled }));
     }
 
     disconnectVps();
@@ -2203,7 +2218,7 @@ function connectVps(cfg) {
             if (msg.type === 'auth-ok') {
                 _vpsAuthOk = true;
                 log('VPS: Authenticated — SFU mode active', 'ok');
-                _vpsWs.send(JSON.stringify({ type: 'stream-idle' }));
+                _vpsWs.send(JSON.stringify({ type: 'stream-idle', pinRequired: pinEnabled }));
 
                 try {
                     const wsUrl  = new URL(_vpsConfig.vpsUrl);
@@ -2212,7 +2227,7 @@ function connectVps(cfg) {
                     // Read hostName from config API — displayHostName element may not be populated yet
                     loadAppConfig().then(cfg => {
                         const hostParam = encodeURIComponent(cfg.hostName || 'Host');
-                        const viewerUrl = origin + '/?v3&host=' + hostParam;
+                        const viewerUrl = origin + '/?v3&host=' + hostParam + '&name=Player';
                         const el = document.getElementById('urlList');
                         if (el) {
                             el.innerHTML = '';
@@ -2259,6 +2274,7 @@ function connectVps(cfg) {
                         viewerId,
                         name: pending.name,
                         viewerRegion: pending.region,
+                        isDesktopApp: pending.isDesktopApp,
                     }));
                 }
                 sendVpsViewerBootstrap(viewerId);
@@ -2645,7 +2661,10 @@ function applyCtrlSettingsUI() {
     if (trackMotion) trackMotion.classList.toggle('on', ctrlSettings.enableMotion);
     if (rowMotion) rowMotion.classList.toggle('active', ctrlSettings.enableMotion);
 
-    const isNonDefault = ctrlSettings.forceXboxOne || ctrlSettings.enableDualShock || ctrlSettings.enableMotion || ctrlSettings.defaultInputMode !== 'gamepad';
+    const touchSelect = document.getElementById('touchLayoutSelect');
+    if (touchSelect) touchSelect.value = ctrlSettings.touchLayout;
+
+    const isNonDefault = ctrlSettings.forceXboxOne || ctrlSettings.enableDualShock || ctrlSettings.enableMotion || ctrlSettings.defaultInputMode !== 'gamepad' || ctrlSettings.touchLayout !== 'default';
     btn.style.color = isNonDefault ? 'var(--warn)' : '';
 }
 
@@ -2696,6 +2715,15 @@ function changeCtrlType(type) {
         });
     }
     log(I18N.t('Controller type:') + ' ' + type, 'ok');
+    log(I18N.t('Controller type:') + ' ' + type, 'ok');
+}
+
+function changeTouchLayout(layout) {
+    ctrlSettings.touchLayout = layout;
+    saveSetting('ns_ctrl_touchLayout', layout, 'ctrlSetting_touchLayout');
+    applyCtrlSettingsUI();
+    sendCtrlSettings(); // This updates server.js state and broadcasts to local + VPS viewers automatically
+    log('Mobile touch layout set to: ' + layout, 'ok');
 }
 
 function changeDefaultInputMode(mode) {
@@ -2711,11 +2739,12 @@ function sendCtrlSettings() {
         ws.send(JSON.stringify({
             type: 'ctrl-settings',
             forceXboxOne:     ctrlSettings.forceXboxOne,
-                enableDualShock:  ctrlSettings.enableDualShock,
-                enableMotion:     ctrlSettings.enableMotion,
-                defaultInputMode: ctrlSettings.defaultInputMode,
-                    hybridInput:      ctrlSettings.hybridInput,
-                    ctrlType:         ctrlSettings.ctrlType,
+            enableDualShock:  ctrlSettings.enableDualShock,
+            enableMotion:     ctrlSettings.enableMotion,
+            defaultInputMode: ctrlSettings.defaultInputMode,
+            hybridInput:      ctrlSettings.hybridInput,
+            ctrlType:         ctrlSettings.ctrlType,
+            touchLayout:      ctrlSettings.touchLayout,
         }));
     }
 }

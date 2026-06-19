@@ -1002,6 +1002,19 @@
             </select>
           </div>
 
+          <div class="ctrl-modal-row" style="flex-direction:column;gap:8px;cursor:default;margin-top:12px;">
+            <div class="ctrl-row-text">
+              <div class="ctrl-row-label">Mobile Touch Layout</div>
+              <div class="ctrl-row-desc">Customize the on-screen buttons for mobile viewers. Default keeps the clean, classic look.</div>
+            </div>
+            <select id="touchLayoutSelect" onchange="changeTouchLayout(this.value)" class="form-select">
+              <option value="default">Default (Left Stick + ABXY)</option>
+              <option value="dpad">D-Pad + ABXY</option>
+              <option value="rightstick">Left Stick + Right Stick</option>
+              <option value="full">Full Controller (Sticks + DPad + ABXY)</option>
+            </select>
+          </div>
+
           <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
             <div class="ctrl-modal-row" id="smRowInputViz" onclick="toggleInputVisualizer()" style="margin-bottom:8px;">
               <div class="ctrl-toggle-track" id="smTrackInputViz">

@@ -1388,6 +1388,8 @@ async function main() {
             // Save global states
             global.currentCtrlType = msg.ctrlType || 'xbox360';
             global.hybridInputActive = msg.hybridInput;
+            global.touchLayout = msg.touchLayout || 'default';
+            global.enableMotion = !!msg.enableMotion;
 
             // Update the orchestrator's global default FIRST (no viewerId = set global default),
             // then update each connected viewer's per-viewer entry.
@@ -1396,9 +1398,11 @@ async function main() {
               toUinput({ type: 'set-ctrl-type', viewerId: vid, ctrlType: global.currentCtrlType });
             });
 
+            // Broadcast to viewers so they update their touch layout
+            broadcast(JSON.stringify({ type: 'ctrl-settings', touchLayout: global.touchLayout, enableMotion: global.enableMotion }));
 
-            console.log("[host] ctrl-settings: forceXboxOne=%s enableDualShock=%s enableMotion=%s hybrid=%s ctrlType=%s",
-                        !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion, !!msg.hybridInput, global.currentCtrlType);
+            console.log("[host] ctrl-settings: forceXboxOne=%s enableDualShock=%s enableMotion=%s hybrid=%s ctrlType=%s touchLayout=%s",
+                        !!msg.forceXboxOne, !!msg.enableDualShock, !!msg.enableMotion, !!msg.hybridInput, global.currentCtrlType, global.touchLayout);
             return;
           }
 
@@ -1522,6 +1526,7 @@ async function main() {
                   viewerId: id,
                   name: viewerNames.get(id),
                   viewerRegion: msg.viewerRegion || null,
+                  isDesktopApp: !!msg.isDesktopApp,
                 }));
               }
               broadcastRoster();
@@ -1719,10 +1724,16 @@ async function main() {
                 viewerId: id,
                 name: joinName,
                 viewerRegion: msg.viewerRegion || null,
+                isDesktopApp: !!msg.isDesktopApp
               }));
               // Include the saved host name so the viewer can display "HOST SESSION — Name"
               const hCfg = loadConfig();
               ws.send(JSON.stringify({ type: "host-connected", hostName: hCfg.hostName || 'Host' }));
+              ws.send(JSON.stringify({
+                type: "ctrl-settings",
+                enableMotion: !!global.enableMotion,
+                touchLayout: global.touchLayout || 'default'
+              }));
               if (hostStreaming) {
                 ws.send(JSON.stringify({ type: "host-stream-ready" }));
               }

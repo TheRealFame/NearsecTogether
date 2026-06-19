@@ -1189,6 +1189,33 @@
       transform: translateX(-50%);
     }
 
+    #touchUI .dpad {
+      position: absolute;
+      width: min(34vw, 220px);
+      height: min(34vw, 220px);
+    }
+
+    #touchUI .dpad-btn {
+      position: absolute;
+      width: 30%;
+      height: 30%;
+      background: rgba(255, 255, 255, 0.08);
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(8px);
+      border-radius: 8px;
+      color: white;
+    }
+
+    #touchUI .dpad-btn:active {
+      background: rgba(139, 92, 246, 0.2);
+      transform: scale(0.92);
+    }
+
+    #touchUI .up { top: 0; left: 35%; }
+    #touchUI .down { bottom: 0; left: 35%; }
+    #touchUI .left { top: 35%; left: 0; }
+    #touchUI .right { top: 35%; right: 0; }
+
     #touchUI .top-buttons {
       position: absolute;
       top: 2vh;
@@ -1752,13 +1779,22 @@
       <div class="joystick-base" id="jBase">
         <div class="joystick-stick" id="jStick"></div>
       </div>
+      <div class="dpad" id="dpad" style="display:none;">
+        <button class="dpad-btn up" data-btn="12"></button>
+        <button class="dpad-btn down" data-btn="13"></button>
+        <button class="dpad-btn left" data-btn="14"></button>
+        <button class="dpad-btn right" data-btn="15"></button>
+      </div>
     </div>
     <div class="controls-right">
-      <div class="buttons">
+      <div class="buttons" id="actionBtns">
         <button class="button y" data-btn="3">Y</button>
         <button class="button x" data-btn="2">X</button>
         <button class="button b" data-btn="1">B</button>
         <button class="button a" data-btn="0">A</button>
+      </div>
+      <div class="joystick-base" id="jBaseRight" style="display:none;">
+        <div class="joystick-stick" id="jStickRight"></div>
       </div>
     </div>
   </div>

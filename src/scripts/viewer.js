@@ -106,6 +106,11 @@ standbyWs.onmessage = (e) => {
         const sf = document.getElementById('_nsStandbyFrame');
         if (sf) sf.style.display = 'none';
     }
+    if (msg.pinRequired !== undefined) {
+        pinRequired = msg.pinRequired;
+        const pw = document.getElementById('pinWrap');
+        if (pw) pw.style.display = pinRequired ? 'flex' : 'none';
+    }
 };
 standbyWs.onerror = () => { };
 
@@ -133,8 +138,9 @@ function recoverWebCodecsDecoder() {
 let sysAudioCtx = null;
 let nextAudioTime = 0;
 let stopReconnect = false;
-let myName = localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random() * 9000 + 1000);
+let myName = urlParamsGlobal.get('name') || localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random() * 9000 + 1000);
 document.getElementById('nameInput').value = myName;
+if (urlParamsGlobal.get('name')) localStorage.setItem('ns_name', myName);
 let enteredPin = '', audioMuted = false;
 let kbEnabled = false;
 
@@ -898,6 +904,29 @@ if (jBase) {
     jBase.addEventListener('touchend', e => { e.preventDefault(); jStick.style.transform = 'translate(0px,0px)'; touchState.axes[0] = 0; touchState.axes[1] = 0; }, { passive: false });
 }
 
+const jBaseRight = document.getElementById('jBaseRight');
+const jStickRight = document.getElementById('jStickRight');
+let jBaseRightRect = null;
+function updateStickRight(touch) {
+    if (!jBaseRightRect) return;
+    const cx = jBaseRightRect.left + jBaseRightRect.width / 2, cy = jBaseRightRect.top + jBaseRightRect.height / 2, max = jBaseRightRect.width / 2;
+    let dx = touch.clientX - cx, dy = touch.clientY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > max) { dx = (dx / dist) * max; dy = (dy / dist) * max; }
+    jStickRight.style.transform = `translate(${dx}px,${dy}px)`;
+    touchState.axes[2] = dx / max; touchState.axes[3] = dy / max;
+}
+if (jBaseRight) {
+    jBaseRight.addEventListener('touchstart', e => { e.preventDefault(); jBaseRightRect = jBaseRight.getBoundingClientRect(); updateStickRight(e.touches[0]); }, { passive: false });
+    jBaseRight.addEventListener('touchmove', e => { e.preventDefault(); updateStickRight(e.touches[0]); }, { passive: false });
+    jBaseRight.addEventListener('touchend', e => { e.preventDefault(); jStickRight.style.transform = 'translate(0px,0px)'; touchState.axes[2] = 0; touchState.axes[3] = 0; }, { passive: false });
+}
+
+document.querySelectorAll('.dpad-btn').forEach(el => {
+    el.addEventListener('touchstart', e => { e.preventDefault(); touchState.buttons[el.dataset.btn].pressed = true; touchState.buttons[el.dataset.btn].value = 1; el.style.background = 'rgba(139, 92, 246, 0.4)'; }, { passive: false });
+    el.addEventListener('touchend', e => { e.preventDefault(); touchState.buttons[el.dataset.btn].pressed = false; touchState.buttons[el.dataset.btn].value = 0; el.style.background = ''; }, { passive: false });
+});
+
 // ── HID GYRO ──────────────────────────────────────────────────────────────────
 let hidDevice = null, hostMotionEnabled = false, hidGyroX = 0, hidGyroY = 0;
 async function requestHID() {
@@ -1005,6 +1034,32 @@ function activateGamepad() {
     const pmt = document.getElementById('gpPrompt');
     if (pmt) { pmt.classList.add('active'); pmt.textContent = 'Grab A Gamepad!'; }
     setInterval(pollGamepad, 4);
+}
+
+let knownNativePads = [];
+if (window.electronAPI && window.electronAPI.onNativeGamepadEvent) {
+    window.electronAPI.onNativeGamepadEvent(msg => {
+        if (!gpPolling) activateGamepad();
+        if (msg.type === 'gamepad_connected') {
+            document.getElementById('gpPrompt')?.classList.add('gone');
+            const pInfo = { padIndex: msg.index + 100, id: msg.id || 'Native Controller', name: msg.name || 'Native Controller' };
+            knownNativePads.push(pInfo);
+            if (ws?.readyState === 1) {
+                ws.send(JSON.stringify(Object.assign({ type: 'gpid' }, pInfo)));
+            }
+            maybeShowControllerGuide();
+        } else if (msg.type === 'gamepad_state') {
+            const vIndex = msg.index + 100;
+            const state = { type: 'gamepad', padIndex: vIndex, axes: msg.state.axes, buttons: msg.state.buttons };
+            const str = JSON.stringify(state);
+            const now = Date.now();
+            const forceHb = now - (lastGpSend[vIndex] || 0) > 100;
+            if (str !== lastGpStr[vIndex] || forceHb) {
+                lastGpStr[vIndex] = str; lastGpSend[vIndex] = now; sendInputData(str);
+            }
+        }
+    });
+    window.electronAPI.startNativeGamepadCapture();
 }
 
 function pollGamepad() {
@@ -1132,10 +1187,14 @@ async function connect() {
     ws.binaryType = 'arraybuffer';
     stopReconnect = false;
 
-    ws.onopen = () => ws.send(JSON.stringify({
-        type: 'join', viewerId: myId, name: myName, pin: enteredPin,
-        viewerRegion, clientVersion: CLIENT_VERSION
-    }));
+    ws.onopen = () => {
+        ws.send(JSON.stringify({
+            type: 'join', viewerId: myId, name: myName, pin: enteredPin,
+            viewerRegion, clientVersion: CLIENT_VERSION,
+            isDesktopApp: urlParamsGlobal.has('compat')
+        }));
+        knownNativePads.forEach(pInfo => ws.send(JSON.stringify(Object.assign({ type: 'gpid' }, pInfo))));
+    };
 
     ws.onmessage = async (e) => {
         // ── BINARY ROUTING ────────────────────────────────────────────────────
@@ -1420,6 +1479,27 @@ async function connect() {
             hostMotionEnabled = msg.enableMotion;
             const hBtn = document.getElementById('hidBtn');
             if (hBtn) hBtn.style.display = hostMotionEnabled ? 'block' : 'none';
+            if (msg.touchLayout) {
+                const layout = msg.touchLayout;
+                const jBase = document.getElementById('jBase');
+                const actionBtns = document.getElementById('actionBtns');
+                const jBaseRight = document.getElementById('jBaseRight');
+                const dpad = document.getElementById('dpad');
+                if (jBase && actionBtns && jBaseRight && dpad) {
+                    if (layout === 'rightstick') {
+                        jBase.style.display = 'flex'; actionBtns.style.display = 'none'; jBaseRight.style.display = 'flex'; dpad.style.display = 'none';
+                    } else if (layout === 'dpad') {
+                        jBase.style.display = 'none'; actionBtns.style.display = 'flex'; jBaseRight.style.display = 'none'; dpad.style.display = 'flex';
+                    } else if (layout === 'full') {
+                        jBase.style.display = 'flex'; actionBtns.style.display = 'flex'; jBaseRight.style.display = 'flex'; dpad.style.display = 'flex';
+                        jBase.style.transform = 'scale(0.7)'; actionBtns.style.transform = 'scale(0.7)';
+                        jBaseRight.style.transform = 'scale(0.7)'; dpad.style.transform = 'scale(0.7)';
+                    } else {
+                        jBase.style.display = 'flex'; actionBtns.style.display = 'flex'; jBaseRight.style.display = 'none'; dpad.style.display = 'none';
+                        jBase.style.transform = ''; actionBtns.style.transform = ''; jBaseRight.style.transform = ''; dpad.style.transform = '';
+                    }
+                }
+            }
             return;
         }
         if (msg.type === 'input-state') {
@@ -1485,11 +1565,15 @@ safeApiJson('/api/pin-required', { required: true }).then(d => {
 function submitPin() {
     const nameVal = document.getElementById('nameInput').value.trim();
     if (nameVal) { myName = nameVal; localStorage.setItem('ns_name', myName); }
-    if (pinRequired) {
-        const val = document.getElementById('pinInput').value.trim();
-        if (val.length !== 4) { document.getElementById('pinErr').textContent = 'Enter 4 digits'; return; }
-        enteredPin = val;
+    const val = document.getElementById('pinInput').value.trim();
+    if (pinRequired && val.length !== 4) {
+        document.getElementById('pinErr').textContent = 'Enter 4 digits';
+        return;
+    } else if (!pinRequired && val.length > 0 && val.length !== 4) {
+        document.getElementById('pinErr').textContent = 'Enter 4 digits';
+        return;
     }
+    enteredPin = val;
     document.getElementById('pinErr').textContent = '';
     document.getElementById('pinScreen').classList.add('gone');
     safeApiJson('/api/info', {}).then(d => {
