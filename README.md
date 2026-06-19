@@ -1,6 +1,16 @@
-# Nearsec Together
+<p align="left">
+  <img src="assets/NearsecTogether.png" width="160" height="140">
+<h1>NearsecTogether</h1>
 
 [English](README.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português](README.pt.md) | [日本語](README.ja.md)
+## Screenshots -- Dashboard, Viewer Page, Arcade
+
+<div align="center">
+  <img src="assets/screenshots/nearsec-client-home.png" alt="Nearsec Host" width="45%">
+  <img src="assets/screenshots/nearsec-host.png" alt="Nearsec Host" width="45%">
+  <img src="assets/screenshots/nearsec-viewer.png" alt="Nearsec Viewer" width="45%">
+  <img src="assets/screenshots/nearsec-arcade.png" alt="Nearsec Arcade" width="45%">
+</div>
 
 ## Project Mission
 Nearsec Together is an open-source platform that lets you play local co-op games over the internet with friends. It is built for self-hosted setups. It uses peer-to-peer connections and native operating system audio and input routing to keep input delay low.
