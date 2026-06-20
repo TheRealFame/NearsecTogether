@@ -17,3 +17,6 @@ kbm_bindings.json
 dist/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+
+# Native addon build artifacts
+src/sidecar/input_backends/build/
