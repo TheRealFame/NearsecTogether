@@ -171,7 +171,7 @@ let wcDecoder = null;
 // Pre-wire to the canvas already in index.html so initWebCodecsViewer never
 // creates a duplicate element.
 let wcCanvas = document.getElementById('webcodecs-canvas') || null;
-let wcCtx = wcCanvas ? wcCanvas.getContext('2d', { alpha: false, desynchronized: true }) : null;
+let wcCtx = wcCanvas ? wcCanvas.getContext('2d', { alpha: false }) : null;
 
 const CONTROLLER_GUIDE_STORAGE_KEY = 'ns_controller_guide_ack';
 const CLIENT_VERSION = window.NEARSEC_VERSION || '1.0.0';
@@ -1767,7 +1767,7 @@ function initWebCodecsViewer(config) {
         // Add CSS so the stream scales to fit the viewport instead of overflowing
         wcCanvas.style.cssText = 'width: 100%; height: 100%; max-width: 100vw; max-height: 100vh; object-fit: contain; position: absolute; top: 0; left: 0; z-index: 10; display: block; overflow: hidden;';
         document.getElementById('video-container')?.appendChild(wcCanvas) ?? document.body.appendChild(wcCanvas);
-        wcCtx = wcCanvas.getContext('2d', { alpha: false, desynchronized: true });
+        wcCtx = wcCanvas.getContext('2d', { alpha: false });
         
         // Ensure KBM pointer lock works on the experimental WebCodecs canvas
         if (typeof requestPointerLock === 'function') {
@@ -1794,7 +1794,7 @@ function initWebCodecsViewer(config) {
     window._wcResizeHandler();
 
     if (!wcCtx) {
-        wcCtx = wcCanvas.getContext('2d', { alpha: false, desynchronized: true });
+        wcCtx = wcCanvas.getContext('2d', { alpha: false });
     }
 
     // Clean up any existing decoder before creating a new one.
@@ -1819,7 +1819,7 @@ function initWebCodecsViewer(config) {
             if (wcCanvas.width !== frame.codedWidth || wcCanvas.height !== frame.codedHeight) {
                 wcCanvas.width = frame.codedWidth;
                 wcCanvas.height = frame.codedHeight;
-                wcCtx = wcCanvas.getContext('2d', { alpha: false, desynchronized: true });
+                wcCtx = wcCanvas.getContext('2d', { alpha: false });
             }
             if (wcCtx) wcCtx.drawImage(frame, 0, 0, wcCanvas.width, wcCanvas.height);
             frame.close();
