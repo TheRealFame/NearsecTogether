@@ -299,6 +299,9 @@ async function createPC() {
                     setStatus('');
                     const spinner = document.getElementById('spinner');
                     if (spinner) spinner.style.display = 'none';
+                    if (typeof _swapOverlayEl !== 'undefined' && _swapOverlayEl) {
+                        _swapOverlayEl.style.display = 'none';
+                    }
                 };
                 console.log('[WebRTC] Video stream attached to #video');
             }
@@ -1131,20 +1134,36 @@ function showOverlay(v) { document.getElementById('overlay').classList.toggle('g
 // Works in both WebCodecs canvas mode and legacy frameCanvas mode.
 let _swapOverlayEl = null;
 function _freezeFrameForSwap() {
-    // Use whichever surface is currently active
-    const src = (wcCanvas && wcCanvas.style.display !== 'none')
-        ? wcCanvas
-        : document.getElementById('frameCanvas');
-    if (!src || !src.width || !src.height) return;
+    let src = (wcCanvas && wcCanvas.style.display !== 'none') ? wcCanvas : document.getElementById('video');
+    if (!src) return;
+
+    // Support both Canvas (.width) and Video (.videoWidth)
+    let w = src.width || src.videoWidth;
+    let h = src.height || src.videoHeight;
+
+    // Fallback to screen resolution if no valid frame exists so we can at least draw crisp text
+    if (!w || !h) {
+        w = window.innerWidth * (window.devicePixelRatio || 1);
+        h = window.innerHeight * (window.devicePixelRatio || 1);
+        src = null; // Don't try to drawImage a broken source
+    }
+
     if (!_swapOverlayEl) {
         _swapOverlayEl = document.createElement('canvas');
         _swapOverlayEl.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:5;pointer-events:none;';
-        document.getElementById('video-container')?.appendChild(_swapOverlayEl);
+        const container = document.getElementById('video-container') || document.body;
+        container.appendChild(_swapOverlayEl);
     }
-    _swapOverlayEl.width = src.width;
-    _swapOverlayEl.height = src.height;
+
+    _swapOverlayEl.style.display = 'block';
+    _swapOverlayEl.width = w;
+    _swapOverlayEl.height = h;
+
     const ctx = _swapOverlayEl.getContext('2d');
-    ctx.drawImage(src, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (src) {
+        try { ctx.drawImage(src, 0, 0, w, h); } catch(e) {}
+    }
 }
 
 // ── DEDICATED INPUT FAST LANE ─────────────────────────────────────────────────
