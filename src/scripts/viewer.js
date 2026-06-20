@@ -126,7 +126,7 @@ async function safeApiJson(url, fallback) {
     }
 }
 function requestKeyframeFromHost() {
-    if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'request-keyframe' }));
+    if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'request-keyframe', viewerId: typeof myId !== 'undefined' ? myId : null }));
 }
 
 function recoverWebCodecsDecoder() {

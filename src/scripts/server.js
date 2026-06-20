@@ -14,6 +14,7 @@ const open = (...args) => import('open').then(({default: open}) => open(...args)
 const which = require("which");
 const killPort = require("kill-port");
 const captureManager = require('../sidecar/CaptureManager.js');
+let activePort = 3000;
 let hostWS = null;
 let tunnelUrl = null;
 let activeTunnelProc = null;
@@ -812,7 +813,8 @@ async function main() {
   }
   console.log("");
 
-  const PORT = await findFreePort(3000);
+  activePort = await findFreePort(3000);
+  const PORT = activePort;
   const LAN_IP = getLanIP();
   const PUBLIC_IP = await getPublicIP();
   let PIN = makePin();
@@ -2131,9 +2133,9 @@ function cleanup(isElectron = false) {
   }
 
   if (!isElectron) {
-    killPort(3000).catch(() => {}).finally(() => process.exit(0));
+    killPort(activePort).catch(() => {}).finally(() => process.exit(0));
   } else {
-    killPort(3000).catch(() => {});
+    killPort(activePort).catch(() => {});
   }
 }
 

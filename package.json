@@ -63,7 +63,13 @@
       "!**/*.md",
       "!.github",
       "!kbm_presets",
-      "!.flatpak-builder"
+      "!.flatpak-builder",
+      "!**/build/Release/.deps",
+      "!**/build/Release/obj.target",
+      "!**/build/Release/*.a",
+      "!**/build/*.mk",
+      "!**/build/Makefile",
+      "!**/build/*.gypi"
     ],
     "asarUnpack": [
       "src/sidecar/**/*",

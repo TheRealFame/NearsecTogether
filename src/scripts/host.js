@@ -944,6 +944,12 @@ function connectWS() {
         const msg = JSON.parse(e.data);
         if (msg.type === 'request-keyframe') {
             forceWebCodecsKeyframe();
+            const vid = msg.viewerId || msg._viewerId;
+            if (vid && _lastWcConfig) {
+                if (viewerDataChannels[vid] && viewerDataChannels[vid].readyState === 'open') {
+                    try { viewerDataChannels[vid].send(_lastWcConfig); } catch (_) {}
+                }
+            }
             return;
         }
         if (msg.type === 'viewer-joined') {
@@ -2304,6 +2310,7 @@ function connectVps(cfg) {
                 }
                 if (inner.type === 'request-keyframe') {
                     forceWebCodecsKeyframe();
+                    if (_lastWcConfig) vpsDispatch(viewerId, _lastWcConfig);
                     return;
                 }
 
