@@ -453,8 +453,12 @@ async function createWindow() {
   ipcMain.on('start-native-gamepad', (event) => {
     if (gamepadProc) return;
     const { spawn } = require('child_process');
-    const pyScript = path.join(__dirname, 'src', 'sidecar', 'input_backends', 'read_gamepads.py');
-    const pyExec = process.platform === 'win32' ? path.join(__dirname, 'bin', 'python', 'python.exe') : 'python3';
+    let basePath = __dirname;
+    if (basePath.includes('app.asar')) {
+      basePath = basePath.replace('app.asar', 'app.asar.unpacked');
+    }
+    const pyScript = path.join(basePath, 'src', 'sidecar', 'input_backends', 'read_gamepads.py');
+    const pyExec = process.platform === 'win32' ? path.join(basePath, 'bin', 'python', 'python.exe') : 'python3';
 
     // Fallback to system python on windows if bin/python doesn't exist
     const actualExec = (process.platform === 'win32' && !fs.existsSync(pyExec)) ? 'python' : pyExec;
@@ -493,14 +497,16 @@ async function createWindow() {
     vpsMasterKey: String(settings.vpsMasterKey || ''),
   }));
   ipcMain.handle('save-vps-config', (_, cfg) => {
-    const safe = {
-      vpsEnabled: !!cfg.vpsEnabled,
-      vpsUrl: String(cfg.vpsUrl || '').slice(0, 512),
-      vpsMasterKey: String(cfg.vpsMasterKey || '').slice(0, 256),
-    };
-    settings = Object.assign(settings, safe);
+    if (typeof cfg.vpsEnabled !== 'undefined') settings.vpsEnabled = !!cfg.vpsEnabled;
+    if (typeof cfg.vpsUrl !== 'undefined') settings.vpsUrl = String(cfg.vpsUrl).slice(0, 512);
+    if (typeof cfg.vpsMasterKey !== 'undefined') settings.vpsMasterKey = String(cfg.vpsMasterKey).slice(0, 256);
+    
     saveSettings(settings);
-    return safe;
+    return {
+      vpsEnabled: !!settings.vpsEnabled,
+      vpsUrl: String(settings.vpsUrl || ''),
+      vpsMasterKey: String(settings.vpsMasterKey || '')
+    };
   });
   ipcMain.handle('get-controllers', () => loadControllers());
   ipcMain.handle('save-settings', (_, s) => {
@@ -560,13 +566,21 @@ async function createWindow() {
       });
     }
     else if (os.platform() === 'linux') {
-      const scriptPath = path.join(__dirname, 'bin', 'linux_setup.sh');
+      let scriptPath = path.join(__dirname, 'bin', 'linux_setup.sh');
+      
+      // If running from an AppImage or built executable, extraResources places 'bin' directly in resourcesPath
+      if (__dirname.includes('app.asar')) {
+        scriptPath = path.join(process.resourcesPath, 'bin', 'linux_setup.sh');
+      }
+      
       try { fs.chmodSync(scriptPath, 0o755); } catch (e) { console.warn('[Setup] chmod:', e.message); }
+      
       const wrapperPath = path.join(os.tmpdir(), 'nearsec_setup_wrapper.sh');
       const statusFile = path.join(os.tmpdir(), 'nearsec_setup_status');
 
       // Create a clean wrapper that forces the native password prompt and logs the exit code
-      const wrapperContent = `#!/bin/bash\nclear\necho "Starting Nearsec Setup..."\nsudo bash "${scriptPath}"\nif [ $? -eq 0 ]; then echo "SUCCESS" > "${statusFile}"; else echo "FAIL" > "${statusFile}"; fi\necho ""\nread -p "Press Enter to close..."\n`;
+      // We copy the script to /tmp first because root (sudo) cannot read FUSE mounts like AppImage's /tmp/.mount_*
+      const wrapperContent = `#!/bin/bash\nclear\necho "Starting Nearsec Setup..."\ncp "${scriptPath}" /tmp/nearsec_setup.sh\nchmod +x /tmp/nearsec_setup.sh\nsudo bash /tmp/nearsec_setup.sh\nif [ $? -eq 0 ]; then echo "SUCCESS" > "${statusFile}"; else echo "FAIL" > "${statusFile}"; fi\necho ""\nread -p "Press Enter to close..."\n`;
 
       try {
         fs.writeFileSync(wrapperPath, wrapperContent, { mode: 0o755 });
@@ -603,6 +617,15 @@ async function createWindow() {
   });
   ipcMain.handle('clipboard-read', () => {
     try { return clipboard.readText(); } catch (_) { return ''; }
+  });
+
+  ipcMain.handle('get-app-version', () => {
+    const pkgPath = path.join(__dirname, 'package.json');
+    let version = '1.0.0';
+    try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) {}
+    let commit = '';
+    try { commit = fs.readFileSync(path.join(__dirname, 'commit.txt'), 'utf8').trim().substring(0, 7); } catch (_) {}
+    return { version, commit };
   });
 
   // FIX #7 / openHost: version param forwarded correctly from preload

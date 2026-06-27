@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   joinSession: (url, meta, pin)   => ipcRenderer.invoke('join-session', { url, meta, pin }),
   pingSession: (url)              => ipcRenderer.invoke('ping-session', url),
   getServerInfo: ()               => ipcRenderer.invoke('get-server-info'),
+  getVersion:    ()               => ipcRenderer.invoke('get-app-version'),
   // FIX #7: openHost now accepts an optional version string ('new' | 'old')
   openHost:    (version)          => ipcRenderer.send('open-host', version || 'new'),
   getSettings:                    () => ipcRenderer.invoke('get-settings'),

@@ -132,7 +132,13 @@ elif os_type == "Linux":
                         dev = evdev.InputDevice(path)
                         caps = dev.capabilities()
                         if evdev.ecodes.EV_ABS in caps and evdev.ecodes.EV_KEY in caps:
-                            has_btn = any(btn in caps[evdev.ecodes.EV_KEY] for btn in [evdev.ecodes.BTN_GAMEPAD, evdev.ecodes.BTN_SOUTH])
+                            has_btn = any(btn in caps[evdev.ecodes.EV_KEY] for btn in [
+                                getattr(evdev.ecodes, 'BTN_GAMEPAD', 315), 
+                                getattr(evdev.ecodes, 'BTN_SOUTH', 304),
+                                getattr(evdev.ecodes, 'BTN_A', 304),
+                                getattr(evdev.ecodes, 'BTN_1', 288),
+                                getattr(evdev.ecodes, 'BTN_TRIGGER', 288)
+                            ])
                             if has_btn:
                                 devices[path] = dev
                                 idx = len(devices) - 1
@@ -142,8 +148,10 @@ elif os_type == "Linux":
                                 def read_dev(d, i):
                                     state = {"axes": [0,0,0,0], "buttons": [{"pressed": False, "value": 0} for _ in range(17)]}
                                     btn_map = {
-                                        evdev.ecodes.BTN_SOUTH: 0, evdev.ecodes.BTN_EAST: 1,
-                                        evdev.ecodes.BTN_NORTH: 3, evdev.ecodes.BTN_WEST: 2,
+                                        getattr(evdev.ecodes, 'BTN_SOUTH', 304): 0, getattr(evdev.ecodes, 'BTN_A', 304): 0, getattr(evdev.ecodes, 'BTN_1', 288): 0,
+                                        getattr(evdev.ecodes, 'BTN_EAST', 305): 1, getattr(evdev.ecodes, 'BTN_B', 305): 1, getattr(evdev.ecodes, 'BTN_2', 289): 1,
+                                        getattr(evdev.ecodes, 'BTN_NORTH', 307): 3, getattr(evdev.ecodes, 'BTN_X', 307): 3, getattr(evdev.ecodes, 'BTN_4', 291): 3,
+                                        getattr(evdev.ecodes, 'BTN_WEST', 306): 2, getattr(evdev.ecodes, 'BTN_Y', 306): 2, getattr(evdev.ecodes, 'BTN_3', 290): 2,
                                         evdev.ecodes.BTN_TL: 4, evdev.ecodes.BTN_TR: 5,
                                         evdev.ecodes.BTN_TL2: 6, evdev.ecodes.BTN_TR2: 7,
                                         evdev.ecodes.BTN_SELECT: 8, evdev.ecodes.BTN_START: 9,

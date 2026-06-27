@@ -1,5 +1,20 @@
 apply plugin: 'com.android.application'
 
+import groovy.json.JsonSlurper
+
+def getAppVersion() {
+    def inputFile = new File(project.rootDir, "../../package.json")
+    def json = new JsonSlurper().parseText(inputFile.text)
+    return json.version
+}
+
+def getAppVersionCode() {
+    def version = getAppVersion()
+    // Convert "2.0.7" to 200007 (Major * 100000 + Minor * 1000 + Patch)
+    def parts = version.split('\\.')
+    return (parts[0].toInteger() * 100000) + (parts[1].toInteger() * 1000) + parts[2].toInteger()
+}
+
 android {
     namespace = "org.cutefame.nearsectogether"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +22,8 @@ android {
         applicationId "org.cutefame.nearsectogether"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode getAppVersionCode()
+        versionName getAppVersion()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +31,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            storeFile file("release.keystore")
+            storePassword "nearsec123"
+            keyAlias "nearsec"
+            keyPassword "nearsec123"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 }

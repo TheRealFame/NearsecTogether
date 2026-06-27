@@ -227,7 +227,6 @@ Napi::Boolean InitializeDevice(const Napi::CallbackInfo& info) {
     uud.id.vendor  = 0x1234;
     uud.id.product = 0x5678;
     uud.id.version = 1;
-    uud.id.version = 1;
 
     if (write(kbm_fd, &uud, sizeof(uud)) < 0) {
         close(kbm_fd); kbm_fd = -1;

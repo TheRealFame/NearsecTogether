@@ -106,17 +106,17 @@ const KBM_BTN_MAP = {
 };
 
 const PROFILES = {
-    xbox360: { vendor: 0x045E, product: 0x028E, version: 0x0110, name: 'Xbox 360 Controller' },
-    xbox: { vendor: 0x045E, product: 0x028E, version: 0x0110, name: 'Xbox 360 Controller' },
-    xboxone: { vendor: 0x045E, product: 0x02EA, version: 0x0101, name: 'Xbox One Controller' },
-    ds4: { vendor: 0x054C, product: 0x09CC, version: 0x0100, name: 'Wireless Controller' },
-    ps4: { vendor: 0x054C, product: 0x09CC, version: 0x0100, name: 'Wireless Controller' },
-    playstation: { vendor: 0x054C, product: 0x09CC, version: 0x0100, name: 'Wireless Controller' },
-    dualshock4: { vendor: 0x054C, product: 0x09CC, version: 0x0100, name: 'Wireless Controller' },
-    dualsense: { vendor: 0x054C, product: 0x0CE6, version: 0x0100, name: 'Wireless Controller' },
-    switchpro: { vendor: 0x057E, product: 0x2009, version: 0x0001, name: 'Pro Controller' },
-    switch: { vendor: 0x057E, product: 0x2009, version: 0x0001, name: 'Pro Controller' },
-    nintendo: { vendor: 0x057E, product: 0x2009, version: 0x0001, name: 'Pro Controller' }
+    xbox360: { vendor: 0x045E, product: 0x028E, version: 0x0114, name: "Microsoft X-Box 360 pad" },
+    xbox: { vendor: 0x045E, product: 0x028E, version: 0x0114, name: "Microsoft X-Box 360 pad" },
+    xboxone: { vendor: 0x045E, product: 0x02EA, version: 0x0301, name: "Microsoft X-Box One S pad" },
+    ds4: { vendor: 0x054C, product: 0x05C4, version: 0x8111, name: "Sony Computer Entertainment Wireless Controller" },
+    ps4: { vendor: 0x054C, product: 0x05C4, version: 0x8111, name: "Sony Computer Entertainment Wireless Controller" },
+    playstation: { vendor: 0x054C, product: 0x05C4, version: 0x8111, name: "Sony Computer Entertainment Wireless Controller" },
+    dualshock4: { vendor: 0x054C, product: 0x05C4, version: 0x8111, name: "Sony Computer Entertainment Wireless Controller" },
+    dualsense: { vendor: 0x054C, product: 0x0CE6, version: 0x8111, name: "Sony Interactive Entertainment Wireless Controller" },
+    switchpro: { vendor: 0x0500, product: 0x2009, version: 0x8111, name: "Nintendo Switch Pro Controller" },
+    switch: { vendor: 0x0500, product: 0x2009, version: 0x8111, name: "Nintendo Switch Pro Controller" },
+    nintendo: { vendor: 0x0500, product: 0x2009, version: 0x8111, name: "Nintendo Switch Pro Controller" }
 };
 
 // ── Initialization ─────────────────────────────────────────────────────────────

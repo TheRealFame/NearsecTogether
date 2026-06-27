@@ -407,7 +407,7 @@
             </div>
             <div class="input-row">
               <div class="input-wrapper">
-                <input type="text" id="pinInput" placeholder="PIN Code (if required)" onkeydown="if(event.key==='Enter')joinDirectLink()">
+                <input type="text" id="pinInput" placeholder="PIN Code (if required)" autocomplete="off" maxlength="4" inputmode="numeric" pattern="[0-9]*" onkeydown="if(event.key==='Enter')joinDirectLink()">
               </div>
               <button class="btn-connect" onclick="joinDirectLink()">Join</button>
             </div>
@@ -572,10 +572,39 @@
       </div>
       <iframe src="gamepad-popup.html" style="flex:1; border:none;"></iframe>
     </div>
-</div>
+    </div>
+  </div>
+
+  <div id="version-display" style="position:fixed; bottom: 12px; right: 16px; font-size: 11px; color: var(--muted); cursor: pointer; text-align: right; z-index: 100; user-select: none;" onclick="copyVersion()" title="Click to copy version">
+    <div id="version-text"></div>
+    <div id="commit-hash" style="font-size: 9px; opacity: 0.7;"></div>
+  </div>
 
   <script src="/js/i18n.js"></script>
   <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const vEl = document.getElementById('version-text');
+      const cEl = document.getElementById('commit-hash');
+      if (window.electronAPI && window.electronAPI.getVersion) {
+        const { version, commit } = await window.electronAPI.getVersion();
+        window.NEARSEC_VERSION = version;
+        window.NEARSEC_COMMIT = commit;
+      }
+      if (window.NEARSEC_VERSION && vEl) vEl.textContent = 'v' + window.NEARSEC_VERSION;
+      if (window.NEARSEC_COMMIT && cEl) cEl.textContent = window.NEARSEC_COMMIT;
+    });
+
+    function copyVersion() {
+      const txt = 'v' + (window.NEARSEC_VERSION || 'unknown') + (window.NEARSEC_COMMIT ? '-' + window.NEARSEC_COMMIT : '');
+      navigator.clipboard.writeText(txt).catch(()=>{});
+      const vEl = document.getElementById('version-text');
+      const old = vEl.textContent;
+      vEl.textContent = 'Copied!';
+      setTimeout(() => {
+        vEl.textContent = old;
+      }, 1500);
+    }
+
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
     function switchTab(name) {

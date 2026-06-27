@@ -849,6 +849,11 @@ async function main() {
       return pkg.version || '1.0.0';
     } catch (e) { return '1.0.0'; }
   })();
+  const COMMIT_HASH = (() => {
+    try {
+      return fs.readFileSync(path.join(projectRoot, 'commit.txt'), 'utf8').trim().substring(0, 7);
+    } catch (e) { return ''; }
+  })();
   app.use('/docs', express.static(path.join(__dirname, '..', 'docs')));
 
   // ── Dynamic version.js — always reflects package.json ──────────────────
@@ -857,7 +862,7 @@ async function main() {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.send(`window.NEARSEC_VERSION = "${APP_VERSION}";\nconsole.log("[Nearsec] Version loaded:", window.NEARSEC_VERSION);`);
+    res.send(`window.NEARSEC_VERSION = "${APP_VERSION}";\nwindow.NEARSEC_COMMIT = "${COMMIT_HASH}";\nconsole.log("[Nearsec] Version loaded:", window.NEARSEC_VERSION, window.NEARSEC_COMMIT ? "("+window.NEARSEC_COMMIT+")" : "");`);
   });
 
   app.use("/js", express.static(path.join(__dirname, "..", "..", "src", "scripts"), { setHeaders: (res) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } }));
@@ -1115,6 +1120,10 @@ async function main() {
     if (req.body && req.body.remember) saveConfig({ tunnelProvider: provider, neverAsk: true });
 
     res.json({ ok: true, starting: true });
+
+    if (provider === 'p2p' || provider === 'vps-sfu' || provider === 'portforward') {
+      return; // Handled entirely by the browser, no local Node tunnel needed
+    }
 
     // CRITICAL FIX: Use readEnv to catch the host if the GUI fails to pass it!
     const resolvedVpsHost = (req.body && req.body.vpsHost)
@@ -2176,6 +2185,8 @@ async function main() {
       // by the user's saved VPS URL, not by any local tunnel provider.
       console.log("  \x1b[36m~\x1b[0m Tunnel: VPS SFU mode (managed by host app — no local tunnel started)");
       // Do NOT modify tunnelProvider or neverAsk here.
+    } else if (cfg.tunnelProvider === 'p2p') {
+      console.log("  \x1b[36m~\x1b[0m Tunnel: P2P mode (managed by host app — no local tunnel started)");
     } else if (cfg.neverAsk && cfg.tunnelProvider === 'portforward') {
       console.log("  ~ Tunnel: port forward mode (saved).");
     } else if (cfg.neverAsk && cfg.tunnelProvider) {

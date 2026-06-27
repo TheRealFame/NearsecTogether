@@ -1550,7 +1550,7 @@
 
       <div id="pinWrap">
         <div class="pin-field-label" style="margin-top:4px;">PIN Code</div>
-        <input id="pinInput" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="0000" maxlength="4" class="pin-input"
+        <input id="pinInput" type="text" autocomplete="off" inputmode="numeric" pattern="[0-9]*" placeholder="0000" maxlength="4" class="pin-input"
           oninput="this.value=this.value.replace(/[^0-9]/g, '').slice(0,4)"
           onkeydown="if(event.key==='Enter')submitPin()">
       </div>
@@ -1698,7 +1698,7 @@
         </button>
         <span id="chatBadge"></span>
       </div>
-      <button class="ns-bar-btn" style="color:var(--danger);font-weight:bold;margin-top:8px;" onclick="window.location.href='index.html'">
+      <button class="ns-bar-btn" style="color:var(--danger);font-weight:bold;margin-top:8px;" onclick="window.electronAPI ? window.electronAPI.backToDashboard() : window.location.href='/'">
         Disconnect
       </button>
 

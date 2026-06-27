@@ -566,19 +566,26 @@ async function runBenchmark(mode) {
 
     benchLog(`Testing ${toTest.length} codec(s) — 8s each…`);
 
-    // Set up test video element (uses test_video.mp4 as the source signal)
-    const testVideo = document.createElement('video');
-    testVideo.src = '/assets/test_video.mp4';
-    testVideo.loop = true;
-    testVideo.muted = true;
-    testVideo.playsInline = true;
-    testVideo.style.display = 'none';
-    document.body.appendChild(testVideo);
-    await new Promise(resolve => {
-        testVideo.onplaying = resolve;
-        testVideo.onerror = resolve;
-        testVideo.play().catch(resolve);
-    });
+    // Set up test canvas to simulate video stream
+    const testCanvas = document.createElement('canvas');
+    testCanvas.width = 1280;
+    testCanvas.height = 720;
+    const testCtx = testCanvas.getContext('2d');
+    testCtx.fillStyle = '#0f111a';
+    testCtx.fillRect(0, 0, 1280, 720);
+    // Draw a spinning block to force encoder motion
+    let testAngle = 0;
+    const testAnim = setInterval(() => {
+        testCtx.fillStyle = '#0f111a';
+        testCtx.fillRect(0, 0, 1280, 720);
+        testCtx.save();
+        testCtx.translate(640, 360);
+        testCtx.rotate(testAngle);
+        testCtx.fillStyle = '#8b5cf6';
+        testCtx.fillRect(-200, -200, 400, 400);
+        testCtx.restore();
+        testAngle += 0.1;
+    }, 33);
 
     const results = [];
 
@@ -598,8 +605,8 @@ async function runBenchmark(mode) {
             pc1.onicecandidate = e => e.candidate && pc2.addIceCandidate(e.candidate).catch(() => {});
             pc2.onicecandidate = e => e.candidate && pc1.addIceCandidate(e.candidate).catch(() => {});
 
-            // Add video track from the test video
-            const stream = testVideo.captureStream ? testVideo.captureStream(30) : testVideo.mozCaptureStream?.(30);
+            // Add video track from the test canvas
+            const stream = testCanvas.captureStream(30);
             if (!stream) throw new Error('captureStream not supported');
             const [track] = stream.getVideoTracks();
             if (!track) throw new Error('Video track not available yet');
@@ -687,8 +694,7 @@ async function runBenchmark(mode) {
         }
     }
 
-    testVideo.pause();
-    document.body.removeChild(testVideo);
+    clearInterval(testAnim);
 
     fillEl.style.width = '100%';
     pctEl.textContent = '100%';
@@ -1183,7 +1189,10 @@ function connectWS() {
 
             fetch('/api/info').then(r => r.json()).then(d => {
                 currentPin = d.pin;
-                document.getElementById('pinVal').textContent = d.pin;
+                if (!window._isP2P) {
+                    const pVal = document.getElementById('pinVal');
+                    if (pVal) pVal.textContent = d.pin;
+                }
                 renderUrls(d);
                 ws.send(JSON.stringify({ type: 'sync-pin', pin: currentPin, enabled: pinEnabled }));
                 sendCtrlSettings();
@@ -1475,6 +1484,21 @@ async function sendOfferToViewer(viewerId) {
             clearTimeout(connectTimeout);
             setLowLatencyParams(pc);
             monitorCongestion(pc, viewerId);
+
+            // ── KEYFRAME HACK ──
+            // Some hardware encoders (Linux Vaapi) drop or ignore PLI requests from new viewers,
+            // resulting in a permanent black screen until the stream is fully restarted.
+            // Replacing the sender's track with itself forces Chromium to flush the encoder pipeline
+            // and emit a fresh IDR keyframe, instantly fixing the black screen for late-joiners.
+            setTimeout(() => {
+                try {
+                    const videoSender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (videoSender && videoSender.track) {
+                        videoSender.replaceTrack(videoSender.track).catch(e => console.warn('[WebRTC] Keyframe force failed:', e));
+                        log(I18N.t('Forced keyframe for') + ' ' + viewerId, 'ok');
+                    }
+                } catch (e) { }
+            }, 600);
         }
 
         if (s === 'failed' || s === 'disconnected') {
@@ -1635,7 +1659,10 @@ function hydrateSelectsFromStorage() {
         const el = document.getElementById(id);
         if (!el) return;
         const saved = localStorage.getItem(key);
-        if (saved) el.value = saved;
+        if (saved) {
+            el.value = saved;
+            el.dispatchEvent(new Event('input'));
+        }
         el.addEventListener('change', async (e) => {
             saveSetting(key, e.target.value, key.replace('ns_', 'quality_'));
             if (onChange) {
@@ -2869,7 +2896,7 @@ function confirmTunnel() {
     if (typeof disconnectVps === 'function') {
         disconnectVps();
         if (window.electronAPI && typeof window.electronAPI.saveVpsConfig === 'function') {
-            window.electronAPI.saveVpsConfig({ vpsEnabled: false, vpsUrl: '', vpsMasterKey: '' });
+            window.electronAPI.saveVpsConfig({ vpsEnabled: false });
         }
     }
 
@@ -2894,13 +2921,25 @@ function confirmTunnel() {
 
 function startP2POnly() {
     if (_tunnelBusy) return;
+    
+    if (localStorage.getItem('p2pWarned')) {
+        proceedP2POnly();
+        return;
+    }
+    closeTunnelModal();
+    document.getElementById('p2pWarningModal').classList.remove('gone');
+}
+
+function proceedP2POnly() {
+    localStorage.setItem('p2pWarned', 'true');
+
     const remember = document.getElementById('rememberCheck').checked;
     
     // Switch away from VPS SFU if it was active
     if (typeof disconnectVps === 'function') {
         disconnectVps();
         if (window.electronAPI && typeof window.electronAPI.saveVpsConfig === 'function') {
-            window.electronAPI.saveVpsConfig({ vpsEnabled: false, vpsUrl: '', vpsMasterKey: '' });
+            window.electronAPI.saveVpsConfig({ vpsEnabled: false });
         }
     }
 
@@ -2917,6 +2956,18 @@ function startP2POnly() {
     window._isP2P = true;
     window._p2pCode = code;
 
+    // Force PIN off for P2P mode (the 12-char room code acts as the security)
+    pinEnabled = false;
+    const pinRow = document.querySelector('.pin-row');
+    if (pinRow) {
+        pinRow.style.opacity = '0.3';
+        pinRow.style.pointerEvents = 'none';
+        const pVal = document.getElementById('pinVal');
+        if (pVal) pVal.textContent = 'P2P';
+        const pTog = document.getElementById('pinToggle');
+        if (pTog) { pTog.textContent = 'OFF'; pTog.classList.remove('on'); }
+    }
+
     // Immediately trigger a UI refresh so the Room Code is displayed
     fetch('/api/info').then(r => r.json()).then(d => renderUrls(d)).catch(() => {
         // Fallback if local Express server is unreachable
@@ -2931,18 +2982,18 @@ function startP2POnly() {
             // Check PIN locally since there's no server.js
             if (msg.type === 'join') {
                 if (pinEnabled && msg.pin !== currentPin) {
-                    window.P2PManager.sendToPeer(msg.viewerId || msg.viewer_id, { type: 'pin-rejected' });
+                    window.P2PManager.sendToPeer(msg.viewer_id || msg.viewerId, { type: 'pin-rejected' });
                     return;
                 }
                 // Translate join to viewer-joined for host.js
                 msg.type = 'viewer-joined';
                 
                 // Emulate server initialization packets so the Viewer hides the PIN screen
-                window.P2PManager.sendToPeer(msg.viewerId || msg.viewer_id, {
+                window.P2PManager.sendToPeer(msg.viewer_id || msg.viewerId, {
                     type: 'your-id',
-                    viewerId: msg.viewerId || msg.viewer_id
+                    viewerId: msg.viewer_id || msg.viewerId
                 });
-                window.P2PManager.sendToPeer(msg.viewerId || msg.viewer_id, {
+                window.P2PManager.sendToPeer(msg.viewer_id || msg.viewerId, {
                     type: 'host-connected',
                     hostName: 'P2P Host'
                 });
@@ -2961,9 +3012,18 @@ function startP2POnly() {
                 // Ensure _viewerId exists for existing routing logic
                 if (msg.viewer_id && !msg._viewerId) msg._viewerId = msg.viewer_id;
                 if (msg.viewerId && !msg._viewerId) msg._viewerId = msg.viewerId;
+                // We must unconditionally map the P2P peerId into viewerId so the Host routes the offer correctly!
+                // If we don't, the Host will try to send the offer to the viewer's local session ID, which Trystero doesn't know about.
+                if (msg.viewer_id) {
+                    msg._viewerId = msg.viewer_id;
+                    msg.viewerId = msg.viewer_id;
+                }
+                
                 ws.onmessage({ data: JSON.stringify(msg) });
             }
         });
+        
+        log(I18N.t('P2P tunnel ready! Waiting for viewers...'), 'ok');
     }
 
     closeTunnelModal();
@@ -3729,6 +3789,9 @@ if (urlParams.get('auto') === '1') {
         // the VPS connection is managed by connectVps() on WS open.
         if (_vpsConfig && _vpsConfig.vpsEnabled) {
             console.log('[Headless] VPS SFU active — skipping local tunnel boot.');
+        } else if (autoTunnel === 'p2p') {
+            console.log('[Headless] Starting P2P tunnel via auto boot...');
+            proceedP2POnly();
         } else {
             fetch('/api/start-tunnel', {
                 method: 'POST',

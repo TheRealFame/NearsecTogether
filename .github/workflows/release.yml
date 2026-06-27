@@ -25,6 +25,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Save Commit Hash
+        run: echo "${{ github.sha }}" > commit.txt
+
+
       - name: Remove broken launcher symlinks
         shell: bash
         run: |
@@ -59,12 +63,30 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload Static AppImage for Gearlever
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          # Find the generated AppImage
+          APPIMAGE=$(find dist -maxdepth 1 -name "*.AppImage" | head -n 1)
+          if [ -n "$APPIMAGE" ]; then
+            cp "$APPIMAGE" dist/NearsecTogether-latest.AppImage
+            # Upload it to the current release tag
+            gh release upload ${{ github.ref_name }} dist/NearsecTogether-latest.AppImage --clobber
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # ── 2. ANDROID APK BUILD ──
   release-android:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Save Commit Hash
+        run: echo "${{ github.sha }}" > commit.txt
+
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -90,19 +112,19 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Build APK (Debug)
+      - name: Build APK (Release)
         working-directory: ./android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
       # ── FIX: Rename the APK before uploading ──
       - name: Rename APK
-        run: mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/NearsecTogether-Android.apk
+        run: mv android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/NearsecTogether-Android.apk
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/NearsecTogether-Android.apk
+          files: android/app/build/outputs/apk/release/NearsecTogether-Android.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

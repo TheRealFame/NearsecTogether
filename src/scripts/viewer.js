@@ -304,8 +304,7 @@ async function createPC() {
                 // the WebRTC engine happy (RTCP feedback, etc.) — never shown.
                 const sink = document.getElementById('video');
                 if (sink) {
-                    if (!sink.srcObject) sink.srcObject = new MediaStream();
-                    sink.srcObject.addTrack(e.track);
+                    sink.srcObject = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
                     sink.style.display = 'none';
                 }
                 // Show the WebCodecs canvas layer; decoder will be configured
@@ -320,8 +319,7 @@ async function createPC() {
             const videoEl = document.getElementById('video');
             if (videoEl) {
                 videoEl.muted = true; // Required by Chrome/Safari to allow dynamic autoplay
-                if (!videoEl.srcObject) videoEl.srcObject = new MediaStream();
-                videoEl.srcObject.addTrack(e.track);
+                videoEl.srcObject = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
                 videoEl.onplaying = () => {
                     if (typeof showOverlay === 'function') showOverlay(false);
                     setStatus('');
@@ -343,8 +341,8 @@ async function createPC() {
                 audioEl.autoplay = true;
                 document.body.appendChild(audioEl);
             }
-            if (!audioEl.srcObject) audioEl.srcObject = new MediaStream();
-            audioEl.srcObject.addTrack(e.track);
+            audioEl.srcObject = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+            audioEl.play().catch(e => console.warn('[WebRTC] Audio blocked:', e));
             audioEl.muted = (typeof audioMuted !== 'undefined' ? audioMuted : false);
             audioEl.volume = (typeof _audioPrefs !== 'undefined' && _audioPrefs.streamVol !== undefined) ? _audioPrefs.streamVol : 1.0;
             console.log('[WebRTC] Audio stream attached to dedicated #remote-audio element');
@@ -1340,8 +1338,14 @@ async function connect() {
                     window.P2PManager.sendToHost(msg);
                 }
             },
-            close: () => {
-                console.log('[P2P] Disconnecting from room');
+            close: function(code = 1000, reason = '') {
+                console.log(`[P2P] Disconnecting from room (${code})`);
+                if (window.P2PManager && window.P2PManager.room) {
+                    try { window.P2PManager.room.leave(); } catch (e) { }
+                }
+                if (typeof this.onclose === 'function') {
+                    this.onclose({ code, reason });
+                }
             }
         };
 
@@ -1355,36 +1359,35 @@ async function connect() {
             });
         }
         stopReconnect = false;
-        return;
-    }
+    } else {
+        // Always use /vps for the public domain or if v3 is forced
+        const useVps = location.hostname === 'publicnearsec.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
+        let wsUrl = useVps
+            ? `${proto}://${host}/vps`
+            : `${proto}://${host}/ws/viewer`;
 
-    // Always use /vps for the public domain or if v3 is forced
-    const useVps = location.hostname === 'publicnearsec.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
-    let wsUrl = useVps
-        ? `${proto}://${host}/vps`
-        : `${proto}://${host}/ws/viewer`;
+        if (enteredPin) wsUrl += (wsUrl.includes('?') ? '&' : '?') + `pin=${encodeURIComponent(enteredPin)}`;
+        ws = new WebSocket(wsUrl);
+        ws.binaryType = 'arraybuffer';
+        stopReconnect = false;
 
-    if (enteredPin) wsUrl += (wsUrl.includes('?') ? '&' : '?') + `pin=${encodeURIComponent(enteredPin)}`;
-    ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer';
-    stopReconnect = false;
-
-    // ── EXPERIMENTAL WEBTRANSPORT CLIENT ──────────────────────────────────────
-    const wtRequested = urlParams.get('wt') === '1' || urlParams.get('pipeline') === 'webtransport';
-    if (useVps && wtRequested && 'WebTransport' in window) {
-        try {
-            const wtUrl = `https://${host}:4433/wt`;
-            const wt = new WebTransport(wtUrl);
-            wt.ready.then(() => {
-                console.log('[WebTransport] Connected to UDP datagram router.');
-                window.wtInputWriter = wt.datagrams.writable.getWriter();
-            }).catch(e => console.warn('[WebTransport] Handshake failed, falling back to WS:', e));
-            wt.closed.then(() => { 
-                window.wtInputWriter = null; 
-                console.log('[WebTransport] Session closed.'); 
-            }).catch(()=>{});
-        } catch (e) {
-            console.warn('[WebTransport] Setup error:', e);
+        // ── EXPERIMENTAL WEBTRANSPORT CLIENT ──────────────────────────────────────
+        const wtRequested = urlParams.get('wt') === '1' || urlParams.get('pipeline') === 'webtransport';
+        if (useVps && wtRequested && 'WebTransport' in window) {
+            try {
+                const wtUrl = `https://${host}:4433/wt`;
+                const wt = new WebTransport(wtUrl);
+                wt.ready.then(() => {
+                    console.log('[WebTransport] Connected to UDP datagram router.');
+                    window.wtInputWriter = wt.datagrams.writable.getWriter();
+                }).catch(e => console.warn('[WebTransport] Handshake failed, falling back to WS:', e));
+                wt.closed.then(() => { 
+                    window.wtInputWriter = null; 
+                    console.log('[WebTransport] Session closed.'); 
+                }).catch(()=>{});
+            } catch (e) {
+                console.warn('[WebTransport] Setup error:', e);
+            }
         }
     }
 
@@ -1549,7 +1552,7 @@ async function connect() {
         if (msg.type === 'pin-rejected' || msg.type === 'kick') {
             stopReconnect = true;
             if (pc) { try { pc.close(); } catch {} pc = null; }
-            ws.close();
+            ws.close(msg.type === 'kick' ? 4003 : 4001, msg.type.toUpperCase());
             
             if (msg.reason === 'kicked' || msg.type === 'kick') {
                 alert('You have been kicked by the Host.');
@@ -1557,7 +1560,7 @@ async function connect() {
                 document.body.innerHTML = '<div style="color:white;text-align:center;margin-top:20vh;font-family:sans-serif;"><h2>Disconnected</h2><p>You have been kicked by the host.</p></div>';
             } else {
                 document.getElementById('pinScreen').classList.remove('gone');
-                document.getElementById('pinErr').textContent = 'Incorrect PIN.';
+                document.getElementById('pinErr').textContent = enteredPin ? 'Incorrect PIN.' : 'PIN Required.';
                 document.getElementById('pinInput').value = '';
             }
             return;
