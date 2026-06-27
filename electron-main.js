@@ -567,10 +567,12 @@ async function createWindow() {
     }
     else if (os.platform() === 'linux') {
       let scriptPath = path.join(__dirname, 'bin', 'linux_setup.sh');
+      let iconPath = path.join(__dirname, 'assets', 'NearsecTogether.png');
       
       // If running from an AppImage or built executable, extraResources places 'bin' directly in resourcesPath
       if (__dirname.includes('app.asar')) {
         scriptPath = path.join(process.resourcesPath, 'bin', 'linux_setup.sh');
+        iconPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'NearsecTogether.png');
       }
       
       try { fs.chmodSync(scriptPath, 0o755); } catch (e) { console.warn('[Setup] chmod:', e.message); }
@@ -580,7 +582,7 @@ async function createWindow() {
 
       // Create a clean wrapper that forces the native password prompt and logs the exit code
       // We copy the script to /tmp first because root (sudo) cannot read FUSE mounts like AppImage's /tmp/.mount_*
-      const wrapperContent = `#!/bin/bash\nclear\necho "Starting Nearsec Setup..."\ncp "${scriptPath}" /tmp/nearsec_setup.sh\nchmod +x /tmp/nearsec_setup.sh\nsudo bash /tmp/nearsec_setup.sh\nif [ $? -eq 0 ]; then echo "SUCCESS" > "${statusFile}"; else echo "FAIL" > "${statusFile}"; fi\necho ""\nread -p "Press Enter to close..."\n`;
+      const wrapperContent = `#!/bin/bash\nclear\necho "Starting Nearsec Setup..."\ncp "${scriptPath}" /tmp/nearsec_setup.sh\ncp "${iconPath}" /tmp/NearsecTogether.png 2>/dev/null\nchmod +x /tmp/nearsec_setup.sh\nsudo bash /tmp/nearsec_setup.sh\nif [ $? -eq 0 ]; then echo "SUCCESS" > "${statusFile}"; else echo "FAIL" > "${statusFile}"; fi\necho ""\nread -p "Press Enter to close..."\n`;
 
       try {
         fs.writeFileSync(wrapperPath, wrapperContent, { mode: 0o755 });

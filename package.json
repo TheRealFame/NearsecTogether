@@ -99,6 +99,9 @@
       "icon": "assets/NearsecTogether.png",
       "requestedExecutionLevel": "requireAdministrator"
     },
+    "portable": {
+      "requestExecutionLevel": "admin"
+    },
     "mac": {
       "target": [
         "dmg"
