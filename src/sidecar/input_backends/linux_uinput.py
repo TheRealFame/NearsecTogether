@@ -63,7 +63,7 @@ PROFILES = {
     'ps4':         (0x054C, 0x09CC, 0x0100, 'Wireless Controller'),
     'playstation': (0x054C, 0x09CC, 0x0100, 'Wireless Controller'),
     'dualshock4':  (0x054C, 0x09CC, 0x0100, 'Wireless Controller'),
-    'dualsense':   (0x054C, 0x0CE6, 0x0100, 'Wireless Controller'),
+    'dualsense':   (0x054C, 0x09CC, 0x0100, 'Wireless Controller'),
     'switchpro':   (0x057E, 0x2009, 0x0001, 'Pro Controller'),
     'switch':      (0x057E, 0x2009, 0x0001, 'Pro Controller'),
     'nintendo':    (0x057E, 0x2009, 0x0001, 'Pro Controller'),
