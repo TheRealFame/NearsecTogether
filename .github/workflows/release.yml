@@ -77,6 +77,82 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ── ITCH.IO UPLOADS ──
+      - name: Prepare Windows Itch.io Release
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          mv dist/"NearsecTogether Setup "*.exe "Nearsec Together (Windows).exe" || true
+
+      - name: Publish Windows to Itch.io
+        if: matrix.os == 'windows-latest'
+        uses: yeslayla/butler-publish-itchio-action@master
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
+          CHANNEL: windows
+          ITCH_GAME: nearsectogether
+          ITCH_USER: cutefame
+          PACKAGE: "Nearsec Together (Windows).exe"
+
+      - name: Prepare Linux Itch.io Releases
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          APPIMAGE=$(find dist -maxdepth 1 -name "*.AppImage" | grep -v "latest" | head -n 1)
+          DEB=$(find dist -maxdepth 1 -name "*.deb" | head -n 1)
+          RPM=$(find dist -maxdepth 1 -name "*.rpm" | head -n 1)
+          
+          if [ -n "$APPIMAGE" ]; then mv "$APPIMAGE" "Nearsec Together (Linux).AppImage"; fi
+          if [ -n "$DEB" ]; then mv "$DEB" "Nearsec Together (Debian).deb"; fi
+          if [ -n "$RPM" ]; then mv "$RPM" "Nearsec Together (RedHat).rpm"; fi
+
+      - name: Publish Linux (AppImage) to Itch.io
+        if: matrix.os == 'ubuntu-latest'
+        uses: yeslayla/butler-publish-itchio-action@master
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
+          CHANNEL: linux
+          ITCH_GAME: nearsectogether
+          ITCH_USER: cutefame
+          PACKAGE: "Nearsec Together (Linux).AppImage"
+
+      - name: Publish Linux (Debian) to Itch.io
+        if: matrix.os == 'ubuntu-latest'
+        uses: yeslayla/butler-publish-itchio-action@master
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
+          CHANNEL: linux-deb
+          ITCH_GAME: nearsectogether
+          ITCH_USER: cutefame
+          PACKAGE: "Nearsec Together (Debian).deb"
+
+      - name: Publish Linux (RedHat) to Itch.io
+        if: matrix.os == 'ubuntu-latest'
+        uses: yeslayla/butler-publish-itchio-action@master
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
+          CHANNEL: linux-rpm
+          ITCH_GAME: nearsectogether
+          ITCH_USER: cutefame
+          PACKAGE: "Nearsec Together (RedHat).rpm"
+
+      - name: Prepare macOS Itch.io Release
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          DMG=$(find dist -maxdepth 1 -name "*.dmg" | head -n 1)
+          if [ -n "$DMG" ]; then mv "$DMG" "Nearsec Together (Mac).dmg"; fi
+
+      - name: Publish macOS to Itch.io
+        if: matrix.os == 'macos-latest'
+        uses: yeslayla/butler-publish-itchio-action@master
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
+          CHANNEL: mac
+          ITCH_GAME: nearsectogether
+          ITCH_USER: cutefame
+          PACKAGE: "Nearsec Together (Mac).dmg"
+
   # ── 2. ANDROID APK BUILD ──
   release-android:
     runs-on: ubuntu-latest
@@ -120,11 +196,20 @@ jobs:
 
       # ── FIX: Rename the APK before uploading ──
       - name: Rename APK
-        run: mv android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/NearsecTogether-Android.apk
+        run: mv android/app/build/outputs/apk/release/app-release.apk "Nearsec Together (Android).apk"
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/NearsecTogether-Android.apk
+          files: "Nearsec Together (Android).apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Android to Itch.io
+        uses: yeslayla/butler-publish-itchio-action@master
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
+          CHANNEL: android
+          ITCH_GAME: nearsectogether
+          ITCH_USER: cutefame
+          PACKAGE: "Nearsec Together (Android).apk"
