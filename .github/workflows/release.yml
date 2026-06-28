@@ -148,11 +148,12 @@ jobs:
       - name: Rename Assets for Itch.io
         run: |
           cd release-assets
-          mv NearsecTogether-Setup-*.exe "Nearsec Together (Windows).exe" || true
-          mv NearsecTogether-*-universal.dmg "Nearsec Together (Mac).dmg" || true
-          mv NearsecTogether-*.AppImage "Nearsec Together (Linux).AppImage" || true
-          mv nearsectogether_*.deb "Nearsec Together (Debian).deb" || true
-          mv nearsectogether-*.rpm "Nearsec Together (RedHat).rpm" || true
+          for file in NearsecTogether-Setup-*.exe; do [ -f "$file" ] && mv "$file" "Nearsec Together (Windows).exe"; done
+          for file in NearsecTogether-*-universal.dmg; do [ -f "$file" ] && mv "$file" "Nearsec Together (Mac).dmg"; done
+          for file in NearsecTogether-*.AppImage; do [ -f "$file" ] && [[ "$file" != *latest.AppImage ]] && mv "$file" "Nearsec Together (Linux).AppImage"; done
+          for file in NearsecTogether_*.deb; do [ -f "$file" ] && mv "$file" "Nearsec Together (Debian).deb"; done
+          for file in NearsecTogether-*.rpm; do [ -f "$file" ] && mv "$file" "Nearsec Together (RedHat).rpm"; done
+          for file in *.apk; do [ -f "$file" ] && mv "$file" "Nearsec Together (Android).apk"; done
 
       - name: Publish Windows to Itch.io
         uses: yeslayla/butler-publish-itchio-action@master
