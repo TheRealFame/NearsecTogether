@@ -893,6 +893,7 @@ async function main() {
       .replace(/(<meta property="og:image"\s+content=")[^"]*"/, `$1${ogImage}"`);
     res.type("html").send(html);
   });
+  app.get("/dashboard", (req, res) => res.sendFile(path.join(pagesDir, "dashboard.html")));
   app.get("/host", (req, res) => res.sendFile(path.join(pagesDir, "host.html")));
 
   app.get("/old_host", (req, res) => {

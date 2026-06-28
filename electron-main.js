@@ -300,7 +300,7 @@ async function createWindow() {
     const tunnelProv = getCliArg('--game-tunnel') || 'cloudflared';
     win.loadURL(`http://localhost:${port}/host?auto=1&title=${encodeURIComponent(gameName)}&tunnel=${encodeURIComponent(tunnelProv)}`);
   } else {
-    win.loadFile(path.join(PAGES_DIR, 'dashboard.html'), { query: { port: String(port) } });
+    win.loadURL(`http://localhost:${port}/dashboard?port=${port}`);
   }
 
   win.webContents.on('did-fail-load', (e, code, desc) => {
@@ -308,7 +308,7 @@ async function createWindow() {
     console.error('[electron] failed to load:', code, desc);
     setTimeout(() => {
       if (isArcadeWorker) win.loadURL(`http://localhost:${port}/host?auto=1`);
-      else win.loadFile(path.join(PAGES_DIR, 'dashboard.html'), { query: { port: String(port) } });
+      else win.loadURL(`http://localhost:${port}/dashboard?port=${port}`);
     }, 1000);
   });
 
@@ -641,11 +641,14 @@ async function createWindow() {
     if (win && !win.isDestroyed()) win.loadURL(`http://localhost:${serverPort}${route}${qs}`);
   });
 
+  ipcMain.handle('read-doc', async (event, filename) => {
+    if (!filename || filename.includes('..') || filename.includes('/')) throw new Error('Invalid filename');
+    return require('fs').promises.readFile(path.join(__dirname, 'src', 'docs', filename), 'utf8');
+  });
+
   ipcMain.on('back-to-dashboard-from-host', () => {
     if (win && !win.isDestroyed()) {
-      win.loadFile(path.join(__dirname, 'src', 'pages', 'dashboard.html'), {
-        query: { port: String(serverPort), noAutoHost: '1' },
-      });
+      win.loadURL(`http://localhost:${serverPort}/dashboard?port=${serverPort}&noAutoHost=1`);
     }
   });
 

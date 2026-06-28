@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVersion:    ()               => ipcRenderer.invoke('get-app-version'),
   // FIX #7: openHost now accepts an optional version string ('new' | 'old')
   openHost:    (version)          => ipcRenderer.send('open-host', version || 'new'),
+  readDoc:     (filename)         => ipcRenderer.invoke('read-doc', filename),
   getSettings:                    () => ipcRenderer.invoke('get-settings'),
   saveSettings:                   (s) => ipcRenderer.invoke('save-settings', s),
   // hydrateSettings: pushes localStorage-resident values into the config file

@@ -1140,9 +1140,14 @@
       const url  = `http://localhost:${port}/docs/${filename}`;
 
       try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const raw = await res.text();
+        let raw;
+        if (window.electronAPI && window.electronAPI.readDoc) {
+          raw = await window.electronAPI.readDoc(filename);
+        } else {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          raw = await res.text();
+        }
 
         // Render markdown: escape HTML first, then apply formatting rules in the
         // correct order (block elements before inline, newlines last).
