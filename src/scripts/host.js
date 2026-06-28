@@ -3021,6 +3021,26 @@ function proceedP2POnly() {
                         needsOffer: false // Host sends offer
                     });
                 }
+                
+                // Forward join to server.js so the P2P viewer shows up in the Host UI roster
+                if (ws && ws.readyState === 1) {
+                    ws.send(JSON.stringify({
+                        type: 'vps-viewer-join',
+                        viewerId: msg.viewer_id || msg.viewerId,
+                        name: msg.name,
+                        viewerRegion: msg.viewerRegion,
+                        isDesktopApp: msg.isDesktopApp,
+                    }));
+                }
+            }
+
+            if (msg.type === 'viewer-left') {
+                if (ws && ws.readyState === 1) {
+                    ws.send(JSON.stringify({
+                        type: 'vps-viewer-leave',
+                        viewerId: msg.viewer_id || msg.viewerId,
+                    }));
+                }
             }
 
             // Let the existing websocket logic handle it

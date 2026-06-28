@@ -1325,6 +1325,10 @@ async function connect() {
         const roomCode = hostParam.replace('p2p://', '');
         console.log('[P2P] Initializing serverless connection to room:', roomCode);
         
+        if (typeof setStatus === 'function') setStatus('Discovering host via P2P network...');
+        if (document.getElementById('spinner')) document.getElementById('spinner').style.display = 'block';
+        if (typeof showOverlay === 'function') showOverlay(true);
+        
         // Emulate WebSocket interface for P2PManager
         ws = {
             readyState: 1,
@@ -1355,6 +1359,7 @@ async function connect() {
                     ws.onmessage({ data: JSON.stringify(msg) });
                 }
             }, () => {
+                if (typeof setStatus === 'function') setStatus('Host found, negotiating P2P connection...');
                 if (typeof ws.onopen === 'function') ws.onopen();
             });
         }
