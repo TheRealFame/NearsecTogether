@@ -130,8 +130,10 @@ function init(screenWidth, screenHeight) {
     // Skip it entirely and go straight to the Python sidecar.
     if (!isWin && !isMac) {
         // 1. Try Native C++ Fast Lane (Linux only)
+        // .node binaries cannot be require()'d from inside app.asar — must use the unpacked path.
         try {
-            const nodePath = path.join(__dirname, 'build', 'Release', 'uinputBridge.node');
+            const nodePathRaw = path.join(__dirname, 'build', 'Release', 'uinputBridge.node');
+            const nodePath = nodePathRaw.replace('app.asar', 'app.asar.unpacked');
             _bridge = require(nodePath);
             _bridge.initializeDevice(screenWidth || 1920, screenHeight || 1080);
             console.log(`[input] Native uinputBridge loaded: ${nodePath}`);

@@ -623,6 +623,13 @@ Permission is granted to anyone to use this software for any purpose, subject to
               </div>
               <div class="toggle" id="settingTrackCheckForUpdates"><div class="toggle-thumb"></div></div>
             </div>
+            <div class="setting-row" id="settingRowOpenLog" style="cursor:default;">
+              <div class="setting-info">
+                <h4>Session Logs</h4>
+                <p>View the diagnostic logs for the current session.</p>
+              </div>
+              <button style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);" onclick="window.electronAPI.openLog()">Open Log File</button>
+            </div>
           </div>
           <div class="setting-row" onclick="toggleOldUI()" id="settingRowOldUI">
             <div class="setting-info">
@@ -1151,7 +1158,14 @@ Permission is granted to anyone to use this software for any purpose, subject to
     // 1. Hide PC-only elements if running on Android / Capacitor
     const isMobile = window.Capacitor || navigator.userAgent.includes('Android');
     if (isMobile) {
-        ['floating-setup-btn', 'docsFloatBtn', 'settingRowDiscordRPC'].forEach(id => {
+        ['floating-setup-btn', 'docsFloatBtn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.setProperty('display', 'none', 'important');
+        });
+    }
+    
+    if (!window.electronAPI) {
+        ['settingRowDiscordRPC', 'settingRowOpenLog', 'settingRowUpdates'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.setProperty('display', 'none', 'important');
         });

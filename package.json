@@ -79,6 +79,7 @@
     ],
     "asarUnpack": [
       "src/sidecar/**/*",
+      "src/sidecar/input_backends/build/Release/*.node",
       "assets/**/*",
       "bin/**/*"
     ],

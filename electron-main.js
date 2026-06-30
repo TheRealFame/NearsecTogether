@@ -31,9 +31,9 @@ const BUNDLED_CONTROLLERS = path.join(__dirname, 'config', 'controllers.json');
 const USER_CONTROLLERS = path.join(CONFIG_DIR, 'controllers.json');
 
 // ── SESSION FILE LOGGER ──
-const LOG_FILE = path.join(__dirname, 'config', 'latest.log');
+const LOG_FILE = path.join(CONFIG_DIR, 'latest.log');
 try { 
-  if (!fs.existsSync(path.join(__dirname, 'config'))) fs.mkdirSync(path.join(__dirname, 'config'), { recursive: true });
+  if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(LOG_FILE, `--- Nearsec Session Log (${new Date().toISOString()}) ---\n`); 
 } catch (e) {}
 
@@ -708,6 +708,15 @@ async function createWindow() {
       autoUpdater.quitAndInstall();
     } catch (e) {
       console.error('[electron] Failed to install update:', e);
+    }
+  });
+
+  ipcMain.on('open-log', () => {
+    const { shell } = require('electron');
+    if (fs.existsSync(LOG_FILE)) {
+      shell.openPath(LOG_FILE);
+    } else {
+      console.error('[electron] Log file not found at:', LOG_FILE);
     }
   });
 
