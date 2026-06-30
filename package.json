@@ -62,13 +62,13 @@
       }
     ],
     "files": [
+      "src/sidecar/input_backends/build/Release/*.node",
       "!/.env",
       "**/*",
       "!website",
       "!src/docs",
       "!**/*.md",
       "!.github",
-      "!kbm_presets",
       "!.flatpak-builder",
       "!**/build/Release/.deps",
       "!**/build/Release/obj.target",
@@ -80,6 +80,8 @@
     "asarUnpack": [
       "src/sidecar/**/*",
       "src/sidecar/input_backends/build/Release/*.node",
+      "config/**/*",
+      "kbm_presets/**/*",
       "assets/**/*",
       "bin/**/*"
     ],

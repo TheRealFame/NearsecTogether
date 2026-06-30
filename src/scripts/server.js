@@ -343,7 +343,7 @@ const envFile = path.join(dataDir, '.env');
 // so you can always find/edit the live config right inside the project tree.
 // Windows symlinks require elevated privilege — skip on win32.
 (function ensureConfigSymlink() {
-  if (process.platform === 'win32') return;
+  if (process.platform === 'win32' || isPackaged) return;
   try {
     // Walk up from src/scripts to find the project root (two levels up)
     const projectRoot = path.resolve(__dirname, '..', '..');
