@@ -1861,8 +1861,8 @@ async function startCapture() {
         /*
         let backendHasFfmpeg = false;
         try {
-            const statusRes = await fetch('/api/ffmpeg-status').then(r => r.json());
-            if (statusRes.available !== false) backendHasFfmpeg = true;
+            const statusRes = await fetch('/api/capture/status').then(r => r.json());
+            if (statusRes.active && statusRes.method === 'ffmpeg') backendHasFfmpeg = true;
         } catch (e) { }
 
         if (backendHasFfmpeg) {
@@ -2178,7 +2178,7 @@ function stopCapture() {
     if (wcCanvas) wcCanvas.remove();
 
     // Stop FFmpeg experimental pipeline if it was running
-    // fetch(`/api/stop-ffmpeg-capture`, { method: 'POST' }).catch(() => {});
+    // fetch(`/api/capture/stop`, { method: 'POST' }).catch(() => {});
     if (window._ffmpegHealthInterval) { clearInterval(window._ffmpegHealthInterval); window._ffmpegHealthInterval = null; }
     const prevEl = document.getElementById('preview');
     if (prevEl) prevEl.srcObject = null;
@@ -2320,11 +2320,15 @@ async function startFFmpegCapture() {
     return new Promise(async (resolve, reject) => {
         try {
             // 1. Tell the backend to spin up the FFmpeg hardware encoder
-            await fetch('/api/start-ffmpeg-capture', {
+            const capRes = await fetch('/api/capture/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({})
+                body: JSON.stringify({ method: 'ffmpeg' })
             });
+            const capData = await capRes.json();
+            if (!capData.ok || !capData.port) {
+                return reject(new Error('Failed to start FFmpeg capture on backend'));
+            }
 
             // Clean up any old instances
             let oldVideo = document.getElementById('ffmpeg-hidden-video');
@@ -2348,7 +2352,7 @@ async function startFFmpegCapture() {
                 const sourceBuffer = ms.addSourceBuffer('video/mp4; codecs="avc1.64002a"');
 
                 // 3. Connect to our new dedicated FFmpeg HTTP stream port
-                const response = await fetch('http://127.0.0.1:3005/');
+                const response = await fetch(`http://127.0.0.1:${capData.port}/`);
                 const reader = response.body.getReader();
 
                 const pushChunk = async () => {

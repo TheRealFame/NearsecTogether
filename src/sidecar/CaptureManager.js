@@ -16,6 +16,7 @@ class CaptureManager {
         // FFmpeg specific state
         this._ffmpegProc = null;
         this._ffmpegServer = null;
+        this._ffmpegPort = null;
         this._ffmpegStreamRes = null;
         this._ffmpegEncoder = null;
     }
@@ -85,7 +86,12 @@ class CaptureManager {
                 this._ffmpegStreamRes = res;
                 if (this._ffmpegProc && this._ffmpegProc.stdout) this._ffmpegProc.stdout.pipe(res);
             });
-                this._ffmpegServer.listen(3005, '127.0.0.1');
+            await new Promise((resolve) => {
+                this._ffmpegServer.listen(0, '127.0.0.1', () => {
+                    this._ffmpegPort = this._ffmpegServer.address().port;
+                    resolve();
+                });
+            });
         }
 
         let args;
@@ -101,7 +107,7 @@ class CaptureManager {
         this._ffmpegProc.on('error', (e) => console.error('[CaptureManager] FFmpeg Error:', e.message));
         this._ffmpegProc.on('close', () => { this._activeMethod = null; });
 
-        return { ok: true, message: `FFmpeg running on ${this._ffmpegEncoder}` };
+        return { ok: true, message: `FFmpeg running on ${this._ffmpegEncoder}`, port: this._ffmpegPort };
     }
 
     _stopFFmpeg() {
@@ -116,6 +122,7 @@ class CaptureManager {
         if (this._ffmpegServer) {
             this._ffmpegServer.close();
             this._ffmpegServer = null;
+            this._ffmpegPort = null;
         }
     }
 
