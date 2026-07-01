@@ -173,7 +173,7 @@ function addSessionToGrid(session) {
             id: session.id || ('arcade-' + Date.now()),
             game: session.game || session.gameTitle,
             thumbnail: session.thumbnail,
-            region: session.hostRegion || 'Live Arcade',
+            region: session.hostRegion || (window.I18N ? window.I18N.t('Live Arcade') : 'Live Arcade'),
             hasPin: session.hasPin || session.requirePin,
             url: session.url || session.tunnelUrl,
             viewers: session.viewers || session.viewerCount || 0,

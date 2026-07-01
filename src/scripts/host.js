@@ -1192,6 +1192,19 @@ function regeneratePin() {
     }
 }
 
+function savePersistentPassword(val) {
+    const password = (val || '').trim();
+    fetch('/api/set-session-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: password })
+    }).then(r => r.json()).then(cfg => {
+        log(password ? 'Persistent password saved! Replaces PIN.' : 'Persistent password cleared. Using random PINs.', 'ok');
+    }).catch(err => {
+        log('Failed to save password: ' + err.message, 'err');
+    });
+}
+
 function connectWS() {
     ws = new WebSocket(proto + '://' + location.host + '/ws/host');
     ws.onopen = () => {
@@ -1201,6 +1214,11 @@ function connectWS() {
         fetch('/api/config').then(r => r.json()).then(cfg => {
             const hostNameEl = document.getElementById('displayHostName');
             if (hostNameEl) hostNameEl.textContent = cfg.hostName || 'Guest';
+            
+            const passInput = document.getElementById('persistentPasswordInput');
+            if (passInput && cfg.persistentPassword) {
+                passInput.value = cfg.persistentPassword;
+            }
         });
 
             fetch('/api/info').then(r => r.json()).then(d => {

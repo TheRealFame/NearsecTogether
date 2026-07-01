@@ -776,7 +776,9 @@ function sanitize(str) {
   return String(str).replace(/[<>&"']/g, c =>
     ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c])).slice(0, 300);
 }
-function makePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
+function makePin() { 
+  return String(crypto.randomInt(1000, 10000));
+}
 
 // ── Arcade session registry ───────────────────────────────────────────────────
 const arcadeSessions = new Map();
@@ -856,11 +858,10 @@ async function main() {
   const PORT = activePort;
   const LAN_IP = getLanIP();
   const PUBLIC_IP = await getPublicIP();
-  let PIN = makePin();
+  const initialCfg = loadConfig();
+  let sessionPassword = initialCfg.persistentPassword || '';
+  let PIN = sessionPassword ? sessionPassword : makePin();
   let pinEnabled = true;
-  // Per-session password — set by host via 'set-session-password' WS message.
-  // Empty string means no session password. Separate from the global PIN.
-  let sessionPassword = '';
 
   console.log("\n  \x1b[1mNearsecTogether\x1b[0m");
   console.log("  Host page : http://localhost:" + PORT + "/host");
@@ -953,13 +954,17 @@ async function main() {
   app.post("/api/config", express.json(), (req, res) => { res.json(saveConfig(req.body || {})); });
 
   app.post('/api/set-session-password', express.json(), (req, res) => {
-    sessionPassword = (req.body?.password || '').trim();
+    const newPass = (req.body?.password || '').trim();
+    saveConfig({ persistentPassword: newPass });
+    sessionPassword = newPass;
+    PIN = sessionPassword ? sessionPassword : makePin();
     console.log(`[host] Session password ${sessionPassword ? 'set' : 'cleared'}`);
+    if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
     res.json({ ok: true, hasPassword: !!sessionPassword });
   });
 
   app.get('/api/session-password-status', (req, res) => {
-    res.json({ hasPassword: !!sessionPassword });
+    res.json({ hasPassword: !!sessionPassword, password: sessionPassword });
   });
 
   app.get("/api/sysinfo", async (req, res) => {
@@ -1632,6 +1637,10 @@ async function main() {
           }
 
           if (msg.type === "regen-pin") {
+            if (sessionPassword && arcadeSessions.size === 0) {
+              console.log("[host] Ignoring regen-pin because persistent PIN is set.");
+              return;
+            }
             PIN = makePin();
             console.log("[host] PIN regenerated: ****");
             if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
@@ -1639,6 +1648,11 @@ async function main() {
           }
 
           if (msg.type === "arcade-session-start") {
+            if (sessionPassword) {
+              PIN = makePin();
+              if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
+            }
+            
             const arcadeUrl = msg.tunnelUrl || tunnelUrl;
             if (!arcadeUrl) { /* error logic */ return; }
 
@@ -1665,6 +1679,10 @@ async function main() {
           }
 
           if (msg.type === "arcade-session-stop") {
+            if (sessionPassword) {
+              PIN = sessionPassword;
+              if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
+            }
             for (const [id, s] of arcadeSessions) {
               arcadeSessions.delete(id);
               broadcastToArcade({ type: 'arcade-session-stopped', id });
@@ -1680,6 +1698,10 @@ async function main() {
             for (const [id, s] of arcadeSessions) {
               arcadeSessions.delete(id);
               broadcastToArcade({ type: 'arcade-session-stopped', id });
+            }
+            if (sessionPassword && PIN !== sessionPassword) {
+              PIN = sessionPassword;
+              if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
             }
           }
 

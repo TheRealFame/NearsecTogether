@@ -1551,7 +1551,6 @@
       <div id="pinWrap">
         <div class="pin-field-label" style="margin-top:4px;">PIN Code</div>
         <input id="pinInput" type="text" autocomplete="off" inputmode="numeric" pattern="[0-9]*" placeholder="0000" maxlength="4" class="pin-input"
-          oninput="this.value=this.value.replace(/[^0-9]/g, '').slice(0,4)"
           onkeydown="if(event.key==='Enter')submitPin()">
       </div>
 
