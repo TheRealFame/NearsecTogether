@@ -221,6 +221,8 @@ const DEFAULTS = {
   vpsEnabled: false, vpsUrl: '', vpsMasterKey: '',
   // Auto-hosts
   autoHosts: [],
+  // Discord RPC
+  discordClientId: '1241907722765324391', // Fallback default ID
   // First run
   firstRunComplete: false,
 };
@@ -740,6 +742,34 @@ async function createWindow() {
       } catch (e) {
         console.error("Failed to update tray icon", e);
       }
+    }
+  });
+
+  // ── Discord RPC ──
+  let rpc = null;
+  const DiscordRPC = require('discord-rpc');
+  
+  ipcMain.on('discord-set-activity', (event, activity) => {
+    if (!settings.discordRPC) return;
+    if (!rpc) {
+      DiscordRPC.register(settings.discordClientId);
+      rpc = new DiscordRPC.Client({ transport: 'ipc' });
+      rpc.on('ready', () => {
+        console.log('[Discord] RPC Ready');
+        rpc.setActivity(activity).catch(console.error);
+      });
+      rpc.login({ clientId: settings.discordClientId }).catch(err => {
+        console.error('[Discord] login failed:', err.message);
+        rpc = null;
+      });
+    } else {
+      rpc.setActivity(activity).catch(console.error);
+    }
+  });
+
+  ipcMain.on('discord-clear', () => {
+    if (rpc) {
+      rpc.clearActivity().catch(console.error);
     }
   });
 }

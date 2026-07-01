@@ -1548,7 +1548,8 @@ async function sendOfferToViewer(viewerId) {
     try {
         const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
         await pc.setLocalDescription({ type: offer.type, sdp: offer.sdp });
-        const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: viewerId };
+        const rawCodecName = codec ? codec.split('/')[1].toLowerCase() : null;
+        const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: viewerId, codec: rawCodecName };
         if (window.P2PManager && window.P2PManager.isPeer(viewerId)) {
             window.P2PManager.sendToPeer(viewerId, msg);
         } else {
@@ -1816,6 +1817,8 @@ async function hotSwapCapture() {
 }
 
 async function startCapture() {
+    streamActive = true;
+    _updateDiscordRPC();
     // ── HANG PROTECTION: Forces hanging OS promises to reject after 20 seconds ──
     const withTimeout = (promise, ms, msg) => Promise.race([
         promise,
@@ -2205,6 +2208,8 @@ function stopCapture() {
     updateKbmPanicButton();
     Object.values(peerConnections).forEach(pc => pc.close());
     peerConnections = {};
+    streamActive = false;
+    _updateDiscordRPC();
 
     if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({ type: 'host-stream-stopped' }));
@@ -3485,6 +3490,7 @@ function toggleViewerPanel() {
 }
 
 function _refreshViewerPanel() {
+    _updateDiscordRPC();
     const list = document.getElementById('viewerPanelList');
     if (!list) return;
     // Rebuild from roster data exposed by host.js
@@ -4000,4 +4006,30 @@ if (document.readyState === 'loading') {
 } else {
     setInterval(fetchSysInfo, 3000);
     fetchSysInfo();
+}
+
+function _updateDiscordRPC() {
+    if (typeof window.electronAPI !== 'undefined' && window.electronAPI.discordSetActivity) {
+        if (typeof isArcade !== 'undefined' && isArcade && typeof arcadeConfig !== 'undefined' && arcadeConfig.title) {
+            window.electronAPI.discordSetActivity({
+                details: `Playing ${arcadeConfig.title}`,
+                state: `Players: ${knownViewers.size + 1}/${arcadeConfig.maxPlayers || 4}`,
+                startTimestamp: window._arcadeStartTime || (window._arcadeStartTime = Date.now()),
+                largeImageKey: 'nearsec_logo',
+                largeImageText: 'Nearsec Arcade'
+            });
+        } else if (typeof streamActive !== 'undefined' && streamActive) {
+            window.electronAPI.discordSetActivity({
+                details: `Hosting a session`,
+                state: `Viewers: ${knownViewers.size}`,
+                startTimestamp: window._sessionStartTime || (window._sessionStartTime = Date.now()),
+                largeImageKey: 'nearsec_logo',
+                largeImageText: 'NearsecTogether'
+            });
+        } else {
+            window.electronAPI.discordClear();
+            window._arcadeStartTime = null;
+            window._sessionStartTime = null;
+        }
+    }
 }
