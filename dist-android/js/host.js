@@ -383,6 +383,13 @@ async function monitorCongestion(pc, viewerId) {
             }
             await sender.setParameters(params);
 
+            if (typeof _wcEncoder !== 'undefined' && _wcEncoder && _wcEncoder.state !== 'closed' && _wcEncoder._lastConfig) {
+                try {
+                    _wcEncoder._lastConfig.bitrate = Math.round(recovered);
+                    _wcEncoder.configure(_wcEncoder._lastConfig);
+                } catch(e) {}
+            }
+
             congestionControl.lastAdjustment[viewerId] = { bitrate: recovered, time: Date.now(), baselineRtt: lastAdj.baselineRtt };
             log(I18N.t('Congestion: Bitrate recovered to ${Math.round(recovered/1000)}kbps for ${viewerId}').replace('${Math.round(recovered/1000)}', Math.round(recovered/1000)).replace('${viewerId}', viewerId), 'ok');
             return;
@@ -401,6 +408,13 @@ async function monitorCongestion(pc, viewerId) {
                             freshParams.encodings[0].degradationPreference = degPref;
                         }
                         await sender.setParameters(freshParams);
+
+                        if (typeof _wcEncoder !== 'undefined' && _wcEncoder && _wcEncoder.state !== 'closed' && _wcEncoder._lastConfig) {
+                            try {
+                                _wcEncoder._lastConfig.bitrate = Math.max(minFloor, newBitrate);
+                                _wcEncoder.configure(_wcEncoder._lastConfig);
+                            } catch(e) {}
+                        }
 
                         congestionControl.lastAdjustment[viewerId] = { bitrate: currentBitrate, time: Date.now(), baselineRtt: lastAdj.baselineRtt };
                         log(I18N.t('Congestion: Bitrate reduced to ${Math.round(newBitrate/1000)}kbps (${reason})').replace('${Math.round(newBitrate/1000)}', Math.round(newBitrate/1000)).replace('${reason}', reason), 'warn');
@@ -2372,15 +2386,17 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
     });
     _wcEncoder = encoder;
 
-    encoder.configure({
+    const wcConfig = {
         codec: 'vp8',
         width: exactWidth,
         height: exactHeight,
         bitrate: 8000000,
         framerate: Math.round(settings.frameRate || 60),
-                      hardwareAcceleration: 'no-preference',
-                      latencyMode: 'realtime'
-    });
+        hardwareAcceleration: 'no-preference',
+        latencyMode: 'realtime'
+    };
+    encoder.configure(wcConfig);
+    encoder._lastConfig = wcConfig;
 
     const processor = new MediaStreamTrackProcessor({ track: videoTrack });
     const reader = processor.readable.getReader();
